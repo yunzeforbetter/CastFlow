@@ -1,0 +1,7 @@
+{
+  "pipeline_settings": {
+    "context_file": "PIPELINE_CONTEXT.md",
+    "backup_context": true,
+    "max_retries_per_step": 1
+  }
+}
