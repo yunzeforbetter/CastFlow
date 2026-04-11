@@ -112,6 +112,7 @@ Phase 2 确认后生成的 manifest 文件。
 {
   "version": 1,
   "tech_stack": "unity",
+  "language": "zh",
   "profile": "standard",
   "merge_mode": "full",
   "modules": [],
@@ -126,6 +127,7 @@ Phase 2 确认后生成的 manifest 文件。
 |------|------|------|
 | version | 是 | 固定为 1 |
 | tech_stack | 否 | 技术栈标识，用于条件段处理 |
+| language | 否 | 生成文件的语言，默认 "zh"（中文）。支持任意语言标识如 "en"、"ja"、"ko" 等 |
 | profile | 否 | lite/standard/full，默认 standard |
 | merge_mode | 否 | full(备份覆盖)/incremental(跳过已有)，默认 full |
 | modules | 是 | 模块列表，初始化时为空数组；创建模块 skill 时填入 |
@@ -146,15 +148,13 @@ bootstrap-output/
       naming_conventions.md         -> CLAUDE.template 的 {{NAMING_CONVENTIONS}}
       framework_rules.md            -> {{FRAMEWORK_RULES}}
       project_rules.md              -> {{PROJECT_RULES}}
-    architect/                      (architect subagent 生成)
+    architect/                      (architect subagent 生成, 6 个文件)
+      hard_rules.md                 -> {{HARD_RULES}} (纯文字，禁止代码块)
+      common_pitfalls.md            -> {{COMMON_PITFALLS}} (纯文字，禁止代码块)
+      constraint_rules_summary.md   -> {{CONSTRAINT_RULES_SUMMARY}}
       constraint_examples.md        -> {{CONSTRAINT_EXAMPLES}}
       pattern_examples.md           -> {{PATTERN_EXAMPLES}}
-      constraint_rules_summary.md   -> {{CONSTRAINT_RULES_SUMMARY}}
-      constraint_query_table.md     -> {{CONSTRAINT_QUERY_TABLE}}
-      pattern_query_table.md        -> {{PATTERN_QUERY_TABLE}}
       design_patterns.md            -> {{DESIGN_PATTERNS}}
-      hard_rules.md                 -> {{HARD_RULES}}
-      common_pitfalls.md            -> {{COMMON_PITFALLS}}
     debug/                          (debug subagent 生成)
       focus_areas.md                -> {{FOCUS_AREAS}}
       project_checks.md             -> {{PROJECT_SPECIFIC_CHECKS}}

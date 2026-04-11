@@ -64,10 +64,12 @@ def read_file(path):
 
 
 def safe_write(path, content, merge_mode, dry_run):
+    path = os.path.normpath(path)
     if os.path.exists(path):
         if merge_mode == "full":
             if not dry_run:
                 shutil.copy2(path, path + ".bak")
+                os.remove(path)
             print("  [BACKUP] {} -> {}.bak".format(path, path))
         else:
             print("  [SKIP]   {} (exists, merge_mode={})".format(path, merge_mode))
@@ -147,7 +149,13 @@ def replace_placeholders(content, placeholders):
     return content, warnings
 
 
-def process_conditionals(content, tech_stack):
+def process_conditionals(content, tech_stack, language="zh"):
+    """Process conditional blocks in templates.
+
+    Supports tech stack conditionals: <!-- if:unity --> ... <!-- endif -->
+    The language parameter is reserved for future use (currently language
+    is controlled via Agent prompt {LANGUAGE} directives, not template blocks).
+    """
     lines = content.split("\n")
     output = []
     skip = False
@@ -194,8 +202,6 @@ def build_architect_placeholders(content_dir):
         "CONSTRAINT_EXAMPLES": load_content(content_dir, "architect/constraint_examples.md") or "",
         "PATTERN_EXAMPLES": load_content(content_dir, "architect/pattern_examples.md") or "",
         "CONSTRAINT_RULES_SUMMARY": load_content(content_dir, "architect/constraint_rules_summary.md") or "",
-        "CONSTRAINT_QUERY_TABLE": load_content(content_dir, "architect/constraint_query_table.md") or "",
-        "PATTERN_QUERY_TABLE": load_content(content_dir, "architect/pattern_query_table.md") or "",
         "DESIGN_PATTERNS": load_content(content_dir, "architect/design_patterns.md") or "",
         "HARD_RULES": load_content(content_dir, "architect/hard_rules.md") or "",
         "COMMON_PITFALLS": load_content(content_dir, "architect/common_pitfalls.md") or "",
@@ -280,9 +286,10 @@ def copy_core_files(project_root, manifest, dry_run):
 
 
 def generate_template_dir(harness_dir, output_base, template_subdir, output_subdir,
-                          placeholders, tech_stack, merge_mode, dry_run):
-    template_path = os.path.join(harness_dir, template_subdir)
-    output_path = os.path.join(output_base, output_subdir)
+                          placeholders, tech_stack, merge_mode, dry_run,
+                          language="zh"):
+    template_path = os.path.normpath(os.path.join(harness_dir, template_subdir))
+    output_path = os.path.normpath(os.path.join(output_base, output_subdir))
 
     if not os.path.isdir(template_path):
         print("  [ERROR]  Template directory not found: {}".format(template_path))
@@ -297,7 +304,7 @@ def generate_template_dir(harness_dir, output_base, template_subdir, output_subd
 
         content = read_file(src)
         content, warnings = replace_placeholders(content, placeholders)
-        content = process_conditionals(content, tech_stack)
+        content = process_conditionals(content, tech_stack, language)
 
         for w in warnings:
             print("  [WARN]   {{{{{}}}}}: no content file, preserved as-is".format(w))
@@ -307,7 +314,7 @@ def generate_template_dir(harness_dir, output_base, template_subdir, output_subd
 
 def generate_single_template(harness_dir, dest_path,
                              template_rel, placeholders, tech_stack,
-                             merge_mode, dry_run):
+                             merge_mode, dry_run, language="zh"):
     src = os.path.join(harness_dir, template_rel)
     if not os.path.isfile(src):
         print("  [ERROR]  Template not found: {}".format(src))
@@ -315,7 +322,7 @@ def generate_single_template(harness_dir, dest_path,
 
     content = read_file(src)
     content, warnings = replace_placeholders(content, placeholders)
-    content = process_conditionals(content, tech_stack)
+    content = process_conditionals(content, tech_stack, language)
 
     for w in warnings:
         print("  [WARN]   {{{{{}}}}}: no content file, preserved as-is".format(w))
@@ -560,6 +567,7 @@ def generate_all(project_root, manifest, dry_run):
     content_dir = os.path.join(project_root, BOOTSTRAP_OUTPUT, "content")
     merge_mode = manifest.get("merge_mode", "full")
     tech_stack = manifest.get("tech_stack", "")
+    language = manifest.get("language", "zh")
     modules = manifest.get("modules", [])
     optional = manifest.get("optional_skills", {})
     profile = manifest.get("profile", "standard")
@@ -572,7 +580,7 @@ def generate_all(project_root, manifest, dry_run):
         claude_content = read_file(claude_template)
         claude_content, _ = replace_placeholders(
             claude_content, build_claude_placeholders(manifest, content_dir))
-        claude_content = process_conditionals(claude_content, tech_stack)
+        claude_content = process_conditionals(claude_content, tech_stack, language)
         merge_claude_md(os.path.join(project_root, "CLAUDE.md"), claude_content, dry_run)
     else:
         print("  [ERROR]  Template not found: {}".format(claude_template))
@@ -582,7 +590,7 @@ def generate_all(project_root, manifest, dry_run):
         harness_dir, output_dir,
         "templates/skills/architect.template", "skills/architect-skill",
         build_architect_placeholders(content_dir),
-        tech_stack, merge_mode, dry_run,
+        tech_stack, merge_mode, dry_run, language,
     )
 
     for module in modules:
@@ -594,7 +602,7 @@ def generate_all(project_root, manifest, dry_run):
             "templates/skills/programmer.template",
             "skills/programmer-{}-skill".format(mid),
             build_module_placeholders(module, content_dir),
-            tech_stack, merge_mode, dry_run,
+            tech_stack, merge_mode, dry_run, language,
         )
 
     if optional.get("debug", False):
@@ -603,7 +611,7 @@ def generate_all(project_root, manifest, dry_run):
             harness_dir, output_dir,
             "templates/skills/debug.template", "skills/debug-skill",
             build_debug_placeholders(content_dir),
-            tech_stack, merge_mode, dry_run,
+            tech_stack, merge_mode, dry_run, language,
         )
 
     if optional.get("profiler", False):
@@ -612,7 +620,7 @@ def generate_all(project_root, manifest, dry_run):
             harness_dir, output_dir,
             "templates/skills/profiler.template", "skills/profiler-skill",
             build_profiler_placeholders(content_dir),
-            tech_stack, merge_mode, dry_run,
+            tech_stack, merge_mode, dry_run, language,
         )
 
     copy_templates(project_root, merge_mode, dry_run)
@@ -626,6 +634,7 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run):
     content_dir = os.path.join(project_root, BOOTSTRAP_OUTPUT, "content")
     merge_mode = manifest.get("merge_mode", "full")
     tech_stack = manifest.get("tech_stack", "")
+    language = manifest.get("language", "zh")
     modules = manifest.get("modules", [])
     optional = manifest.get("optional_skills", {})
     profile = manifest.get("profile", "standard")
@@ -641,7 +650,7 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run):
             claude_content = read_file(claude_template)
             claude_content, _ = replace_placeholders(
                 claude_content, build_claude_placeholders(manifest, content_dir))
-            claude_content = process_conditionals(claude_content, tech_stack)
+            claude_content = process_conditionals(claude_content, tech_stack, language)
             merge_claude_md(os.path.join(project_root, "CLAUDE.md"), claude_content, dry_run)
         else:
             print("  [ERROR]  Template not found: {}".format(claude_template))
@@ -653,7 +662,7 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run):
             harness_dir, output_dir,
             "templates/skills/architect.template", "skills/architect-skill",
             build_architect_placeholders(content_dir),
-            tech_stack, merge_mode, dry_run,
+            tech_stack, merge_mode, dry_run, language,
         )
         return
 
@@ -666,7 +675,7 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run):
             harness_dir, output_dir,
             "templates/skills/debug.template", "skills/debug-skill",
             build_debug_placeholders(content_dir),
-            tech_stack, merge_mode, dry_run,
+            tech_stack, merge_mode, dry_run, language,
         )
         return
 
@@ -679,7 +688,7 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run):
             harness_dir, output_dir,
             "templates/skills/profiler.template", "skills/profiler-skill",
             build_profiler_placeholders(content_dir),
-            tech_stack, merge_mode, dry_run,
+            tech_stack, merge_mode, dry_run, language,
         )
         return
 
@@ -697,7 +706,7 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run):
             "templates/skills/programmer.template",
             "skills/programmer-{}-skill".format(mid),
             build_module_placeholders(module, content_dir),
-            tech_stack, merge_mode, dry_run,
+            tech_stack, merge_mode, dry_run, language,
         )
         return
 
@@ -711,6 +720,7 @@ def generate_agent(project_root, manifest, module_id, dry_run):
     output_dir = os.path.join(project_root, CLAUDE)
     merge_mode = manifest.get("merge_mode", "full")
     tech_stack = manifest.get("tech_stack", "")
+    language = manifest.get("language", "zh")
     modules = manifest.get("modules", [])
 
     matched = [m for m in modules if m["id"] == module_id]
@@ -726,7 +736,7 @@ def generate_agent(project_root, manifest, module_id, dry_run):
         os.path.join(output_dir, "agents", "programmer-{}-agent.md".format(mid)),
         AGENT_TEMPLATE,
         build_agent_placeholders(module),
-        tech_stack, merge_mode, dry_run,
+        tech_stack, merge_mode, dry_run, language,
     )
 
 
@@ -986,11 +996,12 @@ def main():
 
     manifest = load_manifest(project_root)
     modules_str = ", ".join(m["id"] for m in manifest["modules"])
-    print("Manifest v{} | {} | {} | merge={}".format(
+    print("Manifest v{} | {} | {} | merge={} | lang={}".format(
         manifest["version"],
         manifest.get("tech_stack", "?"),
         manifest.get("profile", "standard"),
         manifest.get("merge_mode", "full"),
+        manifest.get("language", "zh"),
     ))
     print("Modules: {}".format(modules_str))
 

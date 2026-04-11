@@ -1,4 +1,4 @@
-# Programmer-{{MODULE_DISPLAY_NAME}}-Skill 示例库
+﻿# Programmer-{{MODULE_DISPLAY_NAME}}-Skill 示例库
 
 {{MODULE_EXAMPLES}}
 

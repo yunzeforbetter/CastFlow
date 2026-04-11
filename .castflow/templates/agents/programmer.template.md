@@ -1,4 +1,4 @@
----
+﻿---
 name: programmer-{{MODULE_ID}}-agent
 description: {{MODULE_DISPLAY_NAME}}模块工程师 - 理解模块架构并实现功能代码
 tools: Read, Grep, Glob, Edit, Write, Bash

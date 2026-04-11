@@ -1,4 +1,4 @@
----
+﻿---
 name: debug-skill
 description: Boundary condition detection and edge case analysis - the last line of defense for code quality
 ---

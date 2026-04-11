@@ -1,4 +1,4 @@
-# programmer-{{MODULE_ID}}-memory - {{MODULE_DISPLAY_NAME}}模块硬性规则
+﻿# programmer-{{MODULE_ID}}-memory - {{MODULE_DISPLAY_NAME}}模块硬性规则
 
 **本文档的性质**：硬性约束（必须遵守）。
 

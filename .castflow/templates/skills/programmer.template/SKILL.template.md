@@ -1,4 +1,4 @@
----
+﻿---
 name: programmer-{{MODULE_ID}}-skill
 description: {{MODULE_DISPLAY_NAME}} module development guide - architecture, API reference, and best practices
 ---

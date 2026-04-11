@@ -1,4 +1,4 @@
----
+﻿---
 name: architect-skill
 description: Project architecture constraint library and design pattern reference
 ---
@@ -30,38 +30,21 @@ description: Project architecture constraint library and design pattern referenc
 
 ### 第一部分：框架约束（必须遵守）
 
-**在SKILL_MEMORY.md中**:
-1. 硬性规则 - 项目中无条件遵守的规范
-{{CONSTRAINT_RULES_SUMMARY}}
+- 硬性规则和常见陷阱 -> 详见 **SKILL_MEMORY.md**
+- 约束规则速查表和代码示例 -> 详见 **EXAMPLES.md** Part 1
 
 ### 第二部分：设计模式指导（参考借鉴）
 
-**在EXAMPLES.md中**:
-- 项目中经过验证的标准设计模式
+- 设计模式代码示例 -> 详见 **EXAMPLES.md** Part 2-3
 - 每个模式包含：描述 -> 何时使用 -> 代码示例 -> 项目参考
-
----
-
-## 快速查询表
-
-### 约束相关问题（必须遵守）
-
-{{CONSTRAINT_QUERY_TABLE}}
-
-### 设计模式相关问题（可选参考）
-
-{{PATTERN_QUERY_TABLE}}
 
 ---
 
 ## 与 Code-Pipeline 的交接
 
-**在 pipeline 中的逻辑位置**: Step 1（需求分析与架构决策）
+**逻辑位置**: Step 1（需求分析与架构决策）
 
-**执行时产出**：
-1. 确定项目模式
-2. 确定所属物理层
-3. 确定跨系统通信协议
+**产出**：确定项目模式、所属物理层、跨系统通信协议
 
 ---
 

@@ -2,8 +2,25 @@
 
 ## Unreleased
 
+### 语言选择 (i18n)
+
+- **feat**: 初始化/更新时支持语言选择，默认中文。用户可指定任意语言标识（如 en/ja/ko），影响 Agent 生成的 content 内容语言。
+- **feat**: manifest.json 新增 `language` 字段，默认 `"zh"`。
+- **feat**: 4 个 Agent prompt（architect/debug/profiler/module）注入 `{LANGUAGE}` 指令，控制 Agent 生成内容的语言。
+- **feat**: Phase 2 补充信息收集增加语言选择步骤。
+- **design**: 模板固定文本保持中文不变，语言切换仅通过 Agent prompt 控制生成内容。避免双语模板的维护成本。
+
+### bootstrap-skill (prompt + 模板)
+
+- **fix**: architect SKILL.md 模板移除 3 个大型占位符（`CONSTRAINT_RULES_SUMMARY`、`CONSTRAINT_QUERY_TABLE`、`PATTERN_QUERY_TABLE`），SKILL.md 回归"导航文档"定位，字数从 1754 降至 < 800 警戒线内。
+- **fix**: architect EXAMPLES.md 模板新增 Part 1 "约束规则速查表"，承接从 SKILL.md 移出的速查表数据。
+- **fix**: architect/debug/profiler 三套 SKILL_MEMORY 模板添加 SKILL_RULE 约束注释，明确禁止代码块、目标字数、条目数量限制。
+- **fix**: 三个 Agent prompt（architect/debug/profiler）注入 SKILL_RULE 关键约束：文件字数上限、代码块禁令、Emoji 禁令、文件职责隔离规则。修复了 Agent 因缺少约束信息而生成过大内容的问题。
+- **remove**: 移除冗余的 `constraint_query_table.md` 和 `pattern_query_table.md` content 文件，其内容与 `constraint_rules_summary` 高度重复。
+
 ### bootstrap.py
 
+- **change**: `build_architect_placeholders` 移除 `CONSTRAINT_QUERY_TABLE` 和 `PATTERN_QUERY_TABLE` 两个占位符映射（6 个 content 文件替代原来的 8 个）。
 - **fix**: `find_project_root` 不再假设 `.castflow/` 在项目根目录下。支持 CostFlow 作为子目录引入（如 `project/CostFlow/.castflow/`）。通过两轮遍历策略定位项目根：先找 `.claude/`，首次初始化时自动在 CostFlow 父目录创建 `.claude/`。
 - **fix**: 新增 `find_harness_dir()` 函数，将"项目根目录"与"框架目录"解耦。所有模板/核心文件读取改为从脚本自身位置定位，不再依赖 `project_root + ".castflow"` 拼接。
 - **feat**: 新增 `--project-root` 参数，允许显式指定项目根目录。
