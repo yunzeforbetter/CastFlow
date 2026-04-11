@@ -66,7 +66,7 @@
 
 ### 规则 3.5：Step 3 COMPLIANCE_CHECKLIST 前置检查
 
-**定义**：各 implementer agent 在 Step 3 结束时，必须生成 COMPLIANCE_CHECKLIST。
+**定义**：各 programmer-{module}-agent 在 Step 3 结束时，必须生成 COMPLIANCE_CHECKLIST。
 
 **COMPLIANCE_CHECKLIST 包含**：
 - [ ] 命名规范是否遵守（按项目 CLAUDE.md 规则）
@@ -232,7 +232,7 @@
 
 ### 陷阱 5：跳过 Step 2 导致约束不对齐
 
-**现象**：用户跳过 Step 2，导致 Step 3 各 implementer agent 各自理解约束，Step 4 时发现大量 SignatureMismatch。
+**现象**：用户跳过 Step 2，导致 Step 3 各 programmer-agent 各自理解约束，Step 4 时发现大量 SignatureMismatch。
 
 **防护**：requirement-analyzer 在 Step 1 必须提议是否建议执行 Step 2。复杂功能推荐执行。
 
