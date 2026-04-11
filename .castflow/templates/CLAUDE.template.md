@@ -165,15 +165,7 @@ outcome: {success/partial/failed}
 - 纯咨询对话、简单问答不记录
 - 记录内容精简，每条控制在 10 行以内
 
-**用途**：trace 供 origin-evolve 分析，用于知识体系的自我进化。用户可通过 `origin evolve` 触发分析。
-
----
-
-## Bootstrap 触发
-
-当用户说 "bootstrap castflow" 或 "bootstrap 更新核心" 时，读取 `.castflow/core/skills/bootstrap-skill/SKILL.md` 并按其流程执行。
-
-**执行模型**：主 agent 负责扫描（Phase 1）和用户确认（Phase 2），然后为每个确认的 Skill 启动独立的并行 agent 进行代码分析（Phase 3），最后主 agent 收集结果并组装验证（Phase 4）。
+**进化提示**：写入trace后，检查文件中 `status:pending` 的条目数量。若超过 20 条，在本次任务的结尾向用户简要提示："已积累 N 条执行记录，可通过 `origin evolve` 触发分析。"仅提示一次，不重复。
 
 ---
 

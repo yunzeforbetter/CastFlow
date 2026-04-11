@@ -260,12 +260,13 @@ def copy_core_files(project_root, manifest, dry_run):
     print("\n=== Copying core files ===")
     merge_mode = manifest.get("merge_mode", "full")
     profile = manifest.get("profile", "standard")
+    harness_dir = find_harness_dir()
 
     for src_rel, dst_rel in CORE_FILE_COPIES:
         if profile == "lite" and "agents/" in src_rel:
             print("  [SKIP]   {} (profile=lite)".format(dst_rel))
             continue
-        src = os.path.join(project_root, HARNESS, src_rel)
+        src = os.path.join(harness_dir, src_rel)
         dst = os.path.join(project_root, CLAUDE, dst_rel)
         safe_copy_file(src, dst, merge_mode, dry_run)
 
@@ -273,7 +274,7 @@ def copy_core_files(project_root, manifest, dry_run):
         if profile == "lite" and "code-pipeline" in src_rel:
             print("  [SKIP]   {}/ (profile=lite)".format(dst_rel))
             continue
-        src = os.path.join(project_root, HARNESS, src_rel)
+        src = os.path.join(harness_dir, src_rel)
         dst = os.path.join(project_root, CLAUDE, dst_rel)
         safe_copy_dir(src, dst, merge_mode, dry_run)
 
@@ -554,7 +555,7 @@ def _deduplicate_sections(existing, new_content, threshold=0.50):
 
 
 def generate_all(project_root, manifest, dry_run):
-    harness_dir = os.path.join(project_root, HARNESS)
+    harness_dir = find_harness_dir()
     output_dir = os.path.join(project_root, CLAUDE)
     content_dir = os.path.join(project_root, BOOTSTRAP_OUTPUT, "content")
     merge_mode = manifest.get("merge_mode", "full")
@@ -620,7 +621,7 @@ def generate_all(project_root, manifest, dry_run):
 
 def generate_single_skill(project_root, manifest, skill_name, dry_run):
     """Generate a single skill by name (for incremental/parallel workflows)."""
-    harness_dir = os.path.join(project_root, HARNESS)
+    harness_dir = find_harness_dir()
     output_dir = os.path.join(project_root, CLAUDE)
     content_dir = os.path.join(project_root, BOOTSTRAP_OUTPUT, "content")
     merge_mode = manifest.get("merge_mode", "full")
@@ -706,7 +707,7 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run):
 
 def generate_agent(project_root, manifest, module_id, dry_run):
     """Generate a programmer-agent for a module (called on-demand, not by default)."""
-    harness_dir = os.path.join(project_root, HARNESS)
+    harness_dir = find_harness_dir()
     output_dir = os.path.join(project_root, CLAUDE)
     merge_mode = manifest.get("merge_mode", "full")
     tech_stack = manifest.get("tech_stack", "")
@@ -731,7 +732,7 @@ def generate_agent(project_root, manifest, module_id, dry_run):
 
 def copy_templates(project_root, merge_mode, dry_run):
     print("\n=== Copying templates to .claude/templates/ ===")
-    harness_dir = os.path.join(project_root, HARNESS)
+    harness_dir = find_harness_dir()
     templates_dst = os.path.join(project_root, CLAUDE, "templates")
 
     pairs = [
@@ -873,21 +874,41 @@ def validate_all(project_root):
 # Entry Point
 # ============================================================
 
-def find_project_root():
+def find_harness_dir():
+    """Locate the .castflow/ directory (always relative to this script)."""
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def find_project_root(explicit_root=None):
+    """Locate the project root directory.
+
+    Search strategy:
+    1. Explicit --project-root argument (trusted if given)
+    2. Walk up from script location looking for .claude/
+    3. If not found, use the harness parent's parent as project root
+       (e.g. project/CostFlow/.castflow/ -> project root = project/)
+       and create .claude/ there
+    """
+    if explicit_root:
+        return os.path.abspath(explicit_root)
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
+    start = os.path.dirname(script_dir)
 
-    if os.path.isdir(os.path.join(project_root, HARNESS)):
-        return project_root
+    candidate = start
+    for _ in range(10):
+        if os.path.isdir(os.path.join(candidate, CLAUDE)):
+            return candidate
+        parent = os.path.dirname(candidate)
+        if parent == candidate:
+            break
+        candidate = parent
 
-    cwd = os.getcwd()
-    if os.path.isdir(os.path.join(cwd, HARNESS)):
-        return cwd
-
-    print("Error: Cannot find {} directory.".format(HARNESS))
-    print("  Searched: {}".format(project_root))
-    print("  Searched: {}".format(cwd))
-    sys.exit(1)
+    project_root = os.path.dirname(start)
+    os.makedirs(os.path.join(project_root, CLAUDE), exist_ok=True)
+    print("  [CREATE] {}/ (first bootstrap)".format(
+        os.path.join(project_root, CLAUDE)))
+    return project_root
 
 
 def load_manifest(project_root):
@@ -948,10 +969,16 @@ def main():
         "--agent", type=str, default=None,
         help="Generate a programmer-agent for a module (e.g. --agent building). Requires module in manifest.",
     )
+    parser.add_argument(
+        "--project-root", type=str, default=None,
+        help="Explicit project root path (must contain .claude/ directory).",
+    )
     args = parser.parse_args()
 
-    project_root = find_project_root()
+    project_root = find_project_root(args.project_root)
+    harness_dir = find_harness_dir()
     print("Project root: {}".format(project_root))
+    print("Harness dir:  {}".format(harness_dir))
 
     if args.validate:
         success = validate_all(project_root)
