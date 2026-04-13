@@ -40,6 +40,12 @@
   - [ ] 新职责是否与其他Skill重叠
   - [ ] 快速查询表是否更新
 
+### Rule 4：SKILL_MEMORY 容量治理
+触发条件：SKILL_MEMORY.md 字数超过推荐范围（1500字），或 origin-evolve 提出新规则
+优先级：High
+文件：SKILL_MEMORY.md
+规范：遵循 SKILL_ITERATION.md 的 SKILL_MEMORY 容量治理规范（Append/Merge/Retire 操作）
+
 ---
 
 ## 文件职责

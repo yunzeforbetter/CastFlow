@@ -16,9 +16,9 @@
 
 ---
 
-### 规则 2：生成文件必须符合 SKILL_RULE.md
+### 规则 2：生成文件必须符合 SKILL_ITERATION.md
 
-**定义**：所有生成的 Skill 文件必须通过 SKILL_RULE.md 的规范检查。
+**定义**：所有生成的 Skill 文件必须通过 SKILL_ITERATION.md 的规范检查。
 
 **检查清单**：
 - [ ] 每个 skill 目录恰好 4 个 .md 文件？

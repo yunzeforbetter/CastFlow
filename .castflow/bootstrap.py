@@ -35,7 +35,7 @@ CLAUDE = ".claude"
 BOOTSTRAP_OUTPUT = "bootstrap-output"
 
 CORE_FILE_COPIES = [
-    ("core/SKILL_RULE.md", "skills/SKILL_RULE.md"),
+    ("core/SKILL_ITERATION.md", "skills/SKILL_ITERATION.md"),
     ("core/GLOBAL_SKILL_MEMORY.md", "skills/GLOBAL_SKILL_MEMORY.md"),
     ("core/agents/requirement-analysis-agent.md", "agents/requirement-analysis-agent.md"),
     ("core/agents/integration-matching-agent.md", "agents/integration-matching-agent.md"),
@@ -46,8 +46,26 @@ CORE_DIR_COPIES = [
     ("core/skills/code-pipeline-skill", "skills/code-pipeline-skill"),
     ("core/skills/skill-creator", "skills/skill-creator"),
     ("core/skills/origin-evolve", "skills/origin-evolve"),
+    ("core/hooks", "hooks"),
     ("scripts", "scripts"),
 ]
+
+TRACE_HOOK_MARKER = ".claude/hooks/trace-"
+
+CURSOR_HOOK_ENTRIES = {
+    "afterFileEdit": {"command": "python .claude/hooks/trace-collector.py"},
+    "stop": {"command": "python .claude/hooks/trace-flush.py"},
+}
+
+CLAUDE_HOOK_ENTRIES = {
+    "PostToolUse": {
+        "matcher": "Write",
+        "hooks": [{"type": "command", "command": "python .claude/hooks/trace-collector.py"}],
+    },
+    "Stop": {
+        "hooks": [{"type": "command", "command": "python .claude/hooks/trace-flush.py"}],
+    },
+}
 
 EMOJI_CHARS = set("\u274c\u2705\u2b50\U0001f4cb\U0001f534\U0001f7e1\U0001f7e2\u2713\u2717\u2192\u2194\u2190\u2193\u2191\u25ba\u25bc\u25b2\u25c4\u25c6\u2605")
 
@@ -108,6 +126,13 @@ def safe_copy_file(src, dst, merge_mode, dry_run):
     return True
 
 
+def _ignore_hook_configs(directory, contents):
+    """Ignore JSON config files when copying the hooks directory."""
+    if os.path.basename(directory) == "hooks":
+        return [f for f in contents if f.endswith(".json")]
+    return []
+
+
 def safe_copy_dir(src, dst, merge_mode, dry_run):
     if os.path.exists(dst):
         if merge_mode == "full":
@@ -127,7 +152,7 @@ def safe_copy_dir(src, dst, merge_mode, dry_run):
 
     if os.path.exists(dst):
         shutil.rmtree(dst)
-    shutil.copytree(src, dst)
+    shutil.copytree(src, dst, ignore=_ignore_hook_configs)
     print("  [COPY]   {}/ -> {}/".format(src, dst))
     return True
 
@@ -259,6 +284,122 @@ def build_profiler_placeholders(content_dir):
 
 
 # ============================================================
+# Hook Config Merging
+# ============================================================
+
+def _has_trace_hook(entries):
+    """Check if any entry in a hook array already references trace-collector."""
+    for entry in entries:
+        cmd = entry.get("command", "")
+        if TRACE_HOOK_MARKER in cmd:
+            return True
+        for sub in entry.get("hooks", []):
+            if TRACE_HOOK_MARKER in sub.get("command", ""):
+                return True
+    return False
+
+
+def merge_cursor_hooks(dst_path, dry_run):
+    """Merge CastFlow trace hooks into .cursor/hooks.json.
+
+    If file doesn't exist, creates it. If it exists, injects trace hook
+    entries into the appropriate event arrays without touching other hooks.
+    """
+    data = {"version": 1, "hooks": {}}
+    created = True
+
+    if os.path.isfile(dst_path):
+        created = False
+        try:
+            with open(dst_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            print("  [WARN]   {} is corrupt, will recreate".format(dst_path))
+            data = {"version": 1, "hooks": {}}
+            created = True
+
+    if "hooks" not in data:
+        data["hooks"] = {}
+
+    changed = False
+    for event_name, entry in CURSOR_HOOK_ENTRIES.items():
+        if event_name not in data["hooks"]:
+            data["hooks"][event_name] = []
+        if not _has_trace_hook(data["hooks"][event_name]):
+            data["hooks"][event_name].append(entry)
+            changed = True
+
+    if not changed and not created:
+        print("  [OK]     {} (trace hooks already present)".format(dst_path))
+        return
+
+    if dry_run:
+        label = "CREATE" if created else "MERGE"
+        print("  [{}]  {}".format(label, dst_path))
+        return
+
+    parent = os.path.dirname(dst_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(dst_path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+    label = "CREATE" if created else "MERGE"
+    print("  [{}]  {}".format(label, dst_path))
+
+
+def merge_claude_settings(dst_path, dry_run):
+    """Merge CastFlow trace hooks into .claude/settings.json.
+
+    If file doesn't exist, creates it. If it exists, injects trace hook
+    entries into the appropriate event arrays without touching other hooks.
+    """
+    data = {"hooks": {}}
+    created = True
+
+    if os.path.isfile(dst_path):
+        created = False
+        try:
+            with open(dst_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            print("  [WARN]   {} is corrupt, will recreate".format(dst_path))
+            data = {"hooks": {}}
+            created = True
+
+    if "hooks" not in data:
+        data["hooks"] = {}
+
+    changed = False
+    for event_name, entry in CLAUDE_HOOK_ENTRIES.items():
+        if event_name not in data["hooks"]:
+            data["hooks"][event_name] = []
+        if not _has_trace_hook(data["hooks"][event_name]):
+            data["hooks"][event_name].append(entry)
+            changed = True
+
+    if not changed and not created:
+        print("  [OK]     {} (trace hooks already present)".format(dst_path))
+        return
+
+    if dry_run:
+        label = "CREATE" if created else "MERGE"
+        print("  [{}]  {}".format(label, dst_path))
+        return
+
+    parent = os.path.dirname(dst_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(dst_path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+    label = "CREATE" if created else "MERGE"
+    print("  [{}]  {}".format(label, dst_path))
+
+
+# ============================================================
 # Generation
 # ============================================================
 
@@ -283,6 +424,12 @@ def copy_core_files(project_root, manifest, dry_run):
         src = os.path.join(harness_dir, src_rel)
         dst = os.path.join(project_root, CLAUDE, dst_rel)
         safe_copy_dir(src, dst, merge_mode, dry_run)
+
+    print("\n=== Merging hook configs ===")
+    merge_cursor_hooks(
+        os.path.join(project_root, ".cursor", "hooks.json"), dry_run)
+    merge_claude_settings(
+        os.path.join(project_root, CLAUDE, "settings.json"), dry_run)
 
 
 def generate_template_dir(harness_dir, output_base, template_subdir, output_subdir,
@@ -965,7 +1112,7 @@ def main():
     )
     parser.add_argument(
         "--validate", action="store_true",
-        help="Validate .claude/ output against SKILL_RULE standards",
+        help="Validate .claude/ output against SKILL_ITERATION standards",
     )
     parser.add_argument(
         "--dry-run", action="store_true",

@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+### Rename: CostFlow -> CastFlow
+
+- **breaking**: 项目更名为 CastFlow，README 及所有面向用户的文档统一使用新名称。
+
+### Rename: SKILL_RULE.md -> SKILL_ITERATION.md
+
+- **breaking**: `SKILL_RULE.md` 重命名为 `SKILL_ITERATION.md`，更准确反映其"创建和迭代规范"的定位。
+- **change**: bootstrap.py 文件拷贝映射更新。
+- **change**: 所有引用（17 个 CastFlow 源文件）全部更新。
+
+### Trace 五维评分模型
+
+- **feat**: 评分模型从"文件数阈值"升级为"五维加权评分"（F/D/K/S/E），准入判断从二元变为连续评分。
+- **feat**: K 维度三档分级：Interface=1.0, Implementation=0.6, Base=0.3。
+- **feat**: E 维度（编辑密度），捕获同一文件反复修改的困难迭代行为。
+- **feat**: buffer 格式 `path|lines|edits|flags`，向后兼容旧格式。
+- **feat**: 自动修正检测：collector 对比前后编辑内容，标记 R 标志。flush 自动填充 correction 字段（`auto:minor` / `auto:major`）。
+- **feat**: 自校准反馈闭环：flush 读取 `traces/weights.json`，权重和阈值可由 origin-evolve 微调。
+- **feat**: hooks 源码移入 `.castflow/core/hooks/`，bootstrap 统一分发。
+- **feat**: bootstrap 增量合并 hook 配置到已有的 `.cursor/hooks.json` 和 `.claude/settings.json`，不覆盖原有 hook。
+
+### 知识生命周期管理
+
+- **breaking**: SKILL_ITERATION.md 中 SKILL_MEMORY 条目格式新增 Anchors 和 Related 字段。
+- **feat**: SKILL_MEMORY 支持三种写入操作：Append（追加）、Merge（合并）、Retire（退休标记 `[RETIRED]`）。
+- **feat**: Anchors 字段记录代码符号锚点，origin-evolve 通过 grep 验证符号是否存在，驱动 Retire 操作。
+- **feat**: Related 字段记录关联引用，Merge 时识别候选，Retire 时标记需要连带审查的条目。
+- **feat**: 容量治理：写入前检查目标文件字数，超标时强制先 Merge/Retire 腾出空间。
+- **feat**: 所有 4 套 ITERATION_GUIDE 模板增加容量治理规则引用。
+
+### origin-evolve 重构
+
+- **change**: SKILL.md 执行流程新增 Step 3 写入前治理（归属决策树 + 操作类型判定 + 容量检查 + 锚点验证）。
+- **change**: SKILL_MEMORY.md Rule 2 从抽象归属规则升级为两步决策树（先定 Skill，再定文件）。
+- **change**: SKILL_MEMORY.md Rule 3 从 append-only 重写为三种操作（Append/Merge/Retire）。
+- **feat**: EXAMPLES.md 新增 Example 7/8/9（复杂度集中检测 + Merge 操作 + Retire 容量治理）。
+
+### 模块 Skill 创建流程
+
+- **change**: 模块 Skill 创建从调用 `bootstrap.py --skill` 改为 `.claude/` 内部闭环：AI 直接读取 `.claude/templates/programmer.template/` 模板并生成。
+- **feat**: 区分功能模块 Skill（使用 programmer 模板）和通用职责 Skill（不使用模板，按 SKILL_ITERATION.md 直接创建）。
+- **remove**: 不再依赖 `bootstrap-output/content/` 中间产物。
+
+### CLAUDE.md 模板
+
+- **change**: 执行记录段从"AI 全量构造 trace"改为"Hook 自动 + AI 补充"模式。
+- **remove**: 旧版手动评分的进化提示逻辑。
+
+---
+
 ### 语言选择 (i18n)
 
 - **feat**: 初始化/更新时支持语言选择，默认中文。用户可指定任意语言标识（如 en/ja/ko），影响 Agent 生成的 content 内容语言。

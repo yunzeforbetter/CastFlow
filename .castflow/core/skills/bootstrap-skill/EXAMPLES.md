@@ -246,7 +246,7 @@ bootstrap-output/content/modules/{module_id}/
 ```
 1. 对比 .castflow/core/ 与 .claude/skills/ 的核心文件
 2. 更新:
-   - SKILL_RULE.md
+   - SKILL_ITERATION.md
    - GLOBAL_SKILL_MEMORY.md
    - code-pipeline-skill/
    - skill-creator/

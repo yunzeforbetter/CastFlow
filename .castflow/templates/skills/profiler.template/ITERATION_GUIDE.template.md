@@ -39,6 +39,12 @@
   - [ ] 是否与通用检查项重复
   - [ ] 是否有项目中的真实案例
 
+### Rule 4：SKILL_MEMORY 容量治理
+触发条件：SKILL_MEMORY.md 字数超过推荐范围（1500字），或 origin-evolve 提出新规则
+优先级：High
+文件：SKILL_MEMORY.md
+规范：遵循 SKILL_ITERATION.md 的 SKILL_MEMORY 容量治理规范（Append/Merge/Retire 操作）
+
 ---
 
 ## 文件职责

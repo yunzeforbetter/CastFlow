@@ -4,7 +4,7 @@ title: Project Rules
 
 # CLAUDE.md - 项目全局规则
 
-> 本文档由 CastFlow bootstrap-skill 生成。Skill系统规范见 [SKILL_RULE.md](./.claude/skills/SKILL_RULE.md)
+> 本文档由 CastFlow bootstrap-skill 生成。Skill系统规范见 [SKILL_ITERATION.md](./.claude/skills/SKILL_ITERATION.md)
 
 ---
 
@@ -45,15 +45,15 @@ title: Project Rules
 
 **触发条件**：用户要求创建新的 Skill（无论是否提及 skill-creator）
 
-**流程**：读取 SKILL_RULE.md -> 参考已有 Skill -> 扫描代码 -> 用户确认 -> 生成
+**流程**：读取 SKILL_ITERATION.md -> 参考已有 Skill -> 扫描代码 -> 用户确认 -> 生成
 
 **检查清单**：
-- [ ] 是否完整阅读了 `.claude/skills/SKILL_RULE.md`？
+- [ ] 是否完整阅读了 `.claude/skills/SKILL_ITERATION.md`？
 - [ ] 生成的文件是否遵循四文件结构（SKILL.md / EXAMPLES.md / SKILL_MEMORY.md / ITERATION_GUIDE.md）？
 - [ ] SKILL.md 是否有 YAML 元数据（name + description）？
 - [ ] EXAMPLES.md 中的代码是否从项目真实代码提取？
 - [ ] 是否参考了 `.claude/skills/` 下已有的 Skill 作为结构和风格范本？
-- [ ] 生成后是否通过了 SKILL_RULE.md 的规范检查？
+- [ ] 生成后是否通过了 SKILL_ITERATION.md 的规范检查？
 
 ---
 
@@ -67,7 +67,7 @@ title: Project Rules
 - [ ] 是否先阅读了该 Skill 的 `ITERATION_GUIDE.md`？
 - [ ] 是否按 ITERATION_GUIDE 中的迭代规则确定了该改哪个文件？
 - [ ] 是否遵守了文件职责隔离（代码示例只放 EXAMPLES.md，规则只放 SKILL_MEMORY.md 等）？
-- [ ] 修改后是否通过了 SKILL_RULE.md 的规范检查？
+- [ ] 修改后是否通过了 SKILL_ITERATION.md 的规范检查？
 
 ---
 
@@ -89,7 +89,7 @@ title: Project Rules
 
 | 文档 | 位置 | 内容 | 何时阅读 |
 |------|------|------|--------|
-| **SKILL_RULE.md** | `./.claude/skills/` | 全局结构规范、验收检查 | 创建/迭代Skill时 |
+| **SKILL_ITERATION.md** | `./.claude/skills/` | 全局结构规范、验收检查 | 创建/迭代Skill时 |
 | **GLOBAL_SKILL_MEMORY.md** | `./.claude/skills/` | 跨Skill通用规则 | 调用任何Skill前 |
 | **[skill]/SKILL_MEMORY.md** | `./.claude/skills/[skill]/` | 该Skill的硬性规则和陷阱 | 调用该Skill前 |
 | **[skill]/ITERATION_GUIDE.md** | `./.claude/skills/[skill]/` | 该Skill的演进规则 | 迭代该Skill时 |
@@ -141,31 +141,30 @@ code-pipeline执行时:
 
 ---
 
-## 执行记录
+## 执行记录（Hook 自动 + AI 补充）
 
-每次完成有实际产出的任务后（代码修改、功能实现、bug修复、重构等），将执行摘要静默追加到 `.claude/traces/trace.md`。
+Trace 采集由两层协作完成：
 
-**记录格式**：
+**Hook 层（自动，零 token）**：
+- `trace-collector.py`：每次文件编辑时自动记录路径、行数、编辑次数、修正检测
+- `trace-flush.py`：会话结束时计算五维评分（F/D/K/S/E），超过阈值则写入 `trace.md`
+- 自动填充字段：`timestamp`、`modules`、`files_modified`、`file_count`、`lines_changed`、`edit_count`、`score`、`correction`（修正检测）
 
-```
-<!-- TRACE status:pending -->
-task: {任务描述}
-skills: [{使用的Skill列表}]
-sub_agents: {是否使用了Sub-agent，几个}
-files_modified: [{修改的文件列表}]
-retries: {是否有重试，原因}
-user_corrections: {用户在过程中的纠正，如有}
-outcome: {success/partial/failed}
-<!-- /TRACE -->
-```
+**AI 层（补充，少量 token）**：
+- 当 Hook 已创建 trace 条目时，AI 在任务结束前补充 `type` 和 `skills` 字段
+- 如果 Hook 未创建条目（评分未达阈值），AI 不需要手动创建
 
-**约束**：
-- 静默执行，不向用户展示记录过程
-- 仅追加，不修改已有记录
-- 纯咨询对话、简单问答不记录
-- 记录内容精简，每条控制在 10 行以内
+**AI 补充规则**：
 
-**进化提示**：写入trace后，检查文件中 `status:pending` 的条目数量。若超过 20 条，在本次任务的结尾向用户简要提示："已积累 N 条执行记录，可通过 `origin evolve` 触发分析。"仅提示一次，不重复。
+任务结束时，检查 `.claude/traces/trace.md` 最新条目。如果最新条目的 `type` 为 `_`（Hook 占位符），且该条目的时间戳在本次会话期间，则静默替换以下字段：
+
+- `type`：替换为任务类型（`feature` / `bugfix` / `refactor` / `optimization` / `config`）
+- `skills`：替换为本次使用的 Skill 列表
+
+**禁止**：
+- 禁止手动创建完整的 trace 条目（这是 Hook 的职责）
+- 禁止修改 Hook 已填充的字段（`score`、`modules`、`correction` 等）
+- 纯问答、只读操作不做任何补充
 
 ---
 

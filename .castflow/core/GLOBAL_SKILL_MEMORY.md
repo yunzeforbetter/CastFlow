@@ -1,7 +1,7 @@
 # GLOBAL_SKILL_MEMORY - Skill 运行时核心协议
 
 > **性质**：所有 Skill 执行的底层法律。运行时约束，非创建规范。
-> **关联文档**：创建和迭代规范见 [SKILL_RULE.md](./SKILL_RULE.md)
+> **关联文档**：创建和迭代规范见 [SKILL_ITERATION.md](./SKILL_ITERATION.md)
 > **扩展协议**：使用 code-pipeline 时，额外加载 [pipeline_protocol.md](./code-pipeline-skill/config/pipeline_protocol.md)
 
 ---
@@ -15,7 +15,7 @@
 - 协议 2：学习后约束对齐（防止约束遗漏）
 
 **与其他文档的关系**：
-- SKILL_RULE.md = Skill 文件**创建和迭代**时遵守的规范（结构、格式、命名）
+- SKILL_ITERATION.md = Skill 文件**创建和迭代**时遵守的规范（结构、格式、命名）
 - GLOBAL_SKILL_MEMORY.md = Skill **执行时**遵守的核心约束协议（本文档）
 - pipeline_protocol.md = code-pipeline 执行时的扩展协议（仅 pipeline 场景加载）
 
