@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import sys
+from datetime import datetime
 
 
 # ============================================================
@@ -72,6 +73,149 @@ EMOJI_CHARS = set("\u274c\u2705\u2b50\U0001f4cb\U0001f534\U0001f7e1\U0001f7e2\u2
 
 DATE_PATTERN = re.compile(r"20[2-3]\d[-/]\d{1,2}[-/]\d{1,2}")
 
+# Centralized backup settings. Each bootstrap run creates a timestamped session
+# directory under .claude/.backups/ holding originals of every overwritten file,
+# preserving their relative paths. Older sessions are rotated out automatically.
+BACKUP_DIR_NAME = ".backups"
+DEFAULT_BACKUP_KEEP = 3
+
+# Process-lifetime state set by main() so safe_* helpers can back up files
+# without threading extra arguments through every call site.
+_active_project_root = None
+_backup_enabled = True
+_backup_session_dir = None
+
+
+# ============================================================
+# Centralized Backup
+# ============================================================
+
+def _get_backup_session_dir():
+    """Lazily create and return this run's backup session directory.
+
+    Returns None when backup is disabled or no project root is set.
+    The directory is only created on first use so runs without any
+    overwrite leave no empty dir behind.
+    """
+    global _backup_session_dir
+    if not _backup_enabled or _active_project_root is None:
+        return None
+    if _backup_session_dir is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        _backup_session_dir = os.path.join(
+            _active_project_root, CLAUDE, BACKUP_DIR_NAME, timestamp,
+        )
+        os.makedirs(_backup_session_dir, exist_ok=True)
+    return _backup_session_dir
+
+
+def backup_original(original_path, dry_run):
+    """Copy a file or directory to this session's backup dir, preserving
+    its path relative to project_root. Returns the backup path or None.
+
+    No-op when backup is disabled, dry_run is on, or the path is outside
+    project_root (defensive).
+    """
+    if dry_run or not _backup_enabled or _active_project_root is None:
+        return None
+    session = _get_backup_session_dir()
+    if session is None:
+        return None
+    try:
+        rel = os.path.relpath(original_path, _active_project_root)
+    except ValueError:
+        return None
+    if rel.startswith(".."):
+        return None
+    dest = os.path.join(session, rel)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if os.path.isdir(original_path):
+        if os.path.exists(dest):
+            shutil.rmtree(dest)
+        shutil.copytree(original_path, dest)
+    else:
+        shutil.copy2(original_path, dest)
+    return dest
+
+
+def rotate_backups(project_root, keep):
+    """Retain only the N most recent backup session directories."""
+    backups_root = os.path.join(project_root, CLAUDE, BACKUP_DIR_NAME)
+    if not os.path.isdir(backups_root):
+        return
+    sessions = sorted(
+        d for d in os.listdir(backups_root)
+        if os.path.isdir(os.path.join(backups_root, d))
+    )
+    if len(sessions) <= keep:
+        return
+    for old in sessions[:-keep]:
+        shutil.rmtree(os.path.join(backups_root, old), ignore_errors=True)
+        print("  [ROTATE] Removed old backup session: {}".format(old))
+
+
+def cleanup_legacy_bak(project_root, dry_run):
+    """One-time migration: remove legacy in-place .bak files/dirs scattered
+    under .claude/. The centralized .backups/ directory is left untouched.
+    """
+    claude_root = os.path.join(project_root, CLAUDE)
+    if not os.path.isdir(claude_root):
+        return
+    removed = 0
+    for dirpath, dirnames, filenames in os.walk(claude_root):
+        # Never descend into the new centralized backup dir
+        if os.path.basename(dirpath) == BACKUP_DIR_NAME:
+            dirnames[:] = []
+            continue
+        for d in list(dirnames):
+            if d.endswith(".bak"):
+                full = os.path.join(dirpath, d)
+                if not dry_run:
+                    shutil.rmtree(full, ignore_errors=True)
+                removed += 1
+                dirnames.remove(d)
+        for fn in filenames:
+            if fn.endswith(".bak"):
+                full = os.path.join(dirpath, fn)
+                if not dry_run:
+                    try:
+                        os.remove(full)
+                    except OSError:
+                        pass
+                removed += 1
+    if removed:
+        label = "DRY-RUN " if dry_run else ""
+        print("  [{}MIGRATE] Removed {} legacy .bak entries from {}/".format(
+            label, removed, CLAUDE,
+        ))
+
+
+def ensure_backups_gitignore(project_root, dry_run):
+    """Append an entry for the centralized backup dir to .claude/.gitignore
+    so users don't accidentally commit their backups. Creates the file
+    if missing. Idempotent.
+    """
+    if dry_run:
+        return
+    gitignore_path = os.path.join(project_root, CLAUDE, ".gitignore")
+    marker = BACKUP_DIR_NAME + "/"
+    existing = ""
+    if os.path.isfile(gitignore_path):
+        try:
+            with open(gitignore_path, "r", encoding="utf-8") as f:
+                existing = f.read()
+        except OSError:
+            return
+        if marker in existing.splitlines():
+            return
+    prefix = "" if not existing or existing.endswith("\n") else "\n"
+    try:
+        with open(gitignore_path, "a", encoding="utf-8") as f:
+            f.write("{}{}\n".format(prefix, marker))
+        print("  [GITIGNORE] Added '{}' to {}/.gitignore".format(marker, CLAUDE))
+    except OSError:
+        pass
+
 
 # ============================================================
 # File I/O
@@ -87,9 +231,10 @@ def safe_write(path, content, merge_mode, dry_run):
     if os.path.exists(path):
         if merge_mode == "full":
             if not dry_run:
-                shutil.copy2(path, path + ".bak")
+                backup_original(path, dry_run)
                 os.remove(path)
-            print("  [BACKUP] {} -> {}.bak".format(path, path))
+            label = "BACKUP" if _backup_enabled else "OVERWRITE"
+            print("  [{}] {}".format(label, path))
         else:
             print("  [SKIP]   {} (exists, merge_mode={})".format(path, merge_mode))
             return False
@@ -111,8 +256,9 @@ def safe_copy_file(src, dst, merge_mode, dry_run):
     if os.path.exists(dst):
         if merge_mode == "full":
             if not dry_run:
-                shutil.copy2(dst, dst + ".bak")
-            print("  [BACKUP] {}".format(dst))
+                backup_original(dst, dry_run)
+            label = "BACKUP" if _backup_enabled else "OVERWRITE"
+            print("  [{}] {}".format(label, dst))
         else:
             print("  [SKIP]   {} (exists)".format(dst))
             return False
@@ -137,12 +283,10 @@ def _ignore_hook_configs(directory, contents):
 def safe_copy_dir(src, dst, merge_mode, dry_run):
     if os.path.exists(dst):
         if merge_mode == "full":
-            backup = dst + ".bak"
             if not dry_run:
-                if os.path.exists(backup):
-                    shutil.rmtree(backup)
-                shutil.copytree(dst, backup)
-            print("  [BACKUP] {}/ -> {}.bak/".format(dst, dst))
+                backup_original(dst, dry_run)
+            label = "BACKUP" if _backup_enabled else "OVERWRITE"
+            print("  [{}] {}/".format(label, dst))
         else:
             print("  [SKIP]   {}/ (exists)".format(dst))
             return False
@@ -179,8 +323,14 @@ def process_conditionals(content, tech_stack, language="zh"):
     """Process conditional blocks in templates.
 
     Supports tech stack conditionals: <!-- if:unity --> ... <!-- endif -->
-    The language parameter is reserved for future use (currently language
-    is controlled via Agent prompt {LANGUAGE} directives, not template blocks).
+
+    Note on language: bootstrap.py does NOT substitute {LANGUAGE} placeholders
+    in templates. Multilingual generation is driven by the bootstrap-skill main
+    agent injecting manifest.language (mapped to a natural name like '中文' /
+    'English') into sub-agent prompts before they generate content. Templates
+    only reflect language indirectly via the content files those sub-agents
+    produce. The `language` parameter here is kept for future conditional-block
+    support (e.g. <!-- if:lang:zh --> ... <!-- endif -->) but is currently unused.
     """
     lines = content.split("\n")
     output = []
@@ -1139,12 +1289,39 @@ def main():
         "--project-root", type=str, default=None,
         help="Explicit project root path (must contain .claude/ directory).",
     )
+    parser.add_argument(
+        "--no-backup", action="store_true",
+        help="Skip backups before overwriting (git users who trust VCS).",
+    )
+    parser.add_argument(
+        "--backup-keep", type=int, default=DEFAULT_BACKUP_KEEP,
+        help="Retain this many recent backup sessions (default: {}).".format(
+            DEFAULT_BACKUP_KEEP,
+        ),
+    )
+    parser.add_argument(
+        "--clean-backups", action="store_true",
+        help="Delete all backup sessions under .claude/.backups/ and exit.",
+    )
     args = parser.parse_args()
 
     project_root = find_project_root(args.project_root)
     harness_dir = find_harness_dir()
     print("Project root: {}".format(project_root))
     print("Harness dir:  {}".format(harness_dir))
+
+    global _active_project_root, _backup_enabled
+    _active_project_root = project_root
+    _backup_enabled = not args.no_backup
+
+    if args.clean_backups:
+        backups_root = os.path.join(project_root, CLAUDE, BACKUP_DIR_NAME)
+        if os.path.isdir(backups_root):
+            shutil.rmtree(backups_root)
+            print("Removed {}".format(backups_root))
+        else:
+            print("No backup directory found at {}".format(backups_root))
+        sys.exit(0)
 
     if args.validate:
         success = validate_all(project_root)
@@ -1164,6 +1341,11 @@ def main():
     if args.dry_run:
         print("\n*** DRY RUN - no files will be written ***")
 
+    # One-time migration: sweep legacy in-place .bak entries from previous
+    # bootstrap versions so the centralized .backups/ becomes the single
+    # source of rollback material.
+    cleanup_legacy_bak(project_root, args.dry_run)
+
     if args.agent:
         print("\n=== Agent generation: programmer-{}-agent ===".format(args.agent))
         generate_agent(project_root, manifest, args.agent, args.dry_run)
@@ -1175,6 +1357,15 @@ def main():
 
     print("\n=== Generation complete ===")
     if not args.dry_run:
+        if _backup_enabled:
+            rotate_backups(project_root, args.backup_keep)
+            ensure_backups_gitignore(project_root, args.dry_run)
+            if _backup_session_dir and os.path.isdir(_backup_session_dir):
+                rel = os.path.relpath(_backup_session_dir, project_root)
+                print("\n  Backups saved to: {}".format(rel))
+                print("  Retention: last {} session(s). Use --clean-backups to remove all.".format(
+                    args.backup_keep,
+                ))
         print("\nRun 'python .castflow/bootstrap.py --validate' to verify output.")
 
 

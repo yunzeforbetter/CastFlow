@@ -4,9 +4,33 @@
 
 ---
 
-## 示例 1：全量初始化 - 逐 Skill 确认对话
+## 示例 1：全量初始化 - 完整对话流程
 
-### Phase 1 扫描结果展示
+### Phase 0：语言选择（触发后第一条消息）
+
+用户输入 `bootstrap castflow` 后，AI **不立即开始扫描**，第一条消息是：
+
+```
+AI: 生成的 Skill / CLAUDE.md / 规则描述将使用哪种语言撰写？
+    （代码本身的标识符不会被翻译）
+
+      1. 中文 (zh) [默认]
+      2. English (en)
+      3. 日本語 (ja)
+      4. 한국어 (ko)
+      5. 其他（请输入 ISO 639-1 代码或语言名称）
+
+    请回复编号或语言名称。直接回车 = 中文。
+
+用户: 用英文
+
+AI: 已选 English (en)，开始扫描项目...
+```
+
+> 归一化要点：用户输入"用英文" -> manifest.language = `en` -> Phase 3 注入
+> sub-agent prompt 的 `{LANGUAGE}` 占位符时映射为字面量 `English`。
+
+### Phase 1：扫描结果展示
 
 ```
 扫描结果:
@@ -19,7 +43,9 @@
   项目规模: 约 500 个 .cs 文件
 ```
 
-### Phase 2 逐 Skill 确认
+### Phase 2：用户确认（按固定顺序）
+
+#### 2.1 逐 Skill 确认
 
 ```
 AI: 以下是可以为项目生成的 Skill，逐个确认：
@@ -45,7 +71,11 @@ AI: 以下是可以为项目生成的 Skill，逐个确认：
    -> 是否生成？
 
 用户: 跳过
+```
 
+#### 2.2 补充信息收集
+
+```
 命名规范确认：
   检测到 _camelCase 私有字段模式，是否采用？
 用户: 是
@@ -112,7 +142,7 @@ Phase 2 确认后生成的 manifest 文件。
 {
   "version": 1,
   "tech_stack": "unity",
-  "language": "zh",
+  "language": "en",
   "profile": "standard",
   "merge_mode": "full",
   "modules": [],
@@ -120,6 +150,9 @@ Phase 2 确认后生成的 manifest 文件。
   "naming_conventions": "_camelCase for private fields"
 }
 ```
+
+> 上例中 `language: "en"` 对应示例 1 用户选择"用英文"。Phase 3 启动每个
+> sub-agent 时，主 agent 会把 `en` 映射为 `English` 注入 `{LANGUAGE}` 占位符。
 
 字段说明：
 

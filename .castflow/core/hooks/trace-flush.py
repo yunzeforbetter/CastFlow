@@ -473,7 +473,9 @@ def apply_pipeline_result():
                     result_str = m2.group(1)
 
         if run_id and result_str:
-            validated_value = "true" if result_str.upper() == "GO" else "false"
+            # GO (一次性合规) 和 GO-WITH-CAUTION (经 Step 6 补全后合规) 都视为 validated=true
+            # NO-GO 及任何未知 result 视为 false
+            validated_value = "true" if result_str.upper() in ("GO", "GO-WITH-CAUTION") else "false"
 
     except OSError:
         pass

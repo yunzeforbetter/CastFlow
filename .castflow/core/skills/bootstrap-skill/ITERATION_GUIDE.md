@@ -39,6 +39,25 @@
   - [ ] 关键词列表是否需要更新
   - [ ] 排除目录列表是否完整
 
+### Rule 4：Phase 0 语言询问的位置和强约束不可削弱
+触发条件：调整 Phase 0 / Phase 1 / Phase 2 的顺序或措辞
+优先级：Critical（违反将导致多语言机制失效）
+文件：SKILL.md (Phase 0 + 顶部执行铁律 + description)、
+      SKILL_MEMORY.md (规则 5)、
+      EXAMPLES.md (示例 1)
+约束：
+  - Phase 0 必须保持为流程图的第一个节点，且明文写"主 agent 第一条对外消息"
+  - SKILL.md 的 description 字段必须包含触发后立即询问语言的 CRITICAL 指令
+  - SKILL.md 顶部「执行铁律」段不得删除或弱化
+  - SKILL_MEMORY 规则 5 不得降低优先级（必须为最高）
+  - EXAMPLES.md 示例 1 必须先演示 Phase 0 对话再演示扫描
+检查清单：
+  - [ ] description 是否仍然包含 "first action MUST be asking the user to choose a language"？
+  - [ ] SKILL.md 顶部「执行铁律」是否仍然存在？
+  - [ ] 流程图第一个节点是否是 Phase 0？
+  - [ ] EXAMPLES.md 示例 1 第一段是否是 Phase 0 语言对话？
+  - [ ] SKILL_MEMORY 规则 5 是否标注"违反此规则视为执行失败"？
+
 ---
 
 ## 文件职责

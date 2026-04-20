@@ -5,20 +5,11 @@ description: code_pipeline keyword trigger - orchestrates the full workflow from
 
 # Code Pipeline 工作流
 
-**定位**: 流程编排者 (Process Orchestrator)。当需要工业化、多模块协作的开发流程时，Pipeline 提供从需求拆分到验收交付的标准化工序。
+**定位**: 流程编排者 (Process Orchestrator)。协调多 Skill / Agent 按标准工序协作，输出可追溯的工程决策与代码实现。
 
-**与 Skill/Agent 的关系**:
-- Skill 和 Agent 是独立的一等公民，可以被用户直接调用
-- Pipeline 是一种**可选的编排方式**，协调多个 Skill 和 Agent 按流程协作
-- 简单任务不需要 Pipeline，直接使用 Skill 或 Agent 即可
-- 复杂的多模块功能开发，Pipeline 提供结构化的质量保障
+**不是**: 代码生成者、规则定义者、执行引擎。
 
-**核心职责**:
-1. 根据 L1 参数控制执行策略
-2. 通过 PIPELINE_CONTEXT.md 管理工程信息
-3. 生成 PIPELINE_INDEX.md 降低 token 消耗
-4. 协调各 subagent 的执行顺序（使用精简 Prompt）
-5. 在关键节点进行状态判定
+**适用**: 多模块协作、跨系统改造、高风险功能。简单任务直接用 Skill / Agent，不走 pipeline。
 
 ---
 
@@ -26,102 +17,93 @@ description: code_pipeline keyword trigger - orchestrates the full workflow from
 
 | 需要了解 | 查看 |
 |---------|------|
-| 各步骤的具体示例 | EXAMPLES.md |
-| 硬性规则和常见陷阱 | SKILL_MEMORY.md |
-| 何时迭代、如何维护 | ITERATION_GUIDE.md |
-| Pipeline 执行时扩展协议 | config/pipeline_protocol.md |
-| L1 参数定义 | config/params.schema.json |
-
-**核心 Agent**（来自 castflow core，直接可用）:
-- requirement-analysis-agent: Step 1/2 需求分析
-- integration-matching-agent: Step 4 信息匹配
-- pipeline-verify-agent: Step 5 集成验收
-
-**模块 Agent**（按需创建，见 `.claude/agents/`）:
-- programmer-{module}-agent: Step 3 模块实现（pipeline 运行时按需创建）
-
-**可选质量 Skill**（项目中若存在则自动关联）:
-- debug-skill: Step 7 边界条件测试
-- profiler-skill: Step 8 性能诊断
+| 各步骤示例、PCB 与 CONTEXT 模板 | EXAMPLES.md |
+| 硬性规则、常见陷阱 | SKILL_MEMORY.md |
+| 迭代维护 | ITERATION_GUIDE.md |
+| 执行扩展协议、PCB 结构、run_id 追踪 | config/pipeline_protocol.md |
+| L1 参数 Schema / 默认值 | config/params.schema.json、config/defaults.json |
 
 ---
 
-## 运行决策参数 (L1)
+## 运行前置（按序加载）
 
-- **execution_steps**: 要执行的步骤 (Step1-9，按需选择)
-  - Step1: 需求分析与API声明 (必须)
-  - Step2: 约束同步与蓝图生成 (可选)
-  - Step3: 模块并行实现 (必须)
-  - Step4: 信息匹配与补全 (必须)
-  - Step5: 集成验收与问题处理 (必须)
-  - Step6: TODO补全与完善 (可选)
-  - Step7: 边界条件测试 (可选)
-  - Step8: 性能诊断 (可选)
-  - Step9: 完成与清理 (必须)
-
-- **context_retention**: Step 完成后的上下文处理
-  - Cleanup: 删除 PIPELINE_CONTEXT.md
-  - Persist: 保留上下文文件
+1. **GLOBAL_SKILL_MEMORY.md** 协议 1-5（全部生效）
+2. **config/pipeline_protocol.md** 协议 1-5（pipeline 期间附加生效）
+3. **config/params.schema.json + defaults.json** -> 合成 L1 参数
+4. **项目 CLAUDE.md + 相关 SKILL_MEMORY** -> 提取 L2 约束
+5. **初始化 PIPELINE_CONTEXT.md**（含 PCB 头部区 + run_id）
 
 ---
 
-## Workflow 流程
+## 核心资产
 
-**启动前置**：加载 `config/pipeline_protocol.md`（协议 1-4 + PCB 看板结构）。此扩展协议仅在 pipeline 执行期间生效，补充 GLOBAL_SKILL_MEMORY 的核心协议 1/2。
+**PIPELINE_CONTEXT.md 单一事实来源**，含两个正交维度：
 
-**Step 1**: 需求拆分与API声明
-- Agent: requirement-analyzer
-- 执行: Phase 1 问题空间探索 + Phase 2 功能拆分与API声明
-- 输出: PIPELINE_CONTEXT.md (Step 1 部分)
-- 关键: 末尾提议是否执行 Step 2
+- **PCB 看板区**（头部，常驻）：SHADOW_BANS / CONFIG_SYNTHESIS / MACRO_SCOPE / BLUEPRINT / ATOMIC_EXECUTION —— 认知抓手，防幻觉
+- **Step 段落区**（尾部，追加）：Step 1-9 流转记录 —— 过程追踪
 
-**Step 2** [可选]: 约束同步与蓝图生成
-- Agent: requirement-analyzer
-- 触发: 复杂功能（跨多模块、新约束等），由用户基于 Step 1 建议决策
-- 执行: 加载约束源，生成 CONSTRAINT_ALIGNMENT 和 BLUEPRINT
-- 输出: 更新 PIPELINE_CONTEXT.md (Step 2 部分)
+每原子单元开工前必须 Read PIPELINE_CONTEXT.md（协议 3）。PCB 未记录的逻辑视为无证据幻觉。
 
-**Step 3**: 并行实现
-- Agent: programmer-{module}-agent（可并行）。若模块无预建 agent，按规则 7 处理（提议创建或降级）
-- 执行: 根据 Step 1/2 拆分实现代码，核心数据模块优先
-- 约束: 各 agent 结束时生成 COMPLIANCE_CHECKLIST；用 TODO 占位未就绪 API
-- 并行输出: 各 agent 写入 `temp/pipeline-output/{module_id}.md`（独立文件，避免并行写入冲突）
-- 汇总: 所有 agent 完成后，执行 `python .claude/scripts/pipeline_merge.py` 将各模块输出追加到 PIPELINE_CONTEXT.md 的 Step 3 段
+---
 
-**Step 4**: 信息匹配与补全
-- Agent: integration-matcher
-- 执行: 验证 API 调用与声明的一致性（严格验证，不修改代码）
-- 输出: MATCHING_REPORT + PIPELINE_CONTEXT.md (Step 4 部分)
+## 工作流
 
-**Step 5**: 集成验收与问题处理
-- Agent: pipeline-verifier
-- 执行: 评估 MATCHING_REPORT，给出 GO / GO-WITH-CAUTION / NO-GO
-- 输出: VERIFICATION_REPORT + PIPELINE_CONTEXT.md (Step 5 部分)
+**Step 1**: 需求拆分 + API 声明
+- Agent: `requirement-analysis-agent`（Phase 1 问题空间探索 -> Phase 2 功能拆分 + API 声明）
+- 若输入含 PDF/导图/截图 -> 先执行 pipeline_protocol 协议 2（双阶段解构）
+- 生成 `pipeline_run_id: pipeline_{YYYYMMDD}_{HHMMSS}` 写入 PIPELINE_CONTEXT.md 头部
+- 末尾提议：Step 2 / Step 3 执行策略
 
-**Step 6** [可选]: TODO 补全与完善
-- 触发: Step 5 判为 GO-WITH-CAUTION
-- 执行: 主 agent 根据 MATCHING_REPORT 中的 CompletableTODO 列表，逐个补全（依赖 API 已就绪，替换 TODO 为实际调用）
-- 若 TODO 数量多且跨模块，可按需启动对应模块的 programmer-agent 处理
+**Step 2** [可选]: 约束同步 + BLUEPRINT
+- Agent: `requirement-analysis-agent`
+- 合成 L1 × L2 -> 写入 PCB.CONFIG_SYNTHESIS / SHADOW_BANS
+- 类名/签名/事件契约 -> 写入 PCB.BLUEPRINT
+- 用户确认后进入 Step 3
 
-**Step 7** [可选]: 边界条件测试 (debug-skill)
+**Step 3**: 模块并行实现
+- Agent: `programmer-{module}-agent`（缺失按 SKILL_MEMORY 规则 10 处理）
+- 各 agent 末尾生成 COMPLIANCE_CHECKLIST，TODO 占位未就绪 API
+- 并行输出 -> `temp/pipeline-output/{module_id}.md`
+- 汇总：`python .claude/scripts/pipeline_merge.py`
 
-**Step 8** [可选]: 性能诊断 (profiler-skill)
+**Step 4**: 信息匹配（严格验证，禁止改代码）
+- Agent: `integration-matching-agent`
+- 输出 MATCHING_REPORT：Consistent / SignatureMismatch / UndeclaredAPI / CompletableTODO / BlockingTODO
+
+**Step 5**: 集成验收（仅决策，禁止改代码）
+- Agent: `pipeline-verify-agent`
+- 判定 GO / GO-WITH-CAUTION / NO-GO
+- 写入 `.claude/traces/.pending_pipeline_result.json`（进化系统回填 validated）
+
+**Step 6** [可选]: CompletableTODO 补全（GO-WITH-CAUTION 触发）
+
+**Step 7** [可选]: 边界条件测试（debug-skill）
+
+**Step 8** [可选]: 性能诊断（profiler-skill）
 
 **Step 9**: 完成与清理
-- 根据 context_retention 处理 PIPELINE_CONTEXT.md 和 temp/ 目录
-  - Cleanup: 删除 PIPELINE_CONTEXT.md、PIPELINE_INDEX.md 和 temp/ 目录
-  - Persist: 全部保留（包括 temp/ 下的过程文件）
+- Cleanup: 删除 PIPELINE_CONTEXT.md、PIPELINE_INDEX.md、`temp/pipeline-output/`
+- Persist: 全部保留，**并从 PIPELINE_CONTEXT.md 删除 pipeline_run_id 行**（防止下次 trace 误关联）
 
 ---
 
-## 重要约束
+## L1 运行参数
 
-1. **单一事实来源**: 所有工程信息必须写入 PIPELINE_CONTEXT.md，不创建其他临时文件
-2. **顺序依赖**: 核心数据模块应优先完成，其他模块可并行
-3. **TODO 使用**: 若 API 未就绪，写 TODO 注释详说依赖（格式见 EXAMPLES.md）
-4. **信息明确性**: Step 1 的 API 声明是所有实现的基础
-5. **前置合规检查**: Step 3 各 agent 必须生成 COMPLIANCE_CHECKLIST
-6. **严格权力边界**: Step 4 仅验证，Step 5 仅决策，Step 6 执行修复
-7. **可选约束对齐**: 复杂功能可在 Step 2 进行约束物理化
+- `execution_steps`: 数组，要执行的步骤子集（Step1/3/4/5/9 为必选，其他可选）
+- `context_retention`: `Cleanup` | `Persist`
+
+详见 `config/params.schema.json`。
 
 ---
+
+## 进化系统对接
+
+pipeline 通过 `pipeline_run_id` 将 Step 3 的 trace 与 Step 5 的 GO/NO-GO 结果关联，为自我进化提供验证信号：
+
+| Step 5 判定 | validated | 含义 |
+|-----------|-----------|------|
+| GO | true | 一次性合规，成功模式 |
+| GO-WITH-CAUTION | true | 经补全后合规，包含可复用修复经验 |
+| NO-GO | false | P0 反面教材（origin-evolve 最高优先级） |
+
+详见 pipeline_protocol.md 协议 5。

@@ -604,3 +604,31 @@ python3 test_365day_simulation.py --keep-data
 - **有 boundary marker**：框架段更新，项目段保留
 - **无 boundary marker**：按 `## ` 标题逐节语义去重（>50% 相似判为重复），仅追加独有内容
 - 所有场景创建备份
+
+### 备份与回滚
+
+每次 `bootstrap.py` 在 `merge_mode: full` 下覆盖任何已有文件前，会把原件复制到**集中会话目录**：
+
+```
+.claude/.backups/<YYYY-MM-DD_HH-MM-SS>/
+    .claude/
+        agents/requirement-analysis-agent.md
+        skills/code-pipeline-skill/...
+        ...
+```
+
+备份保留原始的相对路径结构，回滚时可直接 `robocopy`/`rsync` 拷回。
+
+**轮换策略**：默认保留最近 3 次会话，更早的自动删除。
+
+**相关 CLI 选项**：
+
+| 选项 | 作用 |
+|------|------|
+| `--no-backup` | 跳过备份（git 用户） |
+| `--backup-keep N` | 保留最近 N 次（默认 3） |
+| `--clean-backups` | 删除所有备份会话并退出 |
+
+**自动行为**：
+- 首次使用新版 bootstrap 会**一次性清理**旧版散落的 `.bak` 文件/目录
+- 自动向 `.claude/.gitignore` 追加 `.backups/` 条目（若缺失），防止误提交

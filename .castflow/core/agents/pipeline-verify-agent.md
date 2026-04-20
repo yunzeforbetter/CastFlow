@@ -92,11 +92,36 @@ skills:
 4. **评估报告问题** - 对 MATCHING_REPORT 中各类问题进行严重程度评估
 5. **给出判定** - GO / GO-WITH-CAUTION / NO-GO 及理由
 6. **生成 VERIFICATION_REPORT** - 添加到 PIPELINE_CONTEXT.md Step 5 部分
+7. **写回填信号**（仅 pipeline 模式，独立使用时跳过）- 见下方"进化系统回填"
 
 **关键原则**：
 - 不做深度代码审查（Step 3 已完成）
 - 主要是评估 MATCHING_REPORT 中问题的严重程度
 - 根据是否有 BLOCKER 来决定是否可进行
+
+## 进化系统回填（仅 pipeline 模式）
+
+pipeline 模式下，PIPELINE_CONTEXT.md 头部含 `pipeline_run_id: pipeline_{YYYYMMDD}_{HHMMSS}`。VERIFICATION_REPORT 生成后，必须写入 `.claude/traces/.pending_pipeline_result.json`，由 trace-flush hook 批量回填本次 pipeline 期间所有 trace 条目的 `validated` 字段。
+
+**写入步骤**：
+1. 从 PIPELINE_CONTEXT.md 头部读取 `pipeline_run_id`
+2. 使用 Write 工具创建 `.claude/traces/.pending_pipeline_result.json`（若已存在则覆盖），内容如下 JSON 格式：
+
+```json
+{
+  "pipeline_run_id": "pipeline_20260420_143055",
+  "result": "GO"
+}
+```
+
+`result` 取值必须与 VERIFICATION_REPORT 的最终判定一致：`GO` / `GO-WITH-CAUTION` / `NO-GO`。
+
+**映射语义**（由 trace-flush hook 自动处理，agent 无需写 validated 值）：
+- `GO` -> validated=true（一次性合规）
+- `GO-WITH-CAUTION` -> validated=true（经 Step 6 补全后合规，记录合理占位模式）
+- `NO-GO` -> validated=false（进化系统 P0 反面教材）
+
+**独立使用时**：直接输出 VERIFICATION_REPORT 给用户，不写回填信号。
 
 ## 重要约束
 

@@ -48,14 +48,35 @@
 
 ---
 
-### 规则 5：用户确认是必须的
+### 规则 5：Phase 0 语言询问门禁（最高优先级）
 
-**定义**：展示扫描结果后必须等待用户确认才生成文件。不能跳过确认步骤。
+**定义**：bootstrap-skill 触发后，主 agent 的**第一条对外消息必须是 Phase 0 语言询问**——使用 SKILL.md 给定的标准话术，列出 5 个语言选项。在用户回复前，禁止做任何项目扫描、文件读取、文件写入。
+
+**违反此规则视为执行失败**，无论生成结果质量如何。
+
+**强制顺序**：
+1. **Phase 0**：发出语言询问 -> 等待用户回复 -> 归一化为 ISO 639-1 代码 -> 回显确认（"已选 English (en)，开始扫描..."）
+2. **Phase 1**：项目扫描（技术栈、命名规范、模块）
+3. **Phase 2**：用户确认（步骤 2.1 逐 Skill / 步骤 2.2 补充信息）
+4. **Phase 3**：写 manifest（含 language 字段）+ 启动并行 sub-agent
+5. **Phase 4**：验证清理
+
+**门禁规则**：
+- Phase 0 未完成 -> 不得进入 Phase 1
+- Phase 2 任何一步未确认 -> 不得进入 Phase 3
+- 不得执行任何 `bootstrap.py --skill ...` 子命令
+
+**唯一例外**（仍需主 agent 显式说明）：
+- 用户在触发指令同一句话已指定语言：复述确认（"已识别语言：English (en)，确认继续？"）后再进入 Phase 1
+- 核心更新模式且 manifest.json 已存在：直接复用 manifest.language，但需告知用户"复用已有配置 language=xxx"
 
 **检查清单**：
-- [ ] 是否向用户展示了完整的扫描结果？
-- [ ] 是否等待了用户的明确确认？
-- [ ] 用户的调整是否已反映到生成计划中？
+- [ ] 主 agent 触发后的**第一条消息**是否是语言询问？（不是"开始扫描"、不是 Phase 1 输出）
+- [ ] 询问话术是否包含了 5 个选项（zh/en/ja/ko/其他）？
+- [ ] 用户回答是否归一化为 ISO 639-1 代码？（"用英文" -> `en`，不是 `用英文`）
+- [ ] 归一化后是否给用户回显确认？
+- [ ] 是否等待了 Phase 2 每一步的用户回应？
+- [ ] manifest.json 写入时 language 字段是否为 ISO 代码？
 
 ---
 
@@ -82,14 +103,33 @@
 - 项目主代码目录路径（如 "Assets/Scripts/"）
 - 输出目标目录（如 "bootstrap-output/content/architect/"）
 - 预期输出文件列表
+- 生成语言（manifest.language 映射后的自然名，如 `中文` / `English` / `日本語`）
 
 **检查清单**：
 - [ ] prompt 中是否包含了技术栈信息？
 - [ ] prompt 中是否包含了主代码目录路径？
 - [ ] prompt 中是否包含了完整的输出文件列表？
+- [ ] prompt 中是否包含了生成语言（{LANGUAGE} 已替换）？
 - [ ] agent 是否无需读取任何 Phase 1/2 的中间结果文件？
 
 **原因**：每个 agent 启动时上下文为空，只有 prompt 中的信息。如果 prompt 不自包含，agent 将缺少关键信息导致分析质量下降或失败。
+
+---
+
+### 规则 8：sub-agent prompt 占位符必须全部替换
+
+**定义**：发射任何 sub-agent 之前，prompt 中的 `{TECH_STACK}` / `{SOURCE_DIR}` / `{PROJECT_ROOT}` / `{LANGUAGE}` / `{MODULE_*}` 必须全部替换为实际值，禁止把字面占位符传给 sub-agent。
+
+**关键映射**：
+- `{LANGUAGE}` 注入的是**自然语言名称**（`中文` / `English` / `日本語` 等），不是 ISO 代码（`zh` / `en` / `ja`）。映射规则见 SKILL.md Phase 0「语言选择」 + Phase 3「语言传递规则」映射表。
+
+**检查清单**：
+- [ ] grep prompt 字符串中是否还有残留的 `{TECH_STACK}` / `{SOURCE_DIR}` / `{PROJECT_ROOT}`？
+- [ ] grep 是否还有残留的 `{LANGUAGE}`（最常被遗漏）？
+- [ ] 模块流程是否替换了 `{MODULE_ID}` / `{MODULE_NAME}` / `{MODULE_DIR}`？
+- [ ] 替换 `{LANGUAGE}` 时是否经过 ISO -> 自然名映射？
+
+**原因**：bootstrap-skill 不经过 bootstrap.py 的 `replace_placeholders` 处理，占位符替换完全由主 agent 负责。任何遗漏都会导致 sub-agent 看到字面 `{LANGUAGE}` 而退化到默认中文输出，多语言配置失效。
 
 ---
 
@@ -121,8 +161,8 @@
 
 ### 陷阱 5：agent prompt 信息不全
 
-**现象**：发射 agent 时忘记注入技术栈或主代码目录，导致 agent 分析方向错误或输出到错误位置。
+**现象**：发射 agent 时忘记注入技术栈或主代码目录，导致 agent 分析方向错误或输出到错误位置。**最常见**的具体表现是 `{LANGUAGE}` 没替换，导致非中文用户配置 `language: "en"` 后实际生成的 content 仍是中文。
 
-**防护**：严格按 SKILL.md 中的 prompt 模板发射，确保 `{TECH_STACK}`、`{SOURCE_DIR}` 等占位符全部替换为实际值。
+**防护**：严格按 SKILL.md「占位符替换契约」表对照检查，确保 `{TECH_STACK}` / `{SOURCE_DIR}` / `{PROJECT_ROOT}` / `{LANGUAGE}` 全部替换为实际值。`{LANGUAGE}` 注入前必须经过 ISO 代码 -> 自然名映射（zh -> 中文 / en -> English / ja -> 日本語）。
 
 ---
