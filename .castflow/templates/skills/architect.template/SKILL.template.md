@@ -1,4 +1,4 @@
-﻿---
+---
 name: architect-skill
 description: Project architecture constraint library and design pattern reference
 ---

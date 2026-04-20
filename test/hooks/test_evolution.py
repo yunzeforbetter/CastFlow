@@ -755,7 +755,7 @@ class TestLockManagement(TestSetup):
     """Verify compaction respects .trace_lock."""
 
     def test_compaction_skipped_when_locked(self):
-        with open(flush.TRACE_LOCK_FILE, "w") as f:
+        with open(flush.TRACE_LOCK_FILE, "w", encoding="utf-8", newline="\n") as f:
             f.write("locked")
 
         now = datetime.now(timezone.utc)
@@ -971,14 +971,14 @@ class TestEdgeCases(TestSetup):
         flush.check_notify()
 
     def test_corrupt_weights_uses_defaults(self):
-        with open(flush.WEIGHTS_FILE, "w") as f:
+        with open(flush.WEIGHTS_FILE, "w", encoding="utf-8", newline="\n") as f:
             f.write("{invalid json")
         weights, threshold = flush.load_weights()
         self.assertEqual(weights, flush.DEFAULT_WEIGHTS)
         self.assertEqual(threshold, flush.DEFAULT_THRESHOLD)
 
     def test_corrupt_limits_uses_defaults(self):
-        with open(flush.LIMITS_FILE, "w") as f:
+        with open(flush.LIMITS_FILE, "w", encoding="utf-8", newline="\n") as f:
             f.write("not json at all")
         limits = flush.load_limits()
         self.assertEqual(limits, flush.DEFAULT_LIMITS)

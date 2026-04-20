@@ -1,4 +1,4 @@
-﻿# architect-skill-memory - 架构硬性规则
+# architect-skill-memory - 架构硬性规则
 
 **本文档的性质**：硬性约束（必须遵守）。
 

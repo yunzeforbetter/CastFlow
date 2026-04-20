@@ -1,4 +1,4 @@
-﻿# ITERATION_GUIDE - Architect-Skill 迭代指南
+# ITERATION_GUIDE - Architect-Skill 迭代指南
 
 ## Skill 定位
 

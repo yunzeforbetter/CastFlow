@@ -1336,7 +1336,7 @@ class Test365DataIntegrity(SimulationTestBase):
 
     def test_lock_blocks_compaction(self):
         """Compaction must be skipped when .trace_lock exists."""
-        with open(flush.TRACE_LOCK_FILE, "w") as f:
+        with open(flush.TRACE_LOCK_FILE, "w", encoding="utf-8", newline="\n") as f:
             f.write("locked")
 
         now = datetime.now(timezone.utc)

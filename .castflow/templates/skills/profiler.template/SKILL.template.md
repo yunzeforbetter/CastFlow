@@ -1,4 +1,4 @@
-﻿---
+---
 name: profiler-skill
 description: Performance detection and optimization guidance - code review checklist and performance bottleneck diagnosis
 ---

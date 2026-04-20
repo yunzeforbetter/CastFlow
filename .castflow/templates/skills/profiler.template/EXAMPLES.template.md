@@ -1,4 +1,4 @@
-﻿# Profiler-Skill 示例库
+# Profiler-Skill 示例库
 
 {{PROFILER_EXAMPLES}}
 

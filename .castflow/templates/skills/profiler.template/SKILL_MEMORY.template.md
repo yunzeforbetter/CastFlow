@@ -1,4 +1,4 @@
-﻿# profiler-skill-memory - 性能检测硬性规则
+# profiler-skill-memory - 性能检测硬性规则
 
 **本文档的性质**：硬性约束（必须遵守）。
 

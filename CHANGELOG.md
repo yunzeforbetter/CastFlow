@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### 跨平台编码一致性修复
+
+- **fix(P0)**: 剥离全部 18 个模板文件的 UTF-8 BOM（`CLAUDE.template.md`、`agents/programmer.template.md`、`skills/*.template/*.template.md`）。原模板在 Windows 记事本等工具保存时被写入 `\xef\xbb\xbf` BOM，虽然 `bootstrap.py` 的 `read_file` 用 `utf-8-sig` 能剥离，但模板被 `shutil.copy2` 复制或被其他工具链直接读取时仍会把 BOM 当作内容解析，在部分终端/编辑器下显示为乱码。
+- **fix(P1)**: `scripts/aggregate_benchmark.py` 中 5 处 `open()` 调用未显式指定 `encoding`：在中文 Windows（默认 cp936/GBK）上读写含中文的 JSON/Markdown 会触发 `UnicodeDecodeError` 或生成 GBK 编码的输出文件。统一改为 `encoding="utf-8"`，写入增加 `newline="\n"` 与 `ensure_ascii=False`，保证跨平台一致。
+- **fix(P1)**: `test/hooks/test_evolution.py` 与 `test/hooks/test_365day_simulation.py` 中 4 处 `open(..., "w")` 补齐 `encoding="utf-8", newline="\n"`。
+- **verify**: 全仓扫描确认已无文本模式 `open()` 缺失 `encoding=`，全部模板与生成文件均为纯 UTF-8（无 BOM），Windows/Linux/macOS 下 bootstrap 产出的 `CLAUDE.md` 与各 skill 文件字节一致。
+
 ### 测试套件目录调整
 
 - **change**: Hooks 相关测试从 `.castflow/core/hooks/` 迁移至 `CastFlow/test/hooks/`（与 `.castflow/` 同级）；`bootstrap.py` 仅向用户项目分发生产脚本 `trace-collector.py` / `trace-flush.py`，不再随 `core/hooks/` 复制测试文件。

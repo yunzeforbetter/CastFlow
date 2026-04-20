@@ -1,4 +1,4 @@
-﻿# Architect-Skill 示例库
+# Architect-Skill 示例库
 
 ## Part 1: 约束规则速查表
 
