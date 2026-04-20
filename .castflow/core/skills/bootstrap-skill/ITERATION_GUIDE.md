@@ -51,6 +51,9 @@
   - SKILL.md 顶部「执行铁律」段不得删除或弱化
   - SKILL_MEMORY 规则 5 不得降低优先级（必须为最高）
   - EXAMPLES.md 示例 1 必须先演示 Phase 0 对话再演示扫描
+  - Phase 2.1 推荐 Skill（architect）固定生成，不得让用户决定是否跳过
+  - Phase 2.1 可选 Skill（debug/profiler）必须在一条消息内打包询问，禁止逐条询问
+  - Phase 2.2 补充信息（命名规范 + 框架规则）必须合并为一条消息询问
 检查清单：
   - [ ] description 是否仍然包含 "first action MUST be asking the user to choose a language"？
   - [ ] SKILL.md 顶部「执行铁律」是否仍然存在？

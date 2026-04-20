@@ -45,43 +45,42 @@ AI: 已选 English (en)，开始扫描项目...
 
 ### Phase 2：用户确认（按固定顺序）
 
-#### 2.1 逐 Skill 确认
+#### 2.1 Skill 生成确认（一条消息打包）
 
 ```
-AI: 以下是可以为项目生成的 Skill，逐个确认：
+AI: 将固定生成 architect-skill（项目架构约束与设计模式）。
 
-1. architect-skill（推荐）
-   用途：记录项目的架构约束规则和设计模式参考。
-   扫描范围：Manager/Service 模式、事件系统、分层架构、依赖注入等。
-   所有其他 Skill 和 Agent 都会参考它。
-   -> 是否生成？
+    以下可选 Skill 是否生成？请一次回复（如"都要"/"只要 debug"/"都不要"）：
 
-用户: 是
+      [1] debug-skill    — 边界条件检查清单 + 防御性编程（null 检查、资源释放、状态转换）
+      [2] profiler-skill — 性能红线 + 优化反模式（帧耗时、GC 分配、热路径检测）
 
-2. debug-skill（可选）
-   用途：提供边界条件检查清单和防御性编程指导。
-   扫描范围：MonoBehaviour 生命周期、资源释放、事件取消订阅等。
-   -> 是否生成？
+    默认：都生成。
 
-用户: 是
+用户: 只要 debug
 
-3. profiler-skill（可选）
-   用途：提供性能红线和优化反模式参考。
-   扫描范围：Update 热路径、GC 分配、对象池使用等。
-   -> 是否生成？
-
-用户: 跳过
+AI: 已确认：architect-skill（固定）+ debug-skill（可选）。profiler-skill 跳过。
 ```
 
-#### 2.2 补充信息收集
+> 归一化要点：
+> - architect 永远不进入询问列表，用户无法跳过
+> - 两个可选项在**一条消息**里列完，用户**一条消息**回复
+> - 用户输入"只要 debug" -> debug=true, profiler=false
+
+#### 2.2 补充信息收集（一条消息打包）
 
 ```
-命名规范确认：
-  检测到 _camelCase 私有字段模式，是否采用？
-用户: 是
+AI: 命名规范（扫描结果）：
+      - 私有字段: _camelCase
+      - 私有方法: PascalCase
+      - 公共成员: PascalCase
 
-额外的框架规则？
-用户: Logic 层不引用 UnityEngine
+    是否采用此规范？如需调整或补充框架规则，请一次回复。
+    直接回车 = 采用扫描结果，无额外框架规则。
+
+用户: 采用，Logic 层不引用 UnityEngine
+
+AI: 已确认：采用扫描命名规范 + framework_rules 新增"Logic 层不引用 UnityEngine"。
 ```
 
 ### Phase 2 结束 - 公共文件处理
