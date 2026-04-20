@@ -13,6 +13,7 @@ description: CastFlow framework initializer for first-time setup, core sync, or 
 - 禁止默认按中文（zh）静默开始生成
 - 禁止先扫描、先确认 Skill、先做任何其他动作然后才询问语言
 - 禁止把用户的自然语言输入（如"中文"、"用英文"）原样写入 manifest，必须归一化为 ISO 639-1 代码（`zh`/`en`/`ja`/`ko`）
+- 禁止用 shell 命令（`python -c`、`cat heredoc`、`echo >`、`type ...`）写 content/*.md 或 manifest.json——**所有文件写入必须用 Write 工具**，详见 SKILL_MEMORY 规则 8
 
 只有以下两种情况可以跳过 Phase 0 询问（仍需主 agent 显式确认）：
 - 用户在触发指令同一句话里已明确指定语言（例如"bootstrap castflow，用英文生成"），此时主 agent 必须先复述确认（"已识别语言：English (en)，确认继续？"）

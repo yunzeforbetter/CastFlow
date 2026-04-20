@@ -116,7 +116,31 @@
 
 ---
 
-### 规则 8：sub-agent prompt 占位符必须全部替换
+### 规则 8：文件写入必须用 Write 工具（禁止 shell 管道）
+
+**定义**：所有 `bootstrap-output/content/**/*.md` 文件、`manifest.json`、CLAUDE.md 草稿等的写入，必须使用 AI 内置的 Write/Edit 工具直接写入，**严禁使用 shell + python pipe / cat heredoc / echo 重定向 / cmd /c "type ..." 等任何形式的命令行写文件**。
+
+**原因**：
+1. Cursor 对每个 shell 命令都会弹审批对话框，10 个 md 文件就要点 10 次审批，用户体验极差
+2. shell 写入存在编码、引号转义、换行符等多种坑，Write 工具无这些问题
+3. shell 写入的内容不在 Cursor 的 diff 视图中显示，用户无法预览
+
+**唯一允许的 shell 调用**：
+- `python .castflow/bootstrap.py --skill xxx`（这是核心装配命令，无替代）
+- `python .castflow/bootstrap.py --validate`
+- `mkdir bootstrap-output/...`（仅在确实需要新建目录时）
+
+**检查清单**：
+- [ ] 写 content/*.md 是否用了 Write 工具？
+- [ ] 写 manifest.json 是否用了 Write 工具？
+- [ ] 是否避免了 `python -c "open(...).write(...)"` 这种命令行写法？
+- [ ] 是否避免了 `cat <<EOF > file` 这种 heredoc 写法？
+
+**违反此规则的代价**：用户每个文件都要点一次审批，10+ 文件 = 10+ 次中断，bootstrap 体验劣化为"半自动"。
+
+---
+
+### 规则 9：sub-agent prompt 占位符必须全部替换
 
 **定义**：发射任何 sub-agent 之前，prompt 中的 `{TECH_STACK}` / `{SOURCE_DIR}` / `{PROJECT_ROOT}` / `{LANGUAGE}` / `{MODULE_*}` 必须全部替换为实际值，禁止把字面占位符传给 sub-agent。
 
