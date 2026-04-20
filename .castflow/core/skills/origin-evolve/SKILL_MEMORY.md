@@ -1,97 +1,75 @@
 # origin-evolve - Hard Rules
 
-**This document's nature**: Mandatory constraints for the evolution analysis process.
+Mandatory constraints. Violation = invalid execution.
 
 ---
 
-### Rule 1: Evidence-Based Proposals Only
+### Rule 1: Evidence-Based Proposals
 
-Every proposal must cite 2+ concrete trace entries (by timestamp) with consistent pattern (same root cause). No speculative improvements. Check: evidence independently supports conclusion?
+Every proposal cites 2+ trace entries (by timestamp) sharing one root cause. Single occurrences and speculative improvements are forbidden.
 
----
+Self-check: would the proposal still hold if you removed the cited evidence? If yes, the evidence is incidental and the proposal is unfounded — drop it.
 
-### Rule 2: Correct Attribution
-
-**Target skill**:
-- 1 module with matching programmer-*-skill -> that skill
-- 2+ modules, no common parent -> `.claude/rules/` (cross-cutting rule)
-- 2+ modules under same parent -> parent module's skill
-- skills field empty -> most related skill's SKILL.md description
-
-**Target file**:
-- Correction pattern -> SKILL_MEMORY.md
-- Complexity concentration (high edit_count) -> EXAMPLES.md
-- Module hotspot -> SKILL_MEMORY.md
-- Knowledge gap -> SKILL.md metadata (expand trigger keywords)
-- Project-wide convention -> suggest adding to CLAUDE.md (never write directly)
-- Scoring model -> `traces/weights.json` (only via Step 6)
-
-Check: Followed decision tree? CLAUDE.md phrased as suggestion?
+`validated:false` traces are P0 evidence regardless of correction signal. When 3+ such traces share one module with `correction:_`, compare `request` vs `intent` to identify systematic AI misunderstanding.
 
 ---
 
-### Rule 3: Knowledge Lifecycle Operations
+### Rule 2: Attribution Decision Tree
 
-| Operation | Condition | Action |
-|-----------|-----------|--------|
-| Append | No similar entry exists | Add with Anchors + Related |
-| Merge | Overlaps existing entry (same root cause/code area) | Expand existing; show diff |
-| Retire | Anchors no longer exist (grep-verified) or user requests | Add [RETIRED] to heading; do NOT delete |
+**Target skill** (in priority order):
+1. One module with mapped `programmer-*-skill` -> that skill
+2. Two or more modules under one common parent that owns a skill -> parent's skill
+3. Two or more modules with no common parent -> `.claude/rules/`
+4. `skills` field empty in cited traces -> SKILL.md description of the closest skill
 
-All operations require user approval. Merge must show diff. Retire must show grep evidence.
+**Anchor evidence as secondary signal**: when the proposed rule's significant anchors (excluding generic symbols such as `OnDestroy`, `Subscribe`, `AddTimer`, `LoadAsset`) are owned by an existing skill different from the module-list result, surface BOTH candidates in Step 4 for user choice. Do not auto-override.
 
----
-
-### Rule 4: Proposal Threshold
-
-Propose only when: 3+ trace occurrences, measurable impact (correction/high edit_count/cross-module), concrete fix, not previously rejected (check EVOLVE_REJECTION entries). Do not propose for single occurrences or negligible impact.
-
----
-
-### Rule 5: File Standards and Capacity
-
-All generated content must comply with SKILL_ITERATION.md size limits and format rules: no emoji, no dates/timestamps, no code blocks in SKILL_MEMORY entries. Before writing: check word count, ensure Anchors + Related fields, propose Merge or Retire if over range, grep-verify anchors before Retire.
+**Target file within the skill**:
+| Pattern | File |
+|---------|------|
+| Behavioral constraint | SKILL_MEMORY.md |
+| Code pattern reference | EXAMPLES.md |
+| Trigger keyword expansion | SKILL.md description |
+| Project-wide convention | suggest CLAUDE.md (do not write directly) |
 
 ---
 
-### Rule 6: Do Not Modify Hook-Generated Fields
+### Rule 3: Append / Merge / Retire
 
-Only modify `type` and `skills` when supplementing trace entries. Never touch: timestamp, modules, files_modified, file_count, lines_changed, edit_count, score, correction (when auto-filled).
+| Operation | Trigger | Required evidence |
+|-----------|---------|-------------------|
+| Append | No existing rule with anchor Jaccard >= 0.5 against the proposal | Full new entry with Anchors and Related |
+| Merge | Existing rule with anchor Jaccard >= 0.5 | Diff showing anchor union and content delta |
+| Retire | Anchor symbols absent from current code | `grep` output proving 0 matches |
 
----
+Thresholds (Jaccard, capacity word count) read from `traces/governance.json` with defaults: Jaccard 0.5, file capacity 2000 words. If file is over capacity, propose Retire of an obsolete entry before Append.
 
-### Rule 7: Trace Entry Lifecycle
-
-States: `pending` (eligible), `processed` (audit line), `expired` (validation window elapsed), `invalid` (pipeline abandoned).
-
-Step 0 transitions: `pending` with stale validated -> `expired`; `pending-pipeline` past expiry -> `invalid`. Old-format entries (no validated field): treat as `validated:_`, eligible if they carry correction signals.
-
----
-
-### Rule 8: P0 Semantic Drift
-
-`validated:false` is always P0 regardless of correction. Sub-sort: auto:major > auto:minor > _. When 3+ P0 entries share a module with `correction:_`, compare request vs intent to identify systematic misunderstanding; propose intent-clarification rule.
+Retired entries: prepend `[RETIRED]` to the heading. Never delete content; AI consumers skip retired entries by convention.
 
 ---
 
-### Rule 9: .trace_lock Management
+### Rule 4: User Approval Required for Every Write
 
-Write at Step 0 start; delete in finally block after Step 5. Stale lock = overwrite (not blocker). Lock signals trace-flush to skip compaction; appends always safe. Single-session assumption.
+No proposal may be written without explicit user approval. This includes Append, Merge, Retire, and weight calibration.
+
+Hook-generated trace fields (`timestamp`, `modules`, `files_modified`, `file_count`, `lines_changed`, `edit_count`, `score`, `correction`) are read-only; never modify them when supplementing trace entries (`type`, `skills`, `mode`, `request`, `intent` only).
+
+CLAUDE.md changes are always proposed as suggestions to the user; never write directly.
 
 ---
 
-## Common Pitfalls
+### Rule 5: Format & Capacity Compliance
 
-**Pitfall 1: Over-proposing** -- 10+ proposals from 20 traces = low confidence. Target 2-3 high-confidence proposals.
+All generated content follows `.castflow/core/SKILL_ITERATION.md` format rules: no emoji, no dates, no code blocks in SKILL_MEMORY entries.
 
-**Pitfall 2: Wrong file target** -- Building-specific rule in GLOBAL_SKILL_MEMORY, or cross-cutting in one skill. Follow Rule 2 decision tree; prefer narrower scope when uncertain.
+Before writing: verify file is within capacity. New SKILL_MEMORY entries must include `Anchors:` (code symbols) and `Related:` (cross-references). For Retire, anchors must be `grep`-verified absent.
 
-**Pitfall 3: Re-proposing rejected patterns** -- Always check EVOLVE_REJECTION entries first.
+---
 
-**Pitfall 4: Vague proposals** -- "improve error handling" is not a proposal. Requires: concrete target, content, and evidence.
+## Pitfalls
 
-**Pitfall 5: Ignoring edit_count** -- High edit_count + low file_count = AI struggled with that file. Check complexity concentration.
+**P1: Wrong file target** — Building-specific rule landing in GLOBAL_SKILL_MEMORY, or cross-cutting rule in one skill. Apply Rule 2; prefer narrower scope when uncertain. Cross-skill overlap signals from Step 1 are direct evidence of past P1 errors.
 
-**Pitfall 6: Append without capacity check** -- Run Rule 5 capacity check before every Append.
+**P2: Re-proposing rejected patterns** — Always scan `EVOLVE_REJECTION` entries first. A rejected proposal carries scope guidance that future proposals must respect.
 
-**Pitfall 7: Compaction deleting pending-pipeline** -- All compression must skip `validated:pending-pipeline` entries awaiting Step 5 results.
+**P3: Vague proposals** — "Improve error handling" is not a proposal. Required: concrete file + concrete content + named evidence (timestamps).

@@ -1,73 +1,32 @@
 # Origin Evolve - Iteration Guide
 
----
-
-## Skill Positioning
-
-Core responsibilities (aligned with SKILL.md):
-1. Read and analyze execution traces from `.claude/traces/trace.md`
-2. Identify actionable patterns using structured trace fields
-3. Generate proposals with correct attribution and concrete content
-4. Apply approved changes to the right files in the right format
-5. Optionally calibrate scoring model weights
-
-Target users: Project developers who want their AI knowledge base to improve over time.
-
----
+This skill evolves only when the trace data model or the proposal taxonomy changes.
 
 ## Iteration Rules
 
-### Rule 1: Update Analysis Dimensions
+### Rule 1: New Trace Field
 
-**Trigger**: New fields added to trace format or new pattern categories discovered
-**Priority**: Medium
-**File**: SKILL.md (Step 2 pattern types, Trace field table)
-**Check**: All trace fields used in analysis? New pattern categories needed? Field table current?
+**Trigger**: hook scripts emit a new field, or AI-supplemented field semantics change.
+**Files**: SKILL.md (Trace Fields section, sort priority, pattern detectors).
+**Check**: Step 1 sort and Step 2 patterns reference the new field where applicable.
 
----
+### Rule 2: New Proposal Operation
 
-### Rule 2: Update Proposal Examples
+**Trigger**: an operation that does not fit Append / Merge / Retire.
+**Files**: SKILL_MEMORY.md Rule 3 (operation table), EXAMPLES.md (one demonstration).
+**Check**: Operation, trigger condition, and required evidence are all defined; one example shows full cycle.
 
-**Trigger**: A new type of proposal is successfully applied and proves valuable
-**Priority**: Medium
-**File**: EXAMPLES.md
-**Check**: New proposal type has representative example? Example shows full cycle (trace -> analysis -> proposal)?
+### Rule 3: Threshold or Bound Change
 
----
+**Trigger**: defaults in `traces/governance.json` change, or weight bounds in `weights.json` prove wrong in practice.
+**Files**: SKILL_MEMORY.md Rule 3 (Jaccard, capacity), SKILL.md Step 6 (calibration bounds).
+**Check**: Same numbers cited in all locations.
 
-### Rule 3: Update Threshold Calibration
+## File Boundaries
 
-**Trigger**: Users consistently approve or reject proposals at certain confidence levels
-**Priority**: High
-**File**: SKILL_MEMORY.md (Rule 4 thresholds)
-**Check**: Occurrence thresholds appropriate? Confidence bar needs adjustment?
+Global standard: `.castflow/core/SKILL_ITERATION.md`.
 
----
-
-### Rule 4: Update Scoring Model Guidance
-
-**Trigger**: weights.json calibration reveals systematic bias in trace admission
-**Priority**: Medium
-**File**: SKILL.md (Step 6 calibration guidance)
-**Check**: Weight bounds reasonable? New dimensions needed? Calibration trigger threshold appropriate?
-
----
-
-## File Responsibilities
-
-| File | When to modify | Forbidden content |
-|------|---------------|------------------|
-| SKILL.md | Analysis flow changes, new pattern types | Code examples, rule definitions |
-| EXAMPLES.md | New proposal types, format changes | Rule definitions, dates |
-| SKILL_MEMORY.md | New constraints, threshold adjustments | Dates, version info, code blocks |
-| ITERATION_GUIDE.md | Skill scope changes | Dates, historical logs |
-
----
-
-## Quality Metrics
-
-**Proposal acceptance rate**: Target above 70%. Count approved vs rejected over time.
-
-**Correction reduction**: Approved proposals should reduce correction frequency in subsequent traces.
-
-**False positive rate**: Target below 10% of proposals rejected as "too aggressive" or "wrong scope". Track via EVOLVE_REJECTION entries.
+Origin-evolve specific:
+- SKILL.md does not embed raw trace markdown
+- EXAMPLES.md does not restate Rule definitions
+- SKILL_MEMORY.md does not embed full code blocks

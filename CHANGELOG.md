@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### 测试套件目录调整
+
+- **change**: Hooks 相关测试从 `.castflow/core/hooks/` 迁移至 `CastFlow/test/hooks/`（与 `.castflow/` 同级）；`bootstrap.py` 仅向用户项目分发生产脚本 `trace-collector.py` / `trace-flush.py`，不再随 `core/hooks/` 复制测试文件。
+- **change**: `verify_redesign.py` 置于 `CastFlow/test/origin-evolve/`，用于 origin-evolve 规范确定性部分的暴力验证；测试通过 `_HOOKS_DIR` 引用 `.castflow/core/hooks/` 中的真实脚本。
+
 ### origin-evolve 压缩优化
 
 - **change**: 四个 Skill 文件（SKILL.md / EXAMPLES.md / SKILL_MEMORY.md / ITERATION_GUIDE.md）整体压缩 37% 行数、33% 字符、29% 词数，去除冗余表述，保留全部核心规则。
@@ -28,12 +33,16 @@
 - **update**: 补充 trace 条目的 `validated` 和 `pipeline_run_id` 字段说明及状态流转。
 - **update**: 进化提醒阈值从 `pending >= 10` 更新为 `pending >= 5`。
 - **update**: 目录结构新增测试文件和 CHANGELOG.md。
+- **feat**: 新增「Skill 迭代（冷启动后）」：自然语言触发 `skill-creator`、功能模块与专项职责两类路径、与 skill-creator 对齐的执行流程、与 origin-evolve 的分工（文件级 vs 规则级）。
+- **feat**: 新增「文件清单」：按目录说明 CastFlow 仓库内全部文件（bootstrap、core、agents、hooks、skills、traces、scripts、templates、`test/`）。
+- **update**: 「CastFlow 目录结构」与「初始化后的文件结构」与当前仓库 layout 及 `CORE_FILE_COPIES` / `CORE_DIR_COPIES` 行为一致。
 
-### 测试套件（新增）
+### 测试套件
 
-- **feat**: `test_evolution.py`（84 tests）——基础单元测试，覆盖 collector 采集、buffer 格式、flush 评分、compaction 四级策略、validated 保护、审计行过期、空行清理、被动通知等全部核心路径。
-- **feat**: `test_100day_simulation.py`（27 tests）——模拟 100 天连续生产环境，验证 trace 条目在持续 append + compact 下保持有界、模块多样性保留、审计行正确过期、空行不累积。
-- **feat**: `test_365day_simulation.py`（23 tests）——模拟 365 天生产环境，含工作日/周末活跃度差异、季度模块焦点漂移、混合会话类型（feature / bugfix / pipeline / trivial chat）、内存知识库模型（规则提取 / 合并 / 退休 / 拒绝记忆），全面验证自进化闭环。
+- **feat**: `test/hooks/test_evolution.py`（84 tests）——基础单元测试，覆盖 collector 采集、buffer 格式、flush 评分、compaction 四级策略、validated 保护、审计行过期、空行清理、被动通知等全部核心路径。
+- **feat**: `test/hooks/test_100day_simulation.py`（27 tests）——模拟 100 天连续生产环境，验证 trace 条目在持续 append + compact 下保持有界、模块多样性保留、审计行正确过期、空行不累积。
+- **feat**: `test/hooks/test_365day_simulation.py`（23 tests）——模拟 365 天生产环境，含工作日/周末活跃度差异、季度模块焦点漂移、混合会话类型（feature / bugfix / pipeline / trivial chat）、内存知识库模型（规则提取 / 合并 / 退休 / 拒绝记忆），全面验证自进化闭环。
+- **feat**: `test/origin-evolve/verify_redesign.py`——origin-evolve 规范确定性部分暴力验证（诊断计数、归因、Append/Merge/Retire、Jaccard 边界、容量策略）。
 
 ---
 

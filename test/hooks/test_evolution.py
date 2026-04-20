@@ -25,6 +25,9 @@ if KEEP_DATA:
     sys.argv.remove("--keep-data")
 
 _script_dir_top = os.path.dirname(os.path.abspath(__file__))
+_HOOKS_DIR = os.path.normpath(os.path.join(
+    _script_dir_top, "..", "..", ".castflow", "core", "hooks"
+))
 _OUTPUT_BASE = os.path.join(_script_dir_top, "test-output", "evolution")
 
 if KEEP_DATA:
@@ -36,10 +39,8 @@ if KEEP_DATA:
 # Import modules with hyphens in filenames via importlib
 import importlib.util
 
-_script_dir = os.path.dirname(os.path.abspath(__file__))
-
 def _import_hyphen_module(name, filename):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(_script_dir, filename))
+    spec = importlib.util.spec_from_file_location(name, os.path.join(_HOOKS_DIR, filename))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

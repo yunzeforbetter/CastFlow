@@ -31,6 +31,9 @@ from collections import Counter
 import importlib.util
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
+_HOOKS_DIR = os.path.normpath(os.path.join(
+    _script_dir, "..", "..", ".castflow", "core", "hooks"
+))
 
 # --keep-data: preserve each test case's trace files for inspection
 KEEP_DATA = "--keep-data" in sys.argv
@@ -46,7 +49,7 @@ if KEEP_DATA:
     print("[keep-data] Output directory: {}".format(_OUTPUT_BASE))
 
 def _import_hyphen_module(name, filename):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(_script_dir, filename))
+    spec = importlib.util.spec_from_file_location(name, os.path.join(_HOOKS_DIR, filename))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

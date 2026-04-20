@@ -1,113 +1,98 @@
 ---
 name: origin-evolve
-description: Analyze execution traces to extract patterns, propose improvements to Skills/Memory, and drive self-evolution of the AI knowledge base
+description: Read execution traces, identify patterns, propose knowledge changes, write after approval
 ---
 
-# Origin Evolve - Self-Evolution Engine
+# Origin Evolve
 
-**Core mission**: Read execution traces, identify recurring patterns, propose improvements (with evidence), and write approved changes to the correct knowledge files.
+Mission: turn `.claude/traces/trace.md` into approved updates of `.claude/skills/`.
 
-**Responsibilities**:
-1. Read `.claude/traces/trace.md` and rank entries by priority
-2. Detect six pattern types across structured trace fields
-3. Generate proposals with evidence, attribution, and risk assessment
-4. Write approved changes to the correct Skill files
-5. Optionally calibrate scoring weights (`traces/weights.json`)
-
-**Data flow**: Hook scripts create trace entries -> AI supplements type/skills/mode/request/intent -> trace-flush injects validated signal -> this Skill consumes all fields for analysis.
-
----
+Trigger: user input `origin evolve` (or equivalent intent).
 
 ## Quick Navigation
 
-| Need to know | See |
-|-------------|------|
-| Proposal formats and analysis examples | EXAMPLES.md |
-| Hard rules and common pitfalls | SKILL_MEMORY.md |
-| Iteration and maintenance | ITERATION_GUIDE.md |
+| Need | See |
+|------|-----|
+| How proposals look end-to-end | EXAMPLES.md |
+| Hard constraints on every change | SKILL_MEMORY.md |
+| When to update this skill | ITERATION_GUIDE.md |
 
----
+## Trace Fields
 
-## Trace Entry Fields
+Hook-generated (read-only): `timestamp`, `modules`, `files_modified`, `file_count`, `lines_changed`, `edit_count`, `score`, `correction`.
 
-**Hook-generated (read-only)**: timestamp, correction, modules, files_modified, file_count, lines_changed, edit_count, score
+AI-supplemented: `type`, `skills`, `mode`, `request`, `intent`.
 
-**AI-supplemented**: type, skills, mode, request, intent
-
-**trace-flush injected**: validated (_/true/false/pending-pipeline/invalid)
-
-**correction**: _ (none) | auto:minor (1-2 fixes) | auto:major (3+ fixes) | minor/major (AI manual)
-
-**validated**: _ (no signal) | true (accepted) | false (rejected=P0) | pending-pipeline (awaiting Step 5) | invalid (abandoned)
-
----
+Lifecycle: `status` (pending/processed/expired/invalid), `validated` (`_`/true/false/pending-pipeline/invalid).
 
 ## Execution Flow
 
 ```
-Trigger -> Step 0 Lifecycle -> Step 1 Read & Sort -> Step 2 Pattern Detection -> Step 3 Generate Proposals -> Step 4 User Approval -> Step 5 Mark Processed -> Step 6 Calibrate (optional) -> Release lock
+Step 1 Read & Triage -> Step 2 Identify Patterns -> Step 3 Generate Proposals -> Step 4 User Approval -> Step 5 Write & Mark Processed -> Step 6 Calibrate (optional)
 ```
 
-**Trigger**: User inputs `origin evolve` or similar intent.
+### Step 1: Read & Triage
 
-### Step 0: Lifecycle Pre-processing
+Acquire `.trace_lock` (overwrite if stale). Apply lifecycle transitions: `pending` with stale validated -> `expired`; `pending-pipeline` past expiry -> `invalid`.
 
-1. Write `.trace_lock` (overwrite if stale). Read `traces/limits.json` for expiry thresholds.
-2. State transitions: `pending-pipeline` past expiry -> `invalid`; `pending` with `_`/`false` validated past expiry -> `expired`.
-3. Log transition counts in analysis summary (no separate file).
+Read trace.md, keep `pending` only. If fewer than 5 pending entries and no correction signals, suggest waiting.
 
-### Step 1: Read and Sort
+Compute three diagnostic counts across `.claude/skills/*/SKILL_MEMORY.md` and include in the analysis summary:
+- within-skill rule pairs with anchor Jaccard >= 0.5
+- cross-skill identical anchor sets
+- cross-skill rule pairs with anchor Jaccard >= 0.5
 
-Read trace.md, skip `processed`/`expired`/`invalid`. If < 5 pending entries, suggest waiting.
+Non-zero counts indicate prior attribution or merge errors and should inform Step 2 proposal generation.
 
-Priority order:
-- P0: `validated:false` (sub-sort: auto:major > auto:minor > _)
-- P1: `validated:true` + `correction:auto:major`
-- P2: `validated:true` + `correction:auto:minor`
-- P3: `validated:_` + any correction signal
-- P4: `validated:_` + `correction:_` (by score desc)
-- Old-format entries (no validated): treat as `validated:_`
+Sort priority:
+- P0: `validated:false` (sub-sort: auto:major > auto:minor > `_`)
+- P1: `validated:true` + correction:auto:major
+- P2: `validated:true` + correction:auto:minor
+- P3: `validated:_` with any correction signal
+- P4: `validated:_`, no correction (by score desc)
 
-### Step 2: Pattern Detection
+### Step 2: Identify Patterns
 
-Six pattern types from sorted traces:
+Focus on high-leverage signals; require 3+ supporting traces:
+- **Correction cluster** — same module, multiple `correction` entries -> module lacks rule guidance
+- **Module hotspot** — same module pair co-occurring -> undocumented cross-module dependency
+- **Complexity concentration** — single file with `edit_count` >= 10 across multiple traces -> missing usage examples
+- **Cross-skill overlap signal** — Step 1 diagnostic counts non-zero -> attribution review candidate
 
-| Pattern | Signal | Indicates |
-|---------|--------|-----------|
-| Correction | correction non-_ clusters by module | Module lacks rule guidance |
-| Module hotspot | modules field co-occurrence | Undocumented cross-module dependency |
-| Knowledge gap | skills field empty | Skill metadata needs expansion |
-| Complexity concentration | high edit_count, low file_count | Missing usage rules/examples for file |
-| Semantic drift | 3+ validated:false + correction:_ same module | Systematic AI misunderstanding |
-| IDP gap | mode:_ dominant in module | Information identification rules missing |
+Speculative patterns (use only with overwhelming evidence): knowledge gap (`skills:[]`), semantic drift (`validated:false` + `correction:_`), IDP gap (`mode:_` dominant).
 
-### Step 3: Generate Proposals (with governance)
+### Step 3: Generate Proposals
 
-For each pattern:
+For each pattern, produce a proposal containing:
+1. Operation: Append, Merge, or Retire (Rule 3)
+2. Target skill and file (Rule 2)
+3. Full content with Anchors and Related fields
+4. Evidence: timestamps + modules of supporting traces
+5. Risk note and confidence
 
-**3a. Attribution**: Follow SKILL_MEMORY Rule 2 decision tree for target skill and file.
+Pre-write check: capacity headroom; for Retire, grep evidence that anchors are absent from current code.
 
-**3b. Operation type**: Check if semantically similar entry exists -> Merge (yes) or Append (no).
-
-**3c. Capacity check**: Count target file words. If over threshold -> attach Retire suggestion. Retire candidates: grep-verify anchors; missing anchors = eligible.
-
-**3d. Assemble**: operation type, phenomenon, evidence (timestamps+modules), change content (diff for Merge), target file, benefit, risk, confidence. Only propose when confidence high and benefit outweighs risk.
+When module-list and anchor evidence disagree on attribution, present BOTH candidate skills in Step 4 for user choice.
 
 ### Step 4: User Approval
 
-Present proposals individually with operation-specific detail:
-- **Append**: Full new entry with Anchors and Related
-- **Merge**: Original, merged version, and diff
-- **Retire**: Content, grep verification, [RETIRED] effect
+Present proposals one at a time:
+- **Append** — full new entry
+- **Merge** — original, merged version, and diff
+- **Retire** — content + grep verification + `[RETIRED]` effect
 
-Rejections recorded as EVOLVE_REJECTION in trace.md with pattern, reason, and future effect.
+Rejection records an `EVOLVE_REJECTION` entry with pattern name, reason, and future scope effect.
 
-### Step 5: Mark Processed
+### Step 5: Write & Mark Processed
 
-Replace analyzed entries with: `<!-- PROCESSED ts:{ISO8601} entries:{N} proposals:{M} -->`
+Atomic write (temp + rename). Replace analyzed entries with one audit line:
 
-Write atomically (temp file + rename). Delete `.trace_lock` in finally block.
+```
+<!-- PROCESSED ts:{ISO8601} entries:{N} proposals:{M} -->
+```
 
-### Step 6: Calibrate Scoring (optional)
+Delete `.trace_lock` in finally block.
 
-When 20+ entries processed: compare dimensions between proposal-yielding and non-yielding traces. Adjust weights +/-5-10% (max 10% per adjustment, range 0.2-3.0, threshold 1.0-3.0). Ensure `.trace_lock` deleted in finally block.
+### Step 6: Calibrate (Optional)
+
+When 20+ entries processed in this run, compare F/D/K/S/E dimension means between proposal-yielding traces and non-yielding traces. Adjust the dimension with the largest gap by 5-10% (weights 0.2-3.0, thresholds 1.0-3.0). At most one dimension per run.
