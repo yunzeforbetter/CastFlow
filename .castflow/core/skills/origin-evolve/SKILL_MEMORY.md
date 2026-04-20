@@ -6,174 +6,92 @@
 
 ### Rule 1: Evidence-Based Proposals Only
 
-**Definition**: Every proposal must cite specific trace entries as evidence. No speculative improvements.
-
-**Check list**:
-- [ ] Does the proposal reference at least 2 concrete trace entries (by timestamp or sequence)?
-- [ ] Is the pattern consistent across those entries (same root cause)?
-- [ ] Would someone reading only the evidence agree with the conclusion?
+Every proposal must cite 2+ concrete trace entries (by timestamp) with consistent pattern (same root cause). No speculative improvements. Check: evidence independently supports conclusion?
 
 ---
 
 ### Rule 2: Correct Attribution
 
-**Definition**: Proposed changes must be written to the correct file based on scope.
+**Target skill**:
+- 1 module with matching programmer-*-skill -> that skill
+- 2+ modules, no common parent -> `.claude/rules/` (cross-cutting rule)
+- 2+ modules under same parent -> parent module's skill
+- skills field empty -> most related skill's SKILL.md description
 
-**Attribution decision tree**:
+**Target file**:
+- Correction pattern -> SKILL_MEMORY.md
+- Complexity concentration (high edit_count) -> EXAMPLES.md
+- Module hotspot -> SKILL_MEMORY.md
+- Knowledge gap -> SKILL.md metadata (expand trigger keywords)
+- Project-wide convention -> suggest adding to CLAUDE.md (never write directly)
+- Scoring model -> `traces/weights.json` (only via Step 6)
 
-Step 1 - Determine target skill:
-- modules contains only 1 module with a matching programmer-*-skill -> that skill
-- modules contains 2+ modules with no common parent -> `.claude/rules/` as cross-cutting rule
-- modules contains 2+ modules under same parent (e.g. Building+Queue under City) -> parent module's skill
-- skills field is empty (knowledge gap) -> update the most related skill's SKILL.md description
-
-Step 2 - Determine target file within skill:
-- Correction pattern (AI repeatedly made same mistake) -> SKILL_MEMORY.md (add rule to prevent)
-- Complexity concentration (high edit_count on specific file) -> EXAMPLES.md (add usage example)
-- Module hotspot (module combo pattern) -> SKILL_MEMORY.md (add collaboration constraint)
-- Knowledge gap (no skill matched) -> SKILL.md metadata (expand trigger keywords)
-
-Other targets:
-- Project-wide convention -> suggest user add to CLAUDE.md (do not write directly)
-- Scoring model adjustment -> `traces/weights.json` (only via Step 6 calibration)
-
-**Check list**:
-- [ ] Did you follow the decision tree (not guess)?
-- [ ] If targeting CLAUDE.md, is it phrased as a suggestion?
-- [ ] If creating `.claude/rules/`, is the rule substantial enough?
+Check: Followed decision tree? CLAUDE.md phrased as suggestion?
 
 ---
 
 ### Rule 3: Knowledge Lifecycle Operations
 
-**Definition**: Writing to Skill files supports three operations, not just append. Each requires user approval.
+| Operation | Condition | Action |
+|-----------|-----------|--------|
+| Append | No similar entry exists | Add with Anchors + Related |
+| Merge | Overlaps existing entry (same root cause/code area) | Expand existing; show diff |
+| Retire | Anchors no longer exist (grep-verified) or user requests | Add [RETIRED] to heading; do NOT delete |
 
-**Append** - Adding a new entry:
-- Condition: New pattern, no similar entry exists in target file
-- Format: Follow target file's existing numbering and heading style
-- The new entry must include Anchors and Related fields (see Rule 8)
-
-**Merge** - Combining with an existing entry:
-- Condition: New pattern is closely related to an existing entry (same root cause or same code area)
-- Action: Expand the existing entry's definition and check list, not create a duplicate
-- Must show the user: original entry, proposed merged version, and the diff
-- Numbering stays the same, content becomes more comprehensive
-
-**Retire** - Marking an entry as inactive:
-- Condition: Anchor verification shows the entry's code symbols no longer exist in the project, OR user explicitly requests retirement during review
-- Action: Add `[RETIRED]` marker to the entry heading. Do NOT delete the entry
-- Retired entries are skipped by AI when loading SKILL_MEMORY but preserved for history
-- User can remove the marker to reactivate at any time
-
-**Check list**:
-- [ ] Is the operation type (Append/Merge/Retire) explicitly stated in the proposal?
-- [ ] For Merge: is the diff shown to the user?
-- [ ] For Retire: is anchor verification evidence provided?
-- [ ] Does the user approve before any write?
+All operations require user approval. Merge must show diff. Retire must show grep evidence.
 
 ---
 
 ### Rule 4: Proposal Threshold
 
-**Definition**: Only propose when the benefit clearly outweighs the cost.
-
-**Propose when**:
-- Pattern appears in 3+ traces with consistent behavior
-- The pattern has measurable impact signals (correction fields, high edit_count, cross-module repetition)
-- The fix is concrete and actionable (not vague advice)
-
-**Do not propose when**:
-- Pattern appeared only once or twice (could be coincidence)
-- Impact is negligible (minor style preference, not a real problem)
-- The fix would be overly restrictive (high false positive risk)
-- A similar proposal was previously rejected (check EVOLVE_REJECTION entries)
-
-**Check list**:
-- [ ] Does the pattern meet the 3+ occurrence threshold?
-- [ ] Is the impact measurable and significant?
-- [ ] Has a similar proposal been rejected before?
+Propose only when: 3+ trace occurrences, measurable impact (correction/high edit_count/cross-module), concrete fix, not previously rejected (check EVOLVE_REJECTION entries). Do not propose for single occurrences or negligible impact.
 
 ---
 
-### Rule 5: Respect SKILL_ITERATION Standards
+### Rule 5: File Standards and Capacity
 
-**Definition**: All generated content must comply with SKILL_ITERATION.md file size limits and format rules.
-
-**Check list**:
-- [ ] No emoji or special symbols?
-- [ ] No dates, timestamps, or version markers?
-- [ ] No code blocks in SKILL_MEMORY.md entries?
-- [ ] File size stays within SKILL_ITERATION limits after the operation?
+All generated content must comply with SKILL_ITERATION.md size limits and format rules: no emoji, no dates/timestamps, no code blocks in SKILL_MEMORY entries. Before writing: check word count, ensure Anchors + Related fields, propose Merge or Retire if over range, grep-verify anchors before Retire.
 
 ---
 
 ### Rule 6: Do Not Modify Hook-Generated Fields
 
-**Definition**: When supplementing trace entries, only modify placeholder fields. Never modify Hook-generated fields.
-
-**Protected fields**: timestamp, modules, files_modified, file_count, lines_changed, edit_count, score, correction (when auto-filled)
-
-**Check list**:
-- [ ] Is the modification limited to `type` and `skills` fields?
-- [ ] Are Hook-generated values left untouched?
+Only modify `type` and `skills` when supplementing trace entries. Never touch: timestamp, modules, files_modified, file_count, lines_changed, edit_count, score, correction (when auto-filled).
 
 ---
 
-### Rule 7: Capacity Governance and Entry Format
+### Rule 7: Trace Entry Lifecycle
 
-**Definition**: Before writing to any Skill file, follow SKILL_ITERATION.md's capacity governance rules (Append/Merge/Retire operations and Anchors/Related entry format).
+States: `pending` (eligible), `processed` (audit line), `expired` (validation window elapsed), `invalid` (pipeline abandoned).
 
-**Check list**:
-- [ ] Was word count checked before proposing the write?
-- [ ] Does the entry include Anchors and Related fields (per SKILL_ITERATION)?
-- [ ] If over recommended range, is a Merge or Retire included in the proposal?
-- [ ] For Retire: was Anchor grep verification performed?
-- [ ] After all operations, does the file stay within SKILL_ITERATION warning threshold?
+Step 0 transitions: `pending` with stale validated -> `expired`; `pending-pipeline` past expiry -> `invalid`. Old-format entries (no validated field): treat as `validated:_`, eligible if they carry correction signals.
+
+---
+
+### Rule 8: P0 Semantic Drift
+
+`validated:false` is always P0 regardless of correction. Sub-sort: auto:major > auto:minor > _. When 3+ P0 entries share a module with `correction:_`, compare request vs intent to identify systematic misunderstanding; propose intent-clarification rule.
+
+---
+
+### Rule 9: .trace_lock Management
+
+Write at Step 0 start; delete in finally block after Step 5. Stale lock = overwrite (not blocker). Lock signals trace-flush to skip compaction; appends always safe. Single-session assumption.
 
 ---
 
 ## Common Pitfalls
 
-### Pitfall 1: Over-proposing
+**Pitfall 1: Over-proposing** -- 10+ proposals from 20 traces = low confidence. Target 2-3 high-confidence proposals.
 
-**Symptom**: Generating 10+ proposals from 20 traces, most with low confidence.
+**Pitfall 2: Wrong file target** -- Building-specific rule in GLOBAL_SKILL_MEMORY, or cross-cutting in one skill. Follow Rule 2 decision tree; prefer narrower scope when uncertain.
 
-**Prevention**: Apply Rule 4 strictly. 2-3 high-confidence proposals are worth more than 10 speculative ones.
+**Pitfall 3: Re-proposing rejected patterns** -- Always check EVOLVE_REJECTION entries first.
 
-### Pitfall 2: Writing to Wrong File
+**Pitfall 4: Vague proposals** -- "improve error handling" is not a proposal. Requires: concrete target, content, and evidence.
 
-**Symptom**: Adding a building-specific rule to GLOBAL_SKILL_MEMORY, or a cross-cutting rule to a single skill.
+**Pitfall 5: Ignoring edit_count** -- High edit_count + low file_count = AI struggled with that file. Check complexity concentration.
 
-**Prevention**: Follow Rule 2 decision tree. When uncertain, prefer narrower scope.
+**Pitfall 6: Append without capacity check** -- Run Rule 5 capacity check before every Append.
 
-### Pitfall 3: Proposing What Was Already Rejected
-
-**Symptom**: Re-proposing a pattern the user previously rejected.
-
-**Prevention**: Always check EVOLVE_REJECTION entries in trace.md. Respect user's reasoning.
-
-### Pitfall 4: Vague Proposals
-
-**Symptom**: Proposal says "improve error handling" without specifics.
-
-**Prevention**: Every proposal needs concrete target file, concrete content, and concrete evidence.
-
-### Pitfall 5: Ignoring edit_count Signal
-
-**Symptom**: Only analyzing correction and modules, missing complexity concentration.
-
-**Prevention**: Check for high edit_count + low file_count patterns. These indicate AI struggled with specific code.
-
-### Pitfall 6: Append Without Capacity Check
-
-**Symptom**: SKILL_MEMORY.md grows past 2000 words because every evolve cycle appends new entries without checking.
-
-**Prevention**: Always run Rule 7 capacity check before proposing any Append. If over recommended range, propose a Merge or Retire first.
-
-### Pitfall 7: Merging Without User Diff Review
-
-**Symptom**: Silently combining two entries, losing nuance from the original.
-
-**Prevention**: Merge must always show the user the before/after diff. The user decides if the merge preserves the intent of both entries.
-
----
+**Pitfall 7: Compaction deleting pending-pipeline** -- All compression must skip `validated:pending-pipeline` entries awaiting Step 5 results.

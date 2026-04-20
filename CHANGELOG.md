@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### origin-evolve 压缩优化
+
+- **change**: 四个 Skill 文件（SKILL.md / EXAMPLES.md / SKILL_MEMORY.md / ITERATION_GUIDE.md）整体压缩 37% 行数、33% 字符、29% 词数，去除冗余表述，保留全部核心规则。
+- **change**: SKILL.md 中 pending 最小条目阈值从 10 降至 5，与 passive trigger 阈值对齐。
+- **change**: EXAMPLES.md 从 9 个示例合并为 5 个，移除重复说明。
+- **change**: SKILL_MEMORY.md 合并 Rule 5 与 Rule 7，重新编号，check-list 改为内联格式。
+
+### trace-flush.py 健壮性修复
+
+- **fix(P0)**: `apply_pipeline_result()` 中 `result_str` 变量作用域 bug——JSON 解析失败走 fallback 时 `result_str` 未初始化，导致 `UnboundLocalError`。
+- **feat(P1)**: compaction Level 1-3 保护 validated 条目（`true` / `false` / `pending-pipeline`），防止用户反馈信号被自动清理。
+- **feat(P1)**: 新增 Level 0 阶段——每次 compact 时清理过期的 `PROCESSED` / `COMPACTED` 审计行（`processed_expire_days` 可配）。
+- **feat(P2)**: Level 3 compaction 新增 `keep_top_n_per_module` 逻辑，保证每个模块至少保留 N 条最高分条目，防止低频模块的 trace 被全部清除。
+- **fix(P2)**: compact 后清理连续空行（3+ 换行压缩为 2 换行），防止反复 append/compact 导致文件膨胀。
+
+### trace-collector.py 语言扩展
+
+- **feat(P2)**: `TRACKED_EXTENSIONS` 从仅 `.cs` 扩展至 18 种主流语言（.ts/.tsx/.js/.jsx/.py/.go/.java/.kt/.rs/.swift/.cpp/.c/.h/.hpp/.lua/.rb/.dart）。
+
+### README.md
+
+- **update**: 修正"四维模式识别"为"六类模式识别"，列出全部六种模式类型。
+- **update**: 新增 Trace Compaction 章节，说明四级自动压缩策略和 validated 保护机制。
+- **update**: 补充 trace 条目的 `validated` 和 `pipeline_run_id` 字段说明及状态流转。
+- **update**: 进化提醒阈值从 `pending >= 10` 更新为 `pending >= 5`。
+- **update**: 目录结构新增测试文件和 CHANGELOG.md。
+
+### 测试套件（新增）
+
+- **feat**: `test_evolution.py`（84 tests）——基础单元测试，覆盖 collector 采集、buffer 格式、flush 评分、compaction 四级策略、validated 保护、审计行过期、空行清理、被动通知等全部核心路径。
+- **feat**: `test_100day_simulation.py`（27 tests）——模拟 100 天连续生产环境，验证 trace 条目在持续 append + compact 下保持有界、模块多样性保留、审计行正确过期、空行不累积。
+- **feat**: `test_365day_simulation.py`（23 tests）——模拟 365 天生产环境，含工作日/周末活跃度差异、季度模块焦点漂移、混合会话类型（feature / bugfix / pipeline / trivial chat）、内存知识库模型（规则提取 / 合并 / 退休 / 拒绝记忆），全面验证自进化闭环。
+
+---
+
 ### Rename: CostFlow -> CastFlow
 
 - **breaking**: 项目更名为 CastFlow，README 及所有面向用户的文档统一使用新名称。

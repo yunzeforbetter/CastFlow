@@ -1,0 +1,14 @@
+{
+  "compact_max_entries": 80,
+  "compact_max_size_kb": 100,
+  "level2_age_days": 14,
+  "level2_score_threshold": 1.0,
+  "level3_age_days": 7,
+  "level3_score_threshold": 0.5,
+  "keep_top_n_per_module": 3,
+  "passive_trigger_threshold": 10,
+  "passive_trigger_min_new": 5,
+  "pipeline_pending_expire_days": 7,
+  "validated_uncertain_expire_days": 14,
+  "processed_expire_days": 30
+}

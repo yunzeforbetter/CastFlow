@@ -1,69 +1,74 @@
 # Pipeline Protocol - Pipeline 执行时扩展协议
 
-> **性质**：仅在使用 code-pipeline 进行多模块协作开发时生效的运行时协议。
-> **加载时机**：code-pipeline Step 1 启动时加载，独立使用 Skill/Agent 时不需要。
-> **基础协议**：本文件是 [GLOBAL_SKILL_MEMORY.md](../../GLOBAL_SKILL_MEMORY.md) 的扩展。协议 1（API 验证）和协议 2（约束对齐）始终生效，无需重复加载。
+> **性质**：仅在 code-pipeline 执行时生效。基础协议（GLOBAL_SKILL_MEMORY 协议 1/2）始终生效，无需重复加载。
 
 ---
 
 ## 协议 1：数据分层合成与物理固化 - P0
 
-**定义**：Skill 的数据分层（L1 动态参数/L2 静态约束）必须在执行前完成"编译合成"，并物理写入看板。
-1. **强制加载**：调用 Skill 前，若该 Skill 目录下存在 `params.schema.json` 或 `defaults.json`，必须物理读取；若不存在则跳过此步。
-2. **合成看板化**：将 L1+L2 的合成结果（如命名空间、类基类、组件预设）写入 PCB 的 CONFIG_SYNTHESIS 模块。
-3. **驱动实现**：代码实现必须以看板上的合成参数为准，严禁跳过物理看板直接基于记忆编写。
+执行前将 L1 动态参数与 L2 静态约束编译合成，物理写入看板：
+1. 若 Skill 目录有 `params.schema.json` 或 `defaults.json`，必须读取；否则跳过
+2. 将合成结果（命名空间、类基类、组件预设等）写入 PCB 的 CONFIG_SYNTHESIS
+3. 代码实现以看板参数为准，禁止绕过看板基于记忆编写
 
 ---
 
 ## 协议 2：地毯式原始资产清单与双阶段解构 - P0
 
-**定义**：在开发任何非琐碎任务（特别是基于 PDF、导图、截图的任务）前，必须执行"原子序数扫描法"，彻底物理隔离"数据输入"与"逻辑设计"。
+处理 PDF / 导图 / 截图类任务时，必须物理隔离"数据输入"与"逻辑设计"：
 
-**第一阶段：原始数据资产清单 (Raw Asset Manifesting)**
--   **目标**：100% 无损提取原始输入中的物理节点。
--   **动作**：
-    1.  **无差别提取**：不带感情色彩、不经逻辑加工地列出输入源中所有的文字内容、图标/按钮名称、分支连线。
-    2.  **布局定位**：按"顶部、中部、底部、左、右"的顺序分块罗列，防止视觉盲点。
-    3.  **禁止脑补**：此阶段严禁出现"通常来说..."、"应该有..."等推测词。
+**阶段 1 - 原始资产清单**：按顶/中/底/左/右逐块列出所有文字、图标、按钮名、连线，禁止出现"通常来说"、"应该有"等推测词。
 
-**第二阶段：功能关联报告 (Functional Synthesis)**
--   **目标**：将第一阶段的清单转化为可执行的技术架构。
--   **动作**：
-    1.  **建立映射**：每一个功能组件必须关联到清单中的具体节点（例如："购买按钮"来自清单第 3 项）。
-    2.  **动线分析**：梳理各物理节点间的交互链条和数据流向。
-    3.  **确认门控**：**必须** 将第一阶段清单和第二阶段报告一并提交用户确认。
+**阶段 2 - 功能关联报告**：每个功能组件必须映射到阶段 1 的具体条目，梳理交互链条和数据流向。
 
-**确认逻辑 (Gate Check)**：
--   **必须询问**："原始资产清单是否包含所有可见文字？功能总结是否遗漏了清单中的某一项？"
--   **红区**：严禁在未输出清单或未经确认的情况下直接生成代码。
+**门控**：两阶段输出必须一并提交用户确认，确认前禁止生成代码。
 
 ---
 
-## 协议 3：阶段性记忆重置与看板对齐 (Purge-and-Sync) - P0
+## 协议 3：阶段性记忆重置与看板对齐 - P0
 
-**定义**：物理看板是第一记忆，模型会话是第二记忆。
-1. **原子前重同步**：每进入一个"原子实现单元"，必须 `Read PIPELINE_CONTEXT.md` 以重置注意力。
-2. **经验噪声清洗**：通过同步，屏蔽掉历史中的 `Grep` 冗余、`Read` 碎片。看板未记录的逻辑视为无证据幻觉。
+物理看板是第一记忆，模型会话是第二记忆。每进入一个原子实现单元前，必须 `Read PIPELINE_CONTEXT.md` 重置注意力。看板未记录的逻辑视为无证据幻觉。
 
 ---
 
 ## 协议 4：宏观蓝图先行与原子击破 - P0
 
-**定义**：代码实现的本质是"类关系管理"与"独立小问题解决"。
-1. **类契约建立**：先声明类名、职责、Public 签名，写入 PCB 的 BLUEPRINT。
-2. **原子化执行**：将大任务拆分为若干独立的小问题，依次解决并从看板上标记 `Completed`。
+先声明类名、职责、Public 签名，写入 PCB 的 BLUEPRINT；再将任务拆分为独立小问题，依次解决并标记 `Completed`。
 
 ---
 
-## PCB 看板标准结构 (The Single Source of Truth)
+## PCB 看板标准结构
 
-*如果看板缺失，AI 必须以此模版初始化（严禁基于经验脑补）：*
+看板缺失时以此初始化（禁止凭经验脑补）：
 
-1. **SHADOW_BANS**: 核心禁令区（由 Skill Memory 导出，如：No Image）。
-2. **CONFIG_SYNTHESIS**: 参数合成表（L1/L2 最终值，如：Namespace, BaseClass）。
-3. **MACRO_SCOPE**: 宏观解构区（功能点清单 A/B/C，跳转动线图）。
-4. **BLUEPRINT**: 架构蓝图区（类定义、事件契约、物理 API 锚点）。
-5. **ATOMIC_EXECUTION**: 原子执行计划（[x] 已解决项, [ ] 待解决项）。
+| 区域 | 内容 |
+|------|------|
+| SHADOW_BANS | Skill Memory 导出的核心禁令（如 No Image） |
+| CONFIG_SYNTHESIS | L1/L2 合成参数最终值（Namespace、BaseClass 等） |
+| MACRO_SCOPE | 功能点清单、跳转动线图 |
+| BLUEPRINT | 类定义、事件契约、物理 API 锚点 |
+| ATOMIC_EXECUTION | [x] 已完成 / [ ] 待完成 原子任务 |
+
+---
+
+## 协议 5：pipeline_run_id 追踪协议
+
+每次 pipeline 产生唯一 run_id，将 Step 3 的 trace 条目与 Step 5 的 GO/NO-GO 结果关联。
+
+**Step 1**：生成 `pipeline_{YYYYMMDD}_{HHMMSS}`，写入 PIPELINE_CONTEXT.md 头部：`pipeline_run_id: <id>`
+
+**Step 3**：trace-flush 检测到 PIPELINE_CONTEXT.md 含 `pipeline_run_id:` 字段时，自动将新 trace 的 `validated` 初始化为 `pending-pipeline`，打标透明，programmer-agent 无需感知。
+
+**Step 5**：pipeline-verify-agent 输出 VERIFICATION_REPORT 后，写入 `traces/.pending_pipeline_result.json`：
+```
+pipeline_run_id: <id>
+result: GO
+```
+Stop Hook 触发时 trace-flush 读取此文件，批量将匹配条目的 `validated` 更新为 true/false，然后删除文件。
+
+**Step 9**：从 PIPELINE_CONTEXT.md 删除 `pipeline_run_id:` 行（Cleanup 模式随文件删除；Persist 模式需手动删除）。
+
+**约束**：禁止遗留过期 run_id（会导致新 trace 被误关联）；中途放弃的 pipeline 其 `pending-pipeline` 条目 7 天后由 trace-flush 标记为 invalid。
 
 ---
 

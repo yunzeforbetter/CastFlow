@@ -24,7 +24,12 @@ TRACE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "trac
 BUFFER_FILE = os.path.join(TRACE_DIR, ".trace_buffer")
 PREV_EDITS_FILE = os.path.join(TRACE_DIR, ".trace_prev_edits")
 
-TRACKED_EXTENSIONS = {".cs"}
+TRACKED_EXTENSIONS = {
+    ".cs", ".ts", ".tsx", ".js", ".jsx",
+    ".py", ".go", ".java", ".kt", ".rs",
+    ".swift", ".cpp", ".c", ".h", ".hpp",
+    ".lua", ".rb", ".dart",
+}
 EXCLUDED_EXTENSIONS = {".meta", ".asset", ".prefab", ".unity", ".mat", ".anim", ".controller"}
 
 REVERT_SIMILARITY_THRESHOLD = 0.6

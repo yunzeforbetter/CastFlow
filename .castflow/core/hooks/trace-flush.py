@@ -2,9 +2,13 @@
 """
 CastFlow Trace Flush - Cross-platform hook script.
 
-Triggered when the agent stops (Cursor: stop, Claude Code: Stop).
-Reads the trace buffer, computes a multi-dimensional significance score,
-and appends a trace entry to trace.md if the score meets the threshold.
+Triggered when the agent stops (Claude Code: Stop).
+Responsibilities (in order):
+  1. apply_validated_update  - update validated field for most-recent pending entry
+  2. apply_pipeline_result   - batch-update validated for a pipeline run
+  3. flush_new_trace         - read buffer, score, write new trace entry (with IDP)
+  4. check_and_compact       - compress trace.md if over threshold (skipped when locked)
+  5. check_notify            - passive trigger notification via NOTIFY block in trace.md
 
 Scoring model (v2):
   F (file count)        min(file_count / 3, 1.0)
@@ -29,6 +33,12 @@ TRACE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "trac
 BUFFER_FILE = os.path.join(TRACE_DIR, ".trace_buffer")
 TRACE_FILE = os.path.join(TRACE_DIR, "trace.md")
 WEIGHTS_FILE = os.path.join(TRACE_DIR, "weights.json")
+LIMITS_FILE = os.path.join(TRACE_DIR, "limits.json")
+PENDING_IDP_FILE = os.path.join(TRACE_DIR, ".pending_idp.json")
+PENDING_VALIDATED_FILE = os.path.join(TRACE_DIR, ".pending_validated.json")
+PENDING_PIPELINE_FILE = os.path.join(TRACE_DIR, ".pending_pipeline_result.json")
+NOTIFY_STATE_FILE = os.path.join(TRACE_DIR, ".notify_state.json")
+TRACE_LOCK_FILE = os.path.join(TRACE_DIR, ".trace_lock")
 
 DEFAULT_WEIGHTS = {
     "F": 1.0,
@@ -38,6 +48,21 @@ DEFAULT_WEIGHTS = {
     "E": 0.8,
 }
 DEFAULT_THRESHOLD = 1.5
+
+DEFAULT_LIMITS = {
+    "compact_max_entries": 80,
+    "compact_max_size_kb": 100,
+    "level2_age_days": 14,
+    "level2_score_threshold": 1.0,
+    "level3_age_days": 7,
+    "level3_score_threshold": 0.5,
+    "keep_top_n_per_module": 3,
+    "passive_trigger_threshold": 10,
+    "passive_trigger_min_new": 5,
+    "pipeline_pending_expire_days": 7,
+    "validated_uncertain_expire_days": 14,
+    "processed_expire_days": 30,
+}
 
 CRITICAL_TIERS = [
     (re.compile(r"^I[A-Z]\w+Manager\.cs$"), 1.0),
@@ -61,7 +86,7 @@ MODULE_DIR_PATTERN = re.compile(r"[Mm]odules/([^/]+)")
 
 
 # ============================================================
-# Weights loading
+# Config loading
 # ============================================================
 
 def load_weights():
@@ -92,6 +117,27 @@ def load_weights():
         pass
 
     return weights, threshold
+
+
+def load_limits():
+    """Load compaction limits from limits.json, fallback to defaults."""
+    limits = dict(DEFAULT_LIMITS)
+
+    if not os.path.isfile(LIMITS_FILE):
+        return limits
+
+    try:
+        with open(LIMITS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for key in DEFAULT_LIMITS:
+            if key in data:
+                val = data[key]
+                if isinstance(val, (int, float)) and val > 0:
+                    limits[key] = val
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    return limits
 
 
 # ============================================================
@@ -252,10 +298,7 @@ def compute_score(file_paths, modules, total_lines, total_edits, weights):
 # ============================================================
 
 def infer_correction(revert_count):
-    """Infer correction level from revert count.
-
-    Returns a string for the correction field in the trace entry.
-    """
+    """Infer correction level from revert count."""
     if revert_count >= 3:
         return "auto:major"
     if revert_count >= 1:
@@ -264,33 +307,278 @@ def infer_correction(revert_count):
 
 
 # ============================================================
-# Trace formatting
+# Pending file readers
+# ============================================================
+
+def read_pending_idp():
+    """Read .pending_idp.json and return its data dict or None.
+
+    The file is deleted unconditionally in cleanup_pending_files() (finally block).
+    """
+    if not os.path.isfile(PENDING_IDP_FILE):
+        return None
+
+    try:
+        with open(PENDING_IDP_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    return None
+
+
+def cleanup_pending_files():
+    """Unconditionally delete .pending_idp.json.
+
+    Called in the finally block of main() to prevent stale IDP from
+    contaminating the next Stop Hook invocation.
+    """
+    try:
+        if os.path.isfile(PENDING_IDP_FILE):
+            os.remove(PENDING_IDP_FILE)
+    except OSError:
+        pass
+
+
+# ============================================================
+# Validated update (most-recent pending entry)
+# ============================================================
+
+def apply_validated_update():
+    """Read .pending_validated.json and update the most recent validated:_ trace entry."""
+    if not os.path.isfile(PENDING_VALIDATED_FILE):
+        return
+
+    validated_value = None
+    try:
+        with open(PENDING_VALIDATED_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        result = data.get("result", "")
+        if result == "accepted":
+            validated_value = "true"
+        elif result == "rejected":
+            validated_value = "false"
+    except (json.JSONDecodeError, OSError):
+        pass
+    finally:
+        try:
+            os.remove(PENDING_VALIDATED_FILE)
+        except OSError:
+            pass
+
+    if validated_value is None or not os.path.isfile(TRACE_FILE):
+        return
+
+    try:
+        with open(TRACE_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        trace_block_pattern = re.compile(
+            r"(<!-- TRACE[^>]*-->.*?<!-- /TRACE -->)",
+            re.DOTALL
+        )
+        blocks = list(trace_block_pattern.finditer(content))
+
+        target_match = None
+        for m in reversed(blocks):
+            block_text = m.group(1)
+            if re.search(r"^validated:\s*_\s*$", block_text, re.MULTILINE):
+                target_match = m
+                break
+
+        if target_match is None:
+            return
+
+        old_block = target_match.group(1)
+        new_block = re.sub(
+            r"^(validated:\s*)_\s*$",
+            r"\g<1>" + validated_value,
+            old_block,
+            count=1,
+            flags=re.MULTILINE,
+        )
+
+        new_content = (
+            content[:target_match.start()]
+            + new_block
+            + content[target_match.end():]
+        )
+
+        tmp_file = TRACE_FILE + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8", newline="\n") as f:
+            f.write(new_content)
+        os.replace(tmp_file, TRACE_FILE)
+
+    except OSError:
+        pass
+
+
+# ============================================================
+# Pipeline result batch update
+# ============================================================
+
+def detect_pipeline_context():
+    """Detect active pipeline run_id from PIPELINE_CONTEXT.md.
+
+    Searches for PIPELINE_CONTEXT.md starting from the project root
+    (three levels up from TRACE_DIR, which is hooks/../traces).
+    Returns run_id string if file exists and contains pipeline_run_id field,
+    otherwise returns None.
+    """
+    search_dir = os.path.abspath(os.path.join(TRACE_DIR, "..", "..", ".."))
+    candidate = os.path.join(search_dir, "PIPELINE_CONTEXT.md")
+
+    if not os.path.isfile(candidate):
+        return None
+
+    try:
+        with open(candidate, "r", encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r"pipeline_run_id:\s*(\S+)", line.strip())
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+
+    return None
+
+
+def apply_pipeline_result():
+    """Read .pending_pipeline_result.json and batch-update validated for matching trace entries."""
+    if not os.path.isfile(PENDING_PIPELINE_FILE):
+        return
+
+    run_id = None
+    validated_value = None
+    result_str = ""
+
+    try:
+        with open(PENDING_PIPELINE_FILE, "r", encoding="utf-8") as f:
+            content_str = f.read()
+
+        # Support both JSON and simple key:value format
+        try:
+            data = json.loads(content_str)
+            run_id = data.get("pipeline_run_id", "")
+            result_str = data.get("result", "")
+        except json.JSONDecodeError:
+            for line in content_str.splitlines():
+                m = re.match(r"pipeline_run_id:\s*(\S+)", line)
+                if m:
+                    run_id = m.group(1)
+                m2 = re.match(r"result:\s*(\S+)", line)
+                if m2:
+                    result_str = m2.group(1)
+
+        if run_id and result_str:
+            validated_value = "true" if result_str.upper() == "GO" else "false"
+
+    except OSError:
+        pass
+    finally:
+        try:
+            os.remove(PENDING_PIPELINE_FILE)
+        except OSError:
+            pass
+
+    if not run_id or not validated_value or not os.path.isfile(TRACE_FILE):
+        return
+
+    try:
+        with open(TRACE_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        trace_block_pattern = re.compile(
+            r"(<!-- TRACE[^>]*-->.*?<!-- /TRACE -->)",
+            re.DOTALL
+        )
+
+        target_run_id = run_id
+        target_validated = validated_value
+
+        def replace_pipeline_validated(m):
+            block = m.group(1)
+            if ("pipeline_run_id: " + target_run_id) not in block:
+                return block
+            if not re.search(r"^validated:\s*pending-pipeline\s*$", block, re.MULTILINE):
+                return block
+            return re.sub(
+                r"^(validated:\s*)pending-pipeline\s*$",
+                r"\g<1>" + target_validated,
+                block,
+                count=1,
+                flags=re.MULTILINE,
+            )
+
+        new_content = trace_block_pattern.sub(replace_pipeline_validated, content)
+
+        if new_content != content:
+            tmp_file = TRACE_FILE + ".tmp"
+            with open(tmp_file, "w", encoding="utf-8", newline="\n") as f:
+                f.write(new_content)
+            os.replace(tmp_file, TRACE_FILE)
+
+    except OSError:
+        pass
+
+
+# ============================================================
+# Trace formatting and appending
 # ============================================================
 
 def format_trace(file_paths, modules, score, total_lines, total_edits,
-                 correction):
-    """Format a trace entry with v2 metadata."""
+                 correction, idp=None, pipeline_run_id=None):
+    """Format a trace entry with v3 metadata (IDP + validated fields)."""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     files_str = ", ".join(file_paths[:20])
     if len(file_paths) > 20:
         files_str += ", ... +{} more".format(len(file_paths) - 20)
     modules_str = ", ".join(modules)
 
+    mode = "_"
+    request = "_"
+    intent = "_"
+    entry_type = "_"
+    skills = "[]"
+
+    if idp and isinstance(idp, dict):
+        mode = str(idp.get("mode") or "_")
+        request = str(idp.get("request") or "_")
+        intent = str(idp.get("intent") or "_")
+        entry_type = str(idp.get("type") or "_")
+        raw_skills = idp.get("skills", [])
+        if isinstance(raw_skills, list) and raw_skills:
+            skills = "[{}]".format(", ".join(str(s) for s in raw_skills))
+
+    validated = "pending-pipeline" if pipeline_run_id else "_"
+    run_id_value = pipeline_run_id if pipeline_run_id else "_"
+
     return (
         "<!-- TRACE status:pending -->\n"
         "timestamp: {}\n"
-        "type: _\n"
+        "mode: {}\n"
+        "type: {}\n"
+        "request: {}\n"
+        "intent: {}\n"
         "correction: {}\n"
+        "validated: {}\n"
+        "pipeline_run_id: {}\n"
         "modules: [{}]\n"
-        "skills: []\n"
+        "skills: {}\n"
         "files_modified: [{}]\n"
         "file_count: {}\n"
         "lines_changed: {}\n"
         "edit_count: {}\n"
         "score: {}\n"
         "<!-- /TRACE -->\n"
-    ).format(timestamp, correction, modules_str, files_str,
-             len(file_paths), total_lines, total_edits, score)
+    ).format(
+        timestamp, mode, entry_type, request, intent,
+        correction, validated, run_id_value,
+        modules_str, skills, files_str,
+        len(file_paths), total_lines, total_edits, score,
+    )
 
 
 def append_trace(entry):
@@ -308,36 +596,325 @@ def append_trace(entry):
 
 
 # ============================================================
+# New trace flush
+# ============================================================
+
+def flush_new_trace(idp):
+    """Read buffer, score, and write a new trace entry if score meets threshold."""
+    file_paths, total_lines, total_edits, revert_count = read_buffer()
+    if not file_paths:
+        clear_buffer()
+        return
+
+    weights, threshold = load_weights()
+    modules = infer_modules(file_paths)
+    score, _ = compute_score(file_paths, modules, total_lines, total_edits, weights)
+
+    if score >= threshold:
+        correction = infer_correction(revert_count)
+        pipeline_run_id = detect_pipeline_context()
+        entry = format_trace(
+            file_paths, modules, score, total_lines, total_edits,
+            correction, idp=idp, pipeline_run_id=pipeline_run_id,
+        )
+        append_trace(entry)
+
+    clear_buffer()
+
+
+# ============================================================
+# Compaction
+# ============================================================
+
+def count_trace_entries(content):
+    """Count total TRACE blocks in trace.md content."""
+    return len(re.findall(r"<!-- TRACE ", content))
+
+
+def count_pending_entries(content):
+    """Count pending (unprocessed) TRACE blocks."""
+    return len(re.findall(r"<!-- TRACE status:pending -->", content))
+
+
+def check_and_compact():
+    """Compact trace.md if over threshold, unless .trace_lock exists."""
+    if os.path.isfile(TRACE_LOCK_FILE):
+        return
+
+    if not os.path.isfile(TRACE_FILE):
+        return
+
+    limits = load_limits()
+
+    try:
+        file_size_kb = os.path.getsize(TRACE_FILE) / 1024.0
+        with open(TRACE_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        entry_count = count_trace_entries(content)
+    except OSError:
+        return
+
+    max_entries = int(limits["compact_max_entries"])
+    max_size_kb = float(limits["compact_max_size_kb"])
+
+    if entry_count <= max_entries and file_size_kb <= max_size_kb:
+        return
+
+    compact_trace(content, limits)
+
+
+def compact_trace(content, limits):
+    """Execute three-level compaction on trace.md content."""
+    now = datetime.now(timezone.utc)
+
+    trace_block_pattern = re.compile(
+        r"<!-- TRACE[^>]*-->.*?<!-- /TRACE -->",
+        re.DOTALL
+    )
+
+    def get_field(block, field):
+        m = re.search(r"^" + re.escape(field) + r":\s*(.+)$", block, re.MULTILINE)
+        return m.group(1).strip() if m else ""
+
+    def get_timestamp_age_days(block):
+        ts_str = get_field(block, "timestamp")
+        if not ts_str:
+            return 0
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            return (now - ts).days
+        except (ValueError, OverflowError):
+            return 0
+
+    def get_score(block):
+        s = get_field(block, "score")
+        try:
+            return float(s)
+        except ValueError:
+            return 0.0
+
+    # Level 0: Remove expired PROCESSED/COMPACTED audit lines
+    processed_expire = int(limits.get("processed_expire_days", 30))
+    audit_pattern = re.compile(
+        r"<!-- (?:PROCESSED|COMPACTED) ts:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)[^>]*-->\n?",
+    )
+
+    def remove_expired_audit(m):
+        ts_str = m.group(1)
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if (now - ts).days > processed_expire:
+                return ""
+        except (ValueError, OverflowError):
+            pass
+        return m.group(0)
+
+    content = audit_pattern.sub(remove_expired_audit, content)
+
+    blocks = list(trace_block_pattern.finditer(content))
+    blocks_to_remove = set()
+
+    # Level 1: Unconditional - remove invalid and expired entries
+    for i, m in enumerate(blocks):
+        block = m.group(0)
+        validated = get_field(block, "validated")
+        if validated == "pending-pipeline":
+            continue  # never remove pending-pipeline
+        status_match = re.search(r"<!-- TRACE status:(\S+) -->", block)
+        status = status_match.group(1) if status_match else "pending"
+        if status in ("expired", "invalid") or validated == "invalid":
+            blocks_to_remove.add(i)
+
+    # Level 2: Conditional - old low-score entries past age threshold
+    level2_age = int(limits["level2_age_days"])
+    level2_score = float(limits["level2_score_threshold"])
+
+    for i, m in enumerate(blocks):
+        if i in blocks_to_remove:
+            continue
+        block = m.group(0)
+        validated = get_field(block, "validated")
+        if validated in ("pending-pipeline", "true", "false"):
+            continue
+        age = get_timestamp_age_days(block)
+        score = get_score(block)
+        if age > level2_age and score < level2_score:
+            blocks_to_remove.add(i)
+
+    # Level 3: If still over limit, remove oldest low-score entries
+    remaining = len(blocks) - len(blocks_to_remove)
+    max_entries = int(limits["compact_max_entries"])
+
+    if remaining > max_entries:
+        level3_age = int(limits["level3_age_days"])
+        level3_score = float(limits["level3_score_threshold"])
+
+        candidates = []
+        for i, m in enumerate(blocks):
+            if i in blocks_to_remove:
+                continue
+            block = m.group(0)
+            validated = get_field(block, "validated")
+            if validated in ("pending-pipeline", "false"):
+                continue
+            age = get_timestamp_age_days(block)
+            score = get_score(block)
+            if age > level3_age and score < level3_score:
+                candidates.append((age, score, i))
+
+        candidates.sort(key=lambda x: (-x[0], x[1]))
+        overflow = remaining - max_entries
+        keep_top_n = int(limits.get("keep_top_n_per_module", 3))
+
+        module_keep_count = {}
+        for i, m_obj in enumerate(blocks):
+            if i in blocks_to_remove:
+                continue
+            block = m_obj.group(0)
+            modules_str = get_field(block, "modules")
+            for mod in re.findall(r"[A-Za-z_]\w*", modules_str):
+                module_keep_count[mod] = module_keep_count.get(mod, 0) + 1
+
+        for _, _, idx in candidates[:overflow]:
+            block = blocks[idx].group(0)
+            modules_str = get_field(block, "modules")
+            mods = re.findall(r"[A-Za-z_]\w*", modules_str)
+            if any(module_keep_count.get(mod, 0) <= keep_top_n for mod in mods):
+                continue
+            blocks_to_remove.add(idx)
+            for mod in mods:
+                if mod in module_keep_count:
+                    module_keep_count[mod] -= 1
+
+    removed = len(blocks_to_remove)
+    if removed == 0:
+        return
+
+    kept_count = len(blocks) - removed
+
+    # Rebuild content excluding removed blocks
+    parts = []
+    prev = 0
+    for i, m in enumerate(blocks):
+        if i in blocks_to_remove:
+            parts.append(content[prev:m.start()])
+            prev = m.end()
+    parts.append(content[prev:])
+    final_content = "".join(parts)
+
+    # Clean up consecutive blank lines left by block removal
+    final_content = re.sub(r"\n{3,}", "\n\n", final_content)
+
+    # Append compaction audit line
+    compact_ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    audit_line = "\n<!-- COMPACTED ts:{} removed:{} kept:{} -->\n".format(
+        compact_ts, removed, kept_count
+    )
+    final_content = final_content.rstrip("\n") + "\n" + audit_line
+
+    try:
+        tmp_file = TRACE_FILE + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8", newline="\n") as f:
+            f.write(final_content)
+        os.replace(tmp_file, TRACE_FILE)
+    except OSError:
+        pass
+
+
+# ============================================================
+# Passive trigger notification
+# ============================================================
+
+def check_notify():
+    """Check if pending count crosses threshold and write NOTIFY block if so."""
+    if not os.path.isfile(TRACE_FILE):
+        return
+
+    limits = load_limits()
+    threshold = int(limits["passive_trigger_threshold"])
+    min_new = int(limits["passive_trigger_min_new"])
+
+    try:
+        with open(TRACE_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        pending_count = count_pending_entries(content)
+    except OSError:
+        return
+
+    if pending_count < threshold:
+        return
+
+    last_notified = 0
+    try:
+        if os.path.isfile(NOTIFY_STATE_FILE):
+            with open(NOTIFY_STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            last_notified = int(state.get("last_pending_count", 0))
+    except (json.JSONDecodeError, OSError, ValueError):
+        pass
+
+    new_since_last = pending_count - last_notified
+    if new_since_last < min_new:
+        return
+
+    # Write NOTIFY block to trace.md so AI sees it on next read
+    notify_block = (
+        "\n<!-- NOTIFY type:passive_trigger -->\n"
+        "pending_count: {}\n"
+        "new_since_last: {}\n"
+        "message: CastFlow: {} pending trace entries accumulated. "
+        "Run 'origin evolve' to analyze and generate improvement proposals.\n"
+        "<!-- /NOTIFY -->\n"
+    ).format(pending_count, new_since_last, pending_count)
+
+    try:
+        with open(TRACE_FILE, "a", encoding="utf-8") as f:
+            f.write(notify_block)
+    except OSError:
+        return
+
+    try:
+        os.makedirs(os.path.dirname(NOTIFY_STATE_FILE), exist_ok=True)
+        with open(NOTIFY_STATE_FILE, "w", encoding="utf-8", newline="\n") as f:
+            json.dump({"last_pending_count": pending_count}, f)
+    except OSError:
+        pass
+
+
+# ============================================================
 # Main
 # ============================================================
 
 def main():
+    idp = None
     try:
         try:
             sys.stdin.read()
         except Exception:
             pass
 
-        file_paths, total_lines, total_edits, revert_count = read_buffer()
-        if not file_paths:
-            clear_buffer()
-            return
+        # 1. Apply pending validated signal to most-recent trace entry
+        apply_validated_update()
 
-        weights, threshold = load_weights()
-        modules = infer_modules(file_paths)
-        score, _ = compute_score(file_paths, modules, total_lines,
-                                 total_edits, weights)
+        # 2. Apply pipeline result to batch of trace entries
+        apply_pipeline_result()
 
-        if score >= threshold:
-            correction = infer_correction(revert_count)
-            entry = format_trace(file_paths, modules, score, total_lines,
-                                 total_edits, correction)
-            append_trace(entry)
+        # 3. Read IDP (cleaned up in finally regardless of outcome)
+        idp = read_pending_idp()
 
-        clear_buffer()
+        # 4. Flush new trace entry from buffer
+        flush_new_trace(idp)
+
+        # 5. Compact trace.md if over threshold (respects .trace_lock)
+        check_and_compact()
+
+        # 6. Check passive trigger threshold
+        check_notify()
 
     except Exception:
-        clear_buffer()
+        pass
+    finally:
+        cleanup_pending_files()
 
 
 if __name__ == "__main__":
