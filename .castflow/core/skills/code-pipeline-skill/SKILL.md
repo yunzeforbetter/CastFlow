@@ -17,11 +17,23 @@ description: code_pipeline keyword trigger - orchestrates the full workflow from
 
 | 需要了解 | 查看 |
 |---------|------|
-| 各步骤示例、PCB 与 CONTEXT 模板 | EXAMPLES.md |
-| 硬性规则、常见陷阱 | SKILL_MEMORY.md |
-| 迭代维护 | ITERATION_GUIDE.md |
-| 执行扩展协议、PCB 结构、run_id 追踪 | config/pipeline_protocol.md |
+| 单层功能流程示例 | EXAMPLES.md#示例-1 |
+| 双层功能流程示例 | EXAMPLES.md#示例-2 |
+| 多模块并行示例 | EXAMPLES.md#示例-3 |
+| TODO 注释规范示例 | EXAMPLES.md#示例-5 |
+| PCB 单一事实来源（规则 1） | SKILL_MEMORY.md#规则-1 |
+| Step 1 需求拆分（规则 2） | SKILL_MEMORY.md#规则-2 |
+| Step 2 L1×L2 合成（规则 3） | SKILL_MEMORY.md#规则-3 |
+| Step 3 模块实现（规则 4） | SKILL_MEMORY.md#规则-4 |
+| TODO 注释规范（规则 8） | SKILL_MEMORY.md#规则-8 |
+| programmer-agent 缺失处理（规则 10） | SKILL_MEMORY.md#规则-10 |
+| Sub-agent 启动标准（规则 11） | SKILL_MEMORY.md#规则-11 |
+| L1×L2 合成机制（协议 1） | config/pipeline_protocol.md#协议-1 |
+| PDF / 导图双阶段解构（协议 2） | config/pipeline_protocol.md#协议-2 |
+| PCB 看板标准结构 | config/pipeline_protocol.md#pcb-看板标准结构 |
+| run_id 生命周期（协议 5） | config/pipeline_protocol.md#协议-5 |
 | L1 参数 Schema / 默认值 | config/params.schema.json、config/defaults.json |
+| 迭代维护 | ITERATION_GUIDE.md |
 
 ---
 

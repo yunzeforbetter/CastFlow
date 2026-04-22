@@ -1,40 +1,67 @@
 ---
 name: skill-iteration
-description: Skill 文件结构、格式、命名规范 - 创建和迭代时遵守的硬性标准
+description: Skill 文件元规范 (meta-spec)。仅规范 Skill 自身的文件结构、格式、容量、命名。不涉及代码生成、需求拆解、日常 Skill 调用流程 - 这些归 GLOBAL_SKILL_MEMORY 与各 Skill 的 SKILL_MEMORY。仅在创建新 Skill、修改既有 Skill 结构时阅读，日常调用 Skill 时无需加载。
 ---
 
-# SKILL_ITERATION.md - Skill 创建与迭代规范
+# SKILL_ITERATION.md - Skill 文件元规范
 
-**性质**：硬性规范，非建议。违反即工作无效。
+**定位**：Skill 文件本身的元规范（meta-spec）。规定 4 文件结构、格式、容量、命名。
 
-**应用范围**：所有Skill的创建、修改、迭代
+**性质**：硬性规范，非建议。违反即 Skill 创建/迭代工作无效。
 
-**定位**：本文档定义 Skill 文件的**创建和迭代规范**（结构、格式、命名）。
+**加载时点**：仅 **T4-MAINTAIN**（创建新 Skill 或修改既有 Skill 自身结构时）。完整时点定义见项目根 `CLAUDE.md`「使用Skill的分层加载」段（唯一权威源）。
 
-**注意**：Skill **执行时** 的约束协议见 [GLOBAL_SKILL_MEMORY.md](./GLOBAL_SKILL_MEMORY.md)（运行时协议）。
+**何时需要阅读**（即 T4-MAINTAIN 触发）：
+- 创建新 Skill 时
+- 修改既有 Skill 的结构、字数、格式时
+- 验收 Skill 文件交付物时
+
+**何时不需要阅读**（常见误用，对照其他时点）：
+- 日常调用某个 Skill 处理代码任务 → 目标 Skill 的 `SKILL.md` 由宿主自动注入，不需主动读本文档
+- 准备生成代码（T1-PREPARE）→ 读 `GLOBAL_SKILL_MEMORY.md` 协议 1/2 + 该 Skill 的 SKILL_MEMORY.md
+- 代码生成中决策 IDP 写入（T2-EXECUTE）→ 读 `GLOBAL_SKILL_MEMORY.md` 协议 3 + 按需 `protocols/idp-protocol.md`
+- 拆解需求或编排工序 → 读 `code-pipeline-skill`
+- 用户反馈接受/拒绝（T3-FEEDBACK）→ 读 `protocols/validated-protocol.md`
+
+**与其他文档的边界**：
+
+| 文档 | 管辖范围 | 与本文档的关系 |
+|------|---------|--------------|
+| 本文档（SKILL_ITERATION.md）| Skill 自身的"长什么样" | 元规范，T4-MAINTAIN 加载 |
+| 项目 CLAUDE.md | 项目级规则 + 时点定义（唯一权威源） | 规定本文档的加载时点 = T4-MAINTAIN |
+| GLOBAL_SKILL_MEMORY.md | Skill 调用时的运行时协议（API 验证、约束对齐、执行模式） | 互不重叠 |
+| protocols/idp-protocol.md | IDP 写入规则 | 互不重叠 |
+| protocols/validated-protocol.md | 用户反馈信号写入规则 | 互不重叠 |
+| 各 Skill 的 SKILL_MEMORY.md | 该 Skill 业务领域的硬性规则 | 本文档规定其格式，CLAUDE.md 规定其加载时点 |
+| 各 Skill 的 ITERATION_GUIDE.md | 该 Skill 自身的演进规则 | 本文档规定其格式，CLAUDE.md 规定其加载时点（T4-MAINTAIN） |
 
 ---
 
-## 📋 快速导航
+## 快速导航
 
-| 场景 | 查看 |
-|------|------|
-| 创建新Skill | → [Skill文件结构](#skill文件结构标准) + [工作前检查](#工作前检查清单) |
-| 迭代现有Skill | → [禁止事项](#工作进行中的禁止事项) + [完成前检查](#工作完成前的验收检查) |
-| 理解两层规则 | → [两层规则体系](#两层规则体系) |
-| 代码命名规范 | → 见项目 CLAUDE.md（由用户定义） |
+| 我要做什么 | 查看 |
+|----------|------|
+| 创建新 Skill | [Skill 文件结构](#skill文件结构标准) + [创建前准备](#创建或迭代前的准备) |
+| 修改既有 Skill 内容 | [禁止事项](#工作进行中的禁止事项) + [完成前验收](#工作完成前的验收检查) |
+| 验收 Skill 文件交付 | [验收检查](#工作完成前的验收检查) + [规范检查命令集](#规范检查命令集) |
+| 计算字数是否超限 | [文件大小量化标准](#文件大小量化标准) |
+| 添加 SKILL_MEMORY 条目时容量已满 | [SKILL_MEMORY 容量治理](#3-skill_memorymd---硬性规范库) |
 
 ---
 
-## 工作前检查清单
+## 创建或迭代前的准备
 
-**开始任何Skill工作前，必须确认以下5项**：
+只在**修改 Skill 自身结构**时执行。日常调用 Skill 不走这个清单。
 
 - [ ] 已完整阅读本文档（SKILL_ITERATION.md）
-- [ ] 已阅读GLOBAL_SKILL_MEMORY.md
-- [ ] 已阅读该Skill的SKILL_MEMORY.md（如果存在）
-- [ ] 已阅读该Skill的ITERATION_GUIDE.md（如果存在）
-- [ ] 用户同意遵守所有规范（非协商）
+- [ ] 修改既有 Skill 时，已读取该 Skill 的 `ITERATION_GUIDE.md`
+- [ ] 用户已明确表达"创建新 Skill"或"修改 X Skill 的结构/规则"，而非"用 X Skill 帮我写代码"
+- [ ] 已识别本次改动属于哪个文件（SKILL.md / EXAMPLES.md / SKILL_MEMORY.md / ITERATION_GUIDE.md），避免越职责放置内容
+
+**误用反例**（这些情况不要读本文档）：
+- "用 building-skill 帮我加一个仓库建筑" → 这是调用 Skill，读 building-skill 的 SKILL.md
+- "code-pipeline 帮我重构 NPC 系统" → 这是工序编排，读 code-pipeline-skill
+- "我刚学了某 API 应该怎么应用" → 这是约束对齐，读 GLOBAL_SKILL_MEMORY 协议 2
 
 ---
 
@@ -230,49 +257,16 @@ echo "=== 所有检查完成 ==="
 
 ---
 
-## 两层规则体系（创建和迭代时的规范层次）
+## 元规范分层
 
-**注**：本章说的”两层”是指 Skill 创建和迭代规范的分层。运行时协议分层见 GLOBAL_SKILL_MEMORY.md。
+Skill 创建和迭代时受**两层元规范**约束，两层同时生效：
 
-### 第一层：全局创建规范（SKILL_ITERATION.md）
+| 层 | 文件 | 内容 | 适用范围 |
+|---|------|------|---------|
+| 全局元规范 | 本文档 SKILL_ITERATION.md | 4 文件结构、格式、容量、命名 | 所有 Skill |
+| 单 Skill 元规范 | 各 Skill 的 ITERATION_GUIDE.md | 该 Skill 特有的迭代触发条件、优先级、文件职责分配 | 该 Skill 自身 |
 
-**内容**：所有 Skill 创建和迭代时都要遵守的格式、结构、命名规范
-
-**适用**：所有Skill
-
-**强制力**：硬性，违反即工作无效
-
-**包括**：
-- 4个核心文件的定义和职责
-- YAML元数据要求
-- 文本格式规范（禁止emoji等）
-- 参考真实性检查
-- 文件职责隔离
-
-**注**：代码命名规范由用户在项目 CLAUDE.md 中自行定义，不在此处规定
-
-**检查时机**：工作开始前、完成前都要检查
-
----
-
-### 第二层：单个Skill迭代规则（各Skill的ITERATION_GUIDE.md）
-
-**内容**：该Skill特定的创建和维护规范
-
-**适用**：特定Skill
-
-**强制力**：硬性（该Skill范围内）
-
-**包括**：
-- 迭代触发条件（何时应该更新）
-- 优先级定义
-- 检查清单
-- 文件职责分配
-
-**关键**：
-- 第一层和第二层同时生效
-- 更新时必须两层都检查
-- 没有”只遵守其中一层”的选项
+**不要混淆**：本节的"两层"是 Skill 元规范的分层（描述"如何写 Skill 文件"）。Skill 调用时的运行时协议分层见 [GLOBAL_SKILL_MEMORY.md](./GLOBAL_SKILL_MEMORY.md)（描述"调用 Skill 时如何工作"），是完全不同的话题。
 
 ---
 
@@ -586,22 +580,17 @@ done
 
 ---
 
-## 与GLOBAL_SKILL_MEMORY的关系
+## 与 GLOBAL_SKILL_MEMORY 的边界（不重叠）
 
-**本文档（SKILL_ITERATION.md）**：
-- 定义结构和格式规范
-- 适用所有Skill
-- 强制执行可验证的检查
+| 维度 | 本文档（SKILL_ITERATION.md） | GLOBAL_SKILL_MEMORY.md |
+|------|---------------------------|------------------------|
+| 关心什么 | Skill 文件长什么样 | 调用 Skill 时如何工作 |
+| 加载时点 | T4-MAINTAIN | T1-PREPARE / T2-EXECUTE |
+| 强制对象 | Skill 作者 | 所有调用 Skill 的 AI 行为 |
+| 典型条目 | "EXAMPLES.md 必须 < 3000 字" | "使用任何 API 前必须 Read 源文件 + Grep 验证" |
+| 修改频率 | 极低（框架级） | 极低（框架级） |
 
-**GLOBAL_SKILL_MEMORY.md**：
-- 定义跨Skill的业务规则
-- 适用特定Skill组合
-- 业务约束和最佳实践
-
-**两者互补**：
-- SKILL_ITERATION = 形式规范（必须）
-- GLOBAL_SKILL_MEMORY = 业务规范（必须）
-- 迭代时需同时遵守
+两份文档互不引用对方的内容，也互不重叠。时点完全不重合（T4 vs T1/T2）。
 
 ---
 

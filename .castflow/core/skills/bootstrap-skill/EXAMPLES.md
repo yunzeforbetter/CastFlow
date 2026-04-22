@@ -280,6 +280,8 @@ bootstrap-output/content/modules/{module_id}/
 2. 更新:
    - SKILL_ITERATION.md
    - GLOBAL_SKILL_MEMORY.md
+   - protocols/idp-protocol.md
+   - protocols/validated-protocol.md
    - code-pipeline-skill/
    - skill-creator/
 3. 保留（不覆盖）:

@@ -1,14 +1,16 @@
 # GLOBAL_SKILL_MEMORY - Skill 运行时核心协议
 
 > **性质**：所有 Skill 执行的底层法律。运行时约束，非创建规范。
-> **关联文档**：创建和迭代规范见 [SKILL_ITERATION.md](./SKILL_ITERATION.md)
-> **扩展协议**：使用 code-pipeline 时，额外加载 [pipeline_protocol.md](./code-pipeline-skill/config/pipeline_protocol.md)
-
-协议列表：协议 1（API 物理验证）、协议 2（约束对齐）、协议 3（执行模式）、协议 4（IDP）、协议 5（validated 信号）
+> **加载时点**：本文档协议 1/2 在 **T1-PREPARE** 加载，协议 3 在 **T2-EXECUTE** 加载。完整时点定义见项目根 `CLAUDE.md`「使用Skill的分层加载」段（唯一权威源）。
+> **关联文档**：
+> - 创建和迭代规范见 [SKILL_ITERATION.md](./SKILL_ITERATION.md)（仅 T4-MAINTAIN 加载）
+> - IDP 写入规则见 [protocols/idp-protocol.md](./protocols/idp-protocol.md)（T2-EXECUTE 按需）
+> - validated 信号规则见 [protocols/validated-protocol.md](./protocols/validated-protocol.md)（仅 T3-FEEDBACK）
+> - pipeline 扩展协议见 [code-pipeline-skill/config/pipeline_protocol.md](./code-pipeline-skill/config/pipeline_protocol.md)（pipeline 期间附加生效）
 
 ---
 
-## 协议 1：物理证据准入制 - P0
+## 协议 1：物理证据准入制 - P0（T1-PREPARE）
 
 **定义**：使用任何类或 API 前，必须完成三段式验证，缺一不可：
 
@@ -22,7 +24,7 @@
 
 ---
 
-## 协议 2：学习后强制约束对齐 - P0
+## 协议 2：学习后强制约束对齐 - P0（T1-PREPARE）
 
 **定义**：学习代码或设计方案后，生成代码前必须执行约束对齐，流程不可跳过。
 
@@ -41,7 +43,7 @@
 
 ---
 
-## 协议 3：执行模式检测 - 代码生成前
+## 协议 3：执行模式检测 - P0（T2-EXECUTE）
 
 **定义**：每次代码生成前判断执行模式，决定 IDP 写入时机和探索深度。
 
@@ -57,56 +59,8 @@
 - [ ] 信息不足时是否先收集而非直接写代码？
 - [ ] 高精度模式是否等待用户确认？
 
----
-
-## 协议 4：IDP 协议（Intent Declaration Protocol）
-
-**定义**：写代码前将意图声明写入 `.pending_idp.json`（traces 目录，覆盖写），供 trace-flush 注入 trace 语义字段。trace-flush 读取后无条件删除此文件。
-
-**格式**（紧急模式额外加 `"retrospective": true`）：
-
-```json
-{
-  "mode": "standard",
-  "request": "用户真实意图，一句话",
-  "intent": "AI 的理解和实现计划",
-  "scope": "涉及的文件或模块",
-  "type": "feature",
-  "skills": ["programmer-ui-skill"]
-}
-```
-
-mode：`standard` / `emergency` / `high-accuracy`  
-type：`feature` / `bugfix` / `refactor` / `optimization` / `config`
-
-**约束**：不写 `validated` 字段（由 trace-flush 管理）；同一响应只写一次 IDP。
-
-**检查清单**：
-- [ ] 在正确时机写入了 .pending_idp.json（标准/高精度：代码前；紧急：代码后）？
-- [ ] request 反映用户真实意图而非 AI 的解释？
-- [ ] mode 与协议 3 的判断一致？
+模式判定后，按 IDP 写入时机加载 [idp-protocol.md](./protocols/idp-protocol.md) 完成 `.pending_idp.json` 写入。
 
 ---
 
-## 协议 5：validated 信号
-
-**定义**：AI 判断用户明确接受或拒绝操作结果时，写入 `traces/.pending_validated.json`。
-
-```json
-{"result": "accepted"}
-```
-
-result：`accepted`（validated:true）或 `rejected`（validated:false）
-
-**接受**：用户明确确认、开始使用结果、验证后表达满意  
-**拒绝**：要求重做/修改、指出错误、明确否定
-
-**不确定时不写**：宁可漏报，不要误报。模糊反馈（"还不错"、"先这样"）不触发。
-
-**检查清单**：
-- [ ] 反馈是否达到明确接受/拒绝标准？
-- [ ] 不确定时选择了不写？
-
----
-
-*GLOBAL_SKILL_MEMORY | 核心运行时协议 | 所有 Skill 执行时遵守*
+*GLOBAL_SKILL_MEMORY | 核心运行时协议 1-3 | IDP/validated 协议按需加载*

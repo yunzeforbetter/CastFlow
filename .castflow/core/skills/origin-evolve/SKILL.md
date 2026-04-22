@@ -13,8 +13,13 @@ Trigger: user input `origin evolve` (or equivalent intent).
 
 | Need | See |
 |------|-----|
-| How proposals look end-to-end | EXAMPLES.md |
-| Hard constraints on every change | SKILL_MEMORY.md |
+| Full proposal examples | EXAMPLES.md |
+| Evidence requirements (Rule 1) | SKILL_MEMORY.md#rule-1-evidence-based-proposals |
+| Attribution decision tree (Rule 2) | SKILL_MEMORY.md#rule-2-attribution-decision-tree |
+| Append / Merge / Retire operations (Rule 3) | SKILL_MEMORY.md#rule-3-append--merge--retire |
+| User approval policy (Rule 4) | SKILL_MEMORY.md#rule-4-user-approval-required-for-every-write |
+| Format & capacity compliance (Rule 5) | SKILL_MEMORY.md#rule-5-format--capacity-compliance |
+| Common pitfalls | SKILL_MEMORY.md#pitfalls |
 | When to update this skill | ITERATION_GUIDE.md |
 
 ## Trace Fields

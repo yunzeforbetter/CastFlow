@@ -1,4 +1,4 @@
----
+﻿---
 title: Project Rules
 ---
 
@@ -28,16 +28,60 @@ title: Project Rules
 
 ---
 
-## 使用Skill前的强制检查
+## 使用Skill的分层加载（按行为时点）
 
-**流程**：SKILL_MEMORY.md -> 参数确认 -> 用户同意 -> 执行
+**核心原则**：渐进式信息披露，不同行为触发不同的必读文件，避免每次都全量加载。本段是时点规则的**唯一权威源**，命名采用 `T<序号>-<动词>` 格式。
 
-**检查清单**：
-- [ ] 该Skill是否有SKILL_MEMORY.md？有则完整阅读
-- [ ] 是否有params.schema.json？有则确认L1参数（若Skill无此文件则跳过）
-- [ ] 在响应中列出所有硬性规则、禁止事项、必须做法
-- [ ] 是否涉及学习代码？是则执行"学习->匹配->应用"流程（见下）
-- [ ] 执行后代码是否遵守所有约束？
+### 自动入上下文（前提，非时点）
+
+以下文件由宿主自动注入上下文，AI 不需要、也无法主动加载：
+
+- 项目 `CLAUDE.md`（工作区规则，always-applied）
+- 被触发的 Skill 的 `SKILL.md`（基于 description 匹配后宿主自动注入）
+
+### 时点定义（AI 主动 Read 附属文件的时机）
+
+| 时点 | 触发行为 | AI 主动 Read 哪些文件 |
+|------|---------|-------------------|
+| **T1-PREPARE** | 准备生成或修改代码（写代码前） | `GLOBAL_SKILL_MEMORY.md` 协议 1/2 + 该 Skill 的 `SKILL_MEMORY.md`（如存在）+ 按需 `EXAMPLES.md` 相关章节 |
+| **T2-EXECUTE** | 代码生成过程中决策 IDP 写入 | `GLOBAL_SKILL_MEMORY.md` 协议 3 + 按需 `protocols/idp-protocol.md` |
+| **T3-FEEDBACK** | 用户给出明确接受/拒绝反馈 | `protocols/validated-protocol.md` |
+| **T4-MAINTAIN** | 创建新 Skill 或修改既有 Skill 自身结构 | `SKILL_ITERATION.md` + 该 Skill 的 `ITERATION_GUIDE.md` |
+
+时点不强制串行：T3 / T4 不依赖 T1 / T2 先行。
+
+### Skill 四文件默认映射（隐式约定，新 Skill 无需声明）
+
+| 文件 | 加载方式 | 对应时点 |
+|------|---------|---------|
+| `SKILL.md` | 宿主自动注入 | 前提 |
+| `EXAMPLES.md` | AI 按需 Read（章节级，按 SKILL.md 导航锚点） | T1-PREPARE |
+| `SKILL_MEMORY.md` | AI 在 T1-PREPARE 全文 Read | T1-PREPARE |
+| `ITERATION_GUIDE.md` | AI 在 T4-MAINTAIN 全文 Read | T4-MAINTAIN |
+
+新生成的 Skill 只要遵循 4 文件结构（`SKILL_ITERATION.md` 强制），就**自动**适用本表，无需在文件中写时点字段。仅当 Skill 包含 4 文件之外的辅助文件（如 `config/`、`prompts/`）时，需在该 Skill 的 SKILL.md 快速导航表加一列"时点"标注。
+
+### T1-PREPARE 行为清单
+
+- [ ] 读取目标 Skill 的 `SKILL_MEMORY.md`（如存在）
+- [ ] 读取 `GLOBAL_SKILL_MEMORY.md` 协议 1（API 验证）和协议 2（约束对齐）
+- [ ] 按 SKILL.md 导航锚点 Read `EXAMPLES.md` 的相关章节
+- [ ] 检查是否有 `params.schema.json`，有则确认 L1 参数
+- [ ] 涉及学习代码 -> 执行"学习->匹配->应用"流程（见下）
+
+### T2-EXECUTE 行为清单
+
+- [ ] 按 `GLOBAL_SKILL_MEMORY.md` 协议 3 判定执行模式（信息不足/紧急/高精度/标准）
+- [ ] 若需写 IDP，Read `protocols/idp-protocol.md` 并按格式写入 `.pending_idp.json`
+
+### T3-FEEDBACK 行为清单
+
+- [ ] Read `protocols/validated-protocol.md`，按判定标准写入 `.pending_validated.json`（不确定时不写）
+
+### T4-MAINTAIN 行为清单
+
+- [ ] Read `SKILL_ITERATION.md`（Skill 文件元规范）
+- [ ] Read 目标 Skill 的 `ITERATION_GUIDE.md`
 
 ---
 
@@ -87,12 +131,20 @@ title: Project Rules
 
 ## Skill规范体系概览
 
-| 文档 | 位置 | 内容 | 何时阅读 |
+时点定义的**唯一权威源**就是上文"使用Skill的分层加载"段，本表只罗列各文档的归属时点。
+
+| 文档 | 位置 | 内容 | 加载时点 |
 |------|------|------|--------|
-| **SKILL_ITERATION.md** | `./.claude/skills/` | 全局结构规范、验收检查 | 创建/迭代Skill时 |
-| **GLOBAL_SKILL_MEMORY.md** | `./.claude/skills/` | 跨Skill通用规则 | 调用任何Skill前 |
-| **[skill]/SKILL_MEMORY.md** | `./.claude/skills/[skill]/` | 该Skill的硬性规则和陷阱 | 调用该Skill前 |
-| **[skill]/ITERATION_GUIDE.md** | `./.claude/skills/[skill]/` | 该Skill的演进规则 | 迭代该Skill时 |
+| **CLAUDE.md（本文件）** | 项目根 | 时点定义 + 项目级规则 | 自动注入（前提） |
+| **[skill]/SKILL.md** | `./.claude/skills/[skill]/` | 导航和职责 | 宿主自动注入（前提） |
+| **GLOBAL_SKILL_MEMORY.md** | `./.claude/skills/` | 协议 1/2（API 验证、约束对齐） | T1-PREPARE |
+| **[skill]/EXAMPLES.md** | `./.claude/skills/[skill]/` | 代码示例 | T1-PREPARE 按需 |
+| **[skill]/SKILL_MEMORY.md** | `./.claude/skills/[skill]/` | 该 Skill 硬性规则 | T1-PREPARE |
+| **GLOBAL_SKILL_MEMORY.md 协议 3** | 同上 | 执行模式检测 | T2-EXECUTE |
+| **protocols/idp-protocol.md** | `./.claude/skills/protocols/` | IDP 写入规则 | T2-EXECUTE 按需 |
+| **protocols/validated-protocol.md** | 同上 | 接受/拒绝信号写入规则 | T3-FEEDBACK |
+| **SKILL_ITERATION.md** | `./.claude/skills/` | Skill 文件元规范 | T4-MAINTAIN |
+| **[skill]/ITERATION_GUIDE.md** | `./.claude/skills/[skill]/` | 该 Skill 演进规则 | T4-MAINTAIN |
 
 ---
 

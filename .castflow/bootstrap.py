@@ -38,6 +38,8 @@ BOOTSTRAP_OUTPUT = "bootstrap-output"
 CORE_FILE_COPIES = [
     ("core/SKILL_ITERATION.md", "skills/SKILL_ITERATION.md"),
     ("core/GLOBAL_SKILL_MEMORY.md", "skills/GLOBAL_SKILL_MEMORY.md"),
+    ("core/protocols/idp-protocol.md", "skills/protocols/idp-protocol.md"),
+    ("core/protocols/validated-protocol.md", "skills/protocols/validated-protocol.md"),
     ("core/agents/requirement-analysis-agent.md", "agents/requirement-analysis-agent.md"),
     ("core/agents/integration-matching-agent.md", "agents/integration-matching-agent.md"),
     ("core/agents/pipeline-verify-agent.md", "agents/pipeline-verify-agent.md"),
@@ -72,6 +74,18 @@ CLAUDE_HOOK_ENTRIES = {
 EMOJI_CHARS = set("\u274c\u2705\u2b50\U0001f4cb\U0001f534\U0001f7e1\U0001f7e2\u2713\u2717\u2192\u2194\u2190\u2193\u2191\u25ba\u25bc\u25b2\u25c4\u25c6\u2605")
 
 DATE_PATTERN = re.compile(r"20[2-3]\d[-/]\d{1,2}[-/]\d{1,2}")
+
+# Per-file size warning lines from SKILL_ITERATION.md (warning threshold * ~4
+# to translate "Chinese chars" budget into a generous non-whitespace char limit
+# that still catches files significantly over the recommended size).
+# Counted as len(content) minus whitespace, so works for both Chinese (1 char =
+# 1 unit) and English (~5 chars per word, lets ~800-word files pass).
+SIZE_LIMITS = {
+    "SKILL.md": 4000,
+    "EXAMPLES.md": 14000,
+    "SKILL_MEMORY.md": 9000,
+    "ITERATION_GUIDE.md": 4500,
+}
 
 # Centralized backup settings. Each bootstrap run creates a timestamped session
 # directory under .claude/.backups/ holding originals of every overwritten file,
@@ -1108,17 +1122,34 @@ def check_content_quality(content_dir, optional):
 # Validation
 # ============================================================
 
+def _count_size_units(content):
+    """Count non-whitespace characters as a uniform size proxy for both
+    Chinese (1 char = 1 unit) and English (1 word ~ 5 chars = 5 units).
+    Excludes fenced code blocks so example-heavy files are not over-penalized."""
+    in_code = False
+    kept = []
+    for line in content.splitlines():
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+            continue
+        if not in_code:
+            kept.append(line)
+    text = "".join(kept)
+    return sum(1 for ch in text if not ch.isspace())
+
+
 def validate_skill_dir(skill_path):
     errors = []
+    warnings = []
 
     if not os.path.isdir(skill_path):
-        return ["Not a directory"], True
+        return ["Not a directory"], [], True
 
     md_files = sorted(f for f in os.listdir(skill_path) if f.endswith(".md"))
     expected = ["EXAMPLES.md", "ITERATION_GUIDE.md", "SKILL.md", "SKILL_MEMORY.md"]
 
     if md_files != expected:
-        return [], True  # non-standard structure, skip silently
+        return [], [], True  # non-standard structure, skip silently
 
     skill_content = read_file(os.path.join(skill_path, "SKILL.md"))
     if not ("name:" in skill_content[:500] and "description:" in skill_content[:500]):
@@ -1142,7 +1173,19 @@ def validate_skill_dir(skill_path):
         if matches:
             errors.append("{} contains date(s): {}".format(fname, ", ".join(matches)))
 
-    return errors, False
+    for fname in expected:
+        if fname not in SIZE_LIMITS:
+            continue
+        content = read_file(os.path.join(skill_path, fname))
+        size = _count_size_units(content)
+        limit = SIZE_LIMITS[fname]
+        if size > limit:
+            warnings.append(
+                "{} size {} units exceeds recommended {} (excluding code fences); "
+                "consider splitting per SKILL_ITERATION.md".format(fname, size, limit)
+            )
+
+    return errors, warnings, False
 
 
 def validate_all(project_root):
@@ -1155,13 +1198,14 @@ def validate_all(project_root):
 
     all_pass = True
     checked = 0
+    total_warnings = 0
 
     for entry in sorted(os.listdir(skills_dir)):
         entry_path = os.path.join(skills_dir, entry)
         if not os.path.isdir(entry_path):
             continue
 
-        errors, skipped = validate_skill_dir(entry_path)
+        errors, warnings, skipped = validate_skill_dir(entry_path)
 
         if skipped:
             continue
@@ -1172,10 +1216,18 @@ def validate_all(project_root):
             print("  [FAIL]   {}".format(entry))
             for e in errors:
                 print("             - {}".format(e))
+        elif warnings:
+            print("  [WARN]   {}".format(entry))
         else:
             print("  [PASS]   {}".format(entry))
 
+        for w in warnings:
+            total_warnings += 1
+            print("             ! {}".format(w))
+
     print("\n  Checked: {} skill(s)".format(checked))
+    if total_warnings:
+        print("  Warnings: {} size warning(s)".format(total_warnings))
     if all_pass and checked > 0:
         print("  Result:  ALL PASS")
     elif checked == 0:
