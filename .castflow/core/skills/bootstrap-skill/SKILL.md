@@ -23,7 +23,7 @@ description: CastFlow framework initializer. Triggered by "bootstrap castflow" o
 | 需要了解 | 查看 |
 |---------|------|
 | Phase 0 / Phase 2 对外话术模板 | EXAMPLES.md#示例-1 |
-| manifest.json 字段格式 | EXAMPLES.md#示例-2 |
+| cf_manifest.json 字段格式 | EXAMPLES.md#示例-2 |
 | content 目录结构与占位符映射 | EXAMPLES.md#示例-3 |
 | 模块 Skill 创建对话示例 | EXAMPLES.md#示例-4 |
 | 核心更新流程 | EXAMPLES.md#示例-5 |
@@ -39,7 +39,7 @@ description: CastFlow framework initializer. Triggered by "bootstrap castflow" o
 
 1. **Read 本 skill 同目录的 `EXAMPLES.md` 示例 1**
    -> 获取 Phase 0 / Phase 2.1 / Phase 2.2 三段对外话术模板与默认值。**未完成此步禁止输出第一条对外消息。**
-2. 检查项目根 `manifest.json` 是否存在，决定走哪条工作流：
+2. 检查 `bootstrap-output/cf_manifest.json` 是否存在（**勿**用项目根或其它目录的 `manifest.json` 判断，例如 Unity `Packages/manifest.json`），决定走哪条工作流：
    - 不存在 -> 全量初始化工作流
    - 存在 + 用户指令含"更新核心" -> 核心更新工作流（复用 manifest.language，告知"复用已有配置 language=xxx"）
    - 存在 + 用户在触发指令同句已指定语言 -> 全量初始化工作流，但 Step 0 改为复述确认（"已识别语言：xxx，确认继续？"）
@@ -57,6 +57,7 @@ description: CastFlow framework initializer. Triggered by "bootstrap castflow" o
 - 动作：**逐字输出**语言询问菜单，等待用户回复
 - 产出：`manifest.language`（写入内存，未落盘）
 - 禁止：任何文件扫描 / 读取 / 写入（除运行前置 Step 1 已 Read 的 EXAMPLES.md）
+- **与 `bootstrap.py` 的关系**：`CastFlow/.castflow/bootstrap.py` **不包含**语言交互；Phase 0 只由**本 skill 的执行者**通过对话完成。仅运行脚本的用户须事先有 `bootstrap-output/cf_manifest.json`（或 `py -3 ... --init-manifest --language <码>` 生成缺省，再与 Phase 0 结果对齐/编辑 `language`）。
 
 **Step 1**：项目扫描
 - 动作：扫描技术栈、命名规范、项目规模
@@ -75,7 +76,7 @@ description: CastFlow framework initializer. Triggered by "bootstrap castflow" o
   python .castflow/bootstrap.py --skill claude
   python .castflow/bootstrap.py --skill templates
   ```
-- 产出：`manifest.json` + `bootstrap-output/content/claude/` + `.claude/skills/protocols/` 等核心文件
+- 产出：`bootstrap-output/cf_manifest.json` + `bootstrap-output/content/claude/` + `.claude/skills/protocols/` 等核心文件
 
 **Step 4**：并行 sub-agent 闭环生成
 - 主 agent 一条消息内同时发射所有 agent，每个 agent 独立完成"分析 -> 写 content -> bootstrap.py --skill {type} -> .claude/skills/ 落盘"

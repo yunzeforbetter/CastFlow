@@ -85,6 +85,10 @@ bootstrap castflow
 
 AI 自动完成：扫描项目 -> 逐个确认 Skill -> 并行分析代码 -> 生成框架文件 -> 配置 Hooks。
 
+**Phase 0 语言选择**由 `bootstrap-skill` 规定：执行初始化的 AI **须先**输出语言菜单并等待用户回复，再写入 `bootstrap-output/cf_manifest.json` 的 `language` 字段。**仅运行** `bootstrap.py` 不会弹出语言交互；若走纯命令行，可用 `py -3 CastFlow/.castflow/bootstrap.py --init-manifest --language zh` 生成缺省 manifest（`language` 可事后编辑），或与 AI 的 Phase 0 结果对齐。
+
+**命令行**（项目根目录）：`py -3 CastFlow/.castflow/bootstrap.py`。若现有 `CLAUDE.md` 的 **framework 段**（`<!-- 以下为项目段 -->` 以上）与模板不一致，脚本会说明 **1 / 2 / 3**：**1**=整段换为模板（旧段备份为 `CLAUDE.md.castflow-backup`），**2**=完全保留当前 framework 段（不更新），**3**=**增量合并**：采用新模板，并把「相对模板多出来的行」追加到**项目段**（见 `Migrated from harness`）。**交互式 TTY** 会等待输入；**非 TTY**（如部分 IDE/自动化）在**未**传入 `--claude-md-harness` 时**默认选 3**（增量），避免无提示中止。若需不改动 framework 段，请传 `--claude-md-harness 2`。
+
 ### 初始化后的文件结构
 
 ```
@@ -454,7 +458,7 @@ CastFlow/
       hook_config.py                      #     Cursor hooks.json / Claude settings.json 合并
       claude_merge.py                     #     CLAUDE.md 合并策略（boundary / migrate / diff）
       validate.py                         #     Skill 规范验证（无 emoji / 无日期 / 字数检查）
-      manifest.py                         #     bootstrap-output/manifest.json 加载与验证
+      manifest.py                         #     bootstrap-output/cf_manifest.json 加载与验证
       generate.py                         #     全量 + 增量生成逻辑
     core/
       GLOBAL_SKILL_MEMORY.md              #     运行时核心协议（所有 skill 共享）
@@ -501,7 +505,7 @@ CastFlow/
 | `hook_config.py` | 增量合并 Cursor `hooks.json` 和 Claude Code `settings.json`（幂等，不覆盖已有 hook） |
 | `claude_merge.py` | CLAUDE.md 合并：有 boundary marker（框架段更新 + 项目段保留）/ 无 marker（语义去重 + 追加独有内容），`input()` 抽为可注入的 `choice_callback` |
 | `validate.py` | Skill 规范验证：无 emoji、无日期、无残留占位符、字数检查（代码块除外） |
-| `manifest.py` | `bootstrap-output/manifest.json` 加载与结构验证 |
+| `manifest.py` | `bootstrap-output/cf_manifest.json` 加载与结构验证 |
 | `generate.py` | 全量生成（`generate_all`）+ 增量生成（`generate_single_skill` / `generate_agent`） |
 
 #### `.castflow/core/`

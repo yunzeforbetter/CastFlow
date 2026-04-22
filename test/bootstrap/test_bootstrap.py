@@ -12,6 +12,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
 
 # Add .castflow to path so we can import the bootstrap package
 _CASTFLOW_DIR = os.path.join(
@@ -167,6 +168,31 @@ class TestClaudeMerge(unittest.TestCase):
                         choice_callback=lambda _: "2")
         result = read_file(dest)
         self.assertIn("Old", result)
+
+    def test_diff_with_harness_merge_preset_skips(self):
+        dest = os.path.join(self.tmpdir, "CLAUDE.md")
+        boundary = CLAUDE_BOUNDARY
+        old = "# Old\n\n{} PROJECT =====>\n\n## P\n".format(boundary)
+        new = "# New\n\n{} PROJECT =====>\n\n## T\n".format(boundary)
+        with open(dest, "w", encoding="utf-8", newline="\n") as f:
+            f.write(old)
+        merge_claude_md(
+            dest, new, dry_run=False, harness_merge_choice="2")
+        result = read_file(dest)
+        self.assertIn("Old", result)
+
+    def test_diff_noninteractive_aborts_without_preset(self):
+        dest = os.path.join(self.tmpdir, "CLAUDE.md")
+        boundary = CLAUDE_BOUNDARY
+        old = "# Old Harness\n\n{} PROJECT =====>\n\n## Project\n".format(boundary)
+        new = "# New Harness\n\n{} PROJECT =====>\n\n## Template\n".format(boundary)
+        with open(dest, "w", encoding="utf-8", newline="\n") as f:
+            f.write(old)
+        with patch("bootstrap.claude_merge.sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = False
+            with self.assertRaises(SystemExit) as ctx:
+                merge_claude_md(dest, new, dry_run=False)
+        self.assertEqual(ctx.exception.code, 1)
 
     def test_no_boundary_dedup(self):
         dest = os.path.join(self.tmpdir, "CLAUDE.md")

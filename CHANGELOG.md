@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Bootstrap 清单文件名
+
+- **change**: CastFlow 初始化清单 canonical 文件名为 `bootstrap-output/cf_manifest.json`（避免与 Unity `Packages/manifest.json` 等混淆）。仍可读旧版 `bootstrap-output/manifest.json` 并提示迁移。
+
 ### 跨平台编码一致性修复
 
 - **fix(P0)**: 剥离全部 18 个模板文件的 UTF-8 BOM（`CLAUDE.template.md`、`agents/programmer.template.md`、`skills/*.template/*.template.md`）。原模板在 Windows 记事本等工具保存时被写入 `\xef\xbb\xbf` BOM，虽然 `bootstrap.py` 的 `read_file` 用 `utf-8-sig` 能剥离，但模板被 `shutil.copy2` 复制或被其他工具链直接读取时仍会把 BOM 当作内容解析，在部分终端/编辑器下显示为乱码。

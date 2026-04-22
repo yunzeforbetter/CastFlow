@@ -177,7 +177,8 @@ def check_content_quality(content_dir, optional):
         print("  [INFO]   {} warning(s). Generated skills may have empty sections.".format(warnings))
 
 
-def generate_all(project_root, manifest, dry_run, backup_session=None):
+def generate_all(project_root, manifest, dry_run, backup_session=None,
+                   harness_merge_choice=None):
     harness_dir = find_harness_dir()
     output_dir = os.path.join(project_root, CLAUDE)
     content_dir = os.path.join(project_root, BOOTSTRAP_OUTPUT, "content")
@@ -196,8 +197,13 @@ def generate_all(project_root, manifest, dry_run, backup_session=None):
         claude_content, _ = replace_placeholders(
             claude_content, build_claude_placeholders(manifest, content_dir))
         claude_content = process_conditionals(claude_content, tech_stack, language)
-        merge_claude_md(os.path.join(project_root, "CLAUDE.md"), claude_content,
-                        dry_run, backup_session)
+        merge_claude_md(
+            os.path.join(project_root, "CLAUDE.md"),
+            claude_content,
+            dry_run,
+            backup_session,
+            harness_merge_choice=harness_merge_choice,
+        )
     else:
         print("  [ERROR]  Template not found: {}".format(claude_template))
 
@@ -243,7 +249,7 @@ def generate_all(project_root, manifest, dry_run, backup_session=None):
 
 
 def generate_single_skill(project_root, manifest, skill_name, dry_run,
-                          backup_session=None):
+                          backup_session=None, harness_merge_choice=None):
     """Generate a single skill by name."""
     harness_dir = find_harness_dir()
     output_dir = os.path.join(project_root, CLAUDE)
@@ -266,8 +272,13 @@ def generate_single_skill(project_root, manifest, skill_name, dry_run,
             claude_content, _ = replace_placeholders(
                 claude_content, build_claude_placeholders(manifest, content_dir))
             claude_content = process_conditionals(claude_content, tech_stack, language)
-            merge_claude_md(os.path.join(project_root, "CLAUDE.md"), claude_content,
-                            dry_run, backup_session)
+            merge_claude_md(
+                os.path.join(project_root, "CLAUDE.md"),
+                claude_content,
+                dry_run,
+                backup_session,
+                harness_merge_choice=harness_merge_choice,
+            )
         else:
             print("  [ERROR]  Template not found: {}".format(claude_template))
         return

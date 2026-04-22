@@ -72,7 +72,7 @@
 
 **唯一例外**（仍需主 agent 显式说明）：
 - 用户在触发指令同一句话已指定语言：复述确认（"已识别语言：English (en)，确认继续？"）后再进入 Phase 1
-- 核心更新模式且 manifest.json 已存在：直接复用 manifest.language，但需告知用户"复用已有配置 language=xxx"
+- 核心更新模式且 `bootstrap-output/cf_manifest.json` 已存在：直接复用 manifest.language，但需告知用户"复用已有配置 language=xxx"
 
 **检查清单**：
 - [ ] 主 agent 触发后的**第一条消息**是否是语言询问？（不是"开始扫描"、不是 Phase 1 输出）
@@ -80,7 +80,7 @@
 - [ ] 用户回答是否归一化为 ISO 639-1 代码？（"用英文" -> `en`，不是 `用英文`）
 - [ ] 归一化后是否给用户回显确认？
 - [ ] 是否等待了 Phase 2 每一步的用户回应？
-- [ ] manifest.json 写入时 language 字段是否为 ISO 代码？
+- [ ] cf_manifest.json 写入时 language 字段是否为 ISO 代码？
 
 ---
 
@@ -122,7 +122,7 @@
 
 ### 规则 8：文件写入必须用 Write 工具（禁止 shell 管道）
 
-**定义**：所有 `bootstrap-output/content/**/*.md` 文件、`manifest.json`、CLAUDE.md 草稿等的写入，必须使用 AI 内置的 Write/Edit 工具直接写入，**严禁使用 shell + python pipe / cat heredoc / echo 重定向 / cmd /c "type ..." 等任何形式的命令行写文件**。
+**定义**：所有 `bootstrap-output/content/**/*.md` 文件、`bootstrap-output/cf_manifest.json`、CLAUDE.md 草稿等的写入，必须使用 AI 内置的 Write/Edit 工具直接写入，**严禁使用 shell + python pipe / cat heredoc / echo 重定向 / cmd /c "type ..." 等任何形式的命令行写文件**。
 
 **原因**：
 1. Cursor 对每个 shell 命令都会弹审批对话框，10 个 md 文件就要点 10 次审批，用户体验极差
@@ -136,7 +136,7 @@
 
 **检查清单**：
 - [ ] 写 content/*.md 是否用了 Write 工具？
-- [ ] 写 manifest.json 是否用了 Write 工具？
+- [ ] 写 cf_manifest.json 是否用了 Write 工具？
 - [ ] 是否避免了 `python -c "open(...).write(...)"` 这种命令行写法？
 - [ ] 是否避免了 `cat <<EOF > file` 这种 heredoc 写法？
 

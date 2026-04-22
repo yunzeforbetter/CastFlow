@@ -9,6 +9,7 @@ Three merge paths:
 import difflib
 import re
 import os
+import sys
 
 from .io_ops import read_file, safe_write
 
@@ -129,12 +130,17 @@ def _default_choice_callback(prompt_text):
 
 
 def merge_claude_md(dest_path, new_content, dry_run, backup_session=None,
-                    choice_callback=None):
+                    choice_callback=None, harness_merge_choice=None):
     """Merge new CLAUDE.md content with existing file.
 
     Args:
         choice_callback: callable(prompt_text) -> "1"|"2"|"3"|None.
             Defaults to interactive input(). Inject a stub for testing.
+        harness_merge_choice: When set to "1", "2", or "3", apply that merge
+            option without prompting. Use in CI or non-TTY runs (see CLI
+            ``--claude-md-harness``).
+        Environment: ``CASTFLOW_HARNESS_MERGE=1|2|3`` is read if no CLI preset
+        (e.g. Windows where stdin may still look like a TTY in subprocess).
     """
     if choice_callback is None:
         choice_callback = _default_choice_callback
@@ -193,22 +199,44 @@ def merge_claude_md(dest_path, new_content, dry_run, backup_session=None,
     ).ratio()
     pct = int(similarity * 100)
 
-    print("  [DIFF]    Harness section differs from template ({}% similar).".format(pct))
+    print("  [DIFF]    Harness section differs from template ({}% text similarity).".format(pct))
+    print("            Similarity is informational only: any non-zero diff triggers this step.")
+    print("  Your CLAUDE.md harness section has modifications. Options:")
+    print("    1 - Framework section = template only (old harness -> CLAUDE.md.castflow-backup)")
+    print("    2 - Keep your current framework section (no file update for harness)")
+    print("    3 - Incremental: apply new template, then append lines present in your harness")
+    print("        but not in the template to the *project* section (see \"Migrated from harness\")")
+    print("")
 
     if dry_run:
-        print("            (dry-run: would prompt for merge decision)")
+        print("            (dry-run: would prompt or use non-TTY default for merge)")
         return
 
     print("")
-    print("  Your CLAUDE.md harness section has modifications.")
-    print("  Options:")
-    print("    1 - Use template version (recommended: keeps framework rules up to date)")
-    print("        Your old harness section will be saved to CLAUDE.md.castflow-backup")
-    print("    2 - Keep your current version (skip harness update)")
-    print("    3 - Merge: use template version + append your differences to project section")
-    print("")
 
-    choice = choice_callback("  Choose [1/2/3]: ")
+    choice = None
+    if harness_merge_choice in ("1", "2", "3"):
+        choice = harness_merge_choice
+        print(
+            "  [PRESET]  Using harness merge option {} "
+            "(--claude-md-harness).".format(choice)
+        )
+    elif choice_callback is not _default_choice_callback:
+        choice = choice_callback("  Choose [1/2/3]: ")
+    elif sys.stdin.isatty():
+        choice = choice_callback("  Choose [1/2/3]: ")
+    else:
+        # Non-TTY (CI, agent-run shell): default to 3 = template + line-level
+        # additions to project section (incremental), not "give up" on merge.
+        print(
+            "  [AUTO]    stdin is not a TTY; using option 3 (incremental merge)."
+        )
+        print(
+            "            Override: --claude-md-harness 1 | 2 | 3 "
+            "(1=template only, 2=keep harness, 3=incremental)"
+        )
+        choice = "3"
+
     if choice is None:
         print("\n  Cancelled. CLAUDE.md not modified.")
         return
