@@ -1,0 +1,25 @@
+{
+  "_README": "Configuration for trace-collector.py and trace-flush.py. Edit this file to adapt CastFlow to non-Unity/C# projects without modifying Python code. All fields are optional - missing fields fall back to the defaults baked into the hook scripts. Fields starting with underscore are inline comments (JSON has no native comment syntax).",
+
+  "_comment_tracked_extensions": "File extensions whose edits are recorded by trace-collector. Add your project's primary source-code extensions here. Default covers 18 mainstream languages.",
+  "tracked_extensions": [
+    ".cs", ".ts", ".tsx", ".js", ".jsx",
+    ".py", ".go", ".java", ".kt", ".rs",
+    ".swift", ".cpp", ".c", ".h", ".hpp",
+    ".lua", ".rb", ".dart"
+  ],
+
+  "_comment_excluded_extensions": "File extensions explicitly skipped even if they accidentally match tracked_extensions. Used to filter out asset/binary files from being treated as code edits.",
+  "excluded_extensions": [
+    ".meta", ".asset", ".prefab", ".unity", ".mat", ".anim", ".controller"
+  ],
+
+  "_comment_generic_dir_segments": "Directory names treated as 'generic containers' when inferring the module from a file path. trace-flush walks the path from leaf to root and skips these segments before settling on a module label. Add your project's top-level container directories here (e.g. 'app', 'pkg', 'internal') to avoid 'app' becoming a module name.",
+  "generic_dir_segments": [
+    "Scripts", "Assets", "GameLogic", "Logic", "Render",
+    "Common", "Core", "UI", "src", "lib", "utils", "helpers"
+  ],
+
+  "_comment_module_dir_pattern": "Regex used by trace-flush.infer_modules() to extract a module name when a path contains a 'Modules/<Name>' segment. Group 1 must capture the module name. Set to a project-specific pattern if your repo uses a different convention (e.g. 'features/([^/]+)' or 'packages/([^/]+)/src').",
+  "module_dir_pattern": "[Mm]odules/([^/]+)"
+}

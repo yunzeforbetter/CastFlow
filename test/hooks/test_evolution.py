@@ -828,7 +828,7 @@ class TestFlushIntegration(TestSetup):
 
         self.assertTrue(os.path.isfile(flush.TRACE_FILE))
         content = self.read_trace()
-        self.assertIn("<!-- TRACE status:pending -->", content)
+        self.assertIn("<!-- TRACE status:pending", content)
         self.assertIn("Building", content)
         self.assertIn("auto:minor", content)
 

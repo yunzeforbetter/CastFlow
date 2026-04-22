@@ -420,7 +420,10 @@ Related: 规则X
 
 **Anchors 和 Related 字段**：
 
-- `Anchors`：该条目引用的代码符号（类名、方法名）。用于 origin-evolve 的退休验证（grep 项目检查符号是否存在）。手动创建时可选，origin-evolve 写入时必填。
+- `Anchors`：该条目引用的代码符号。用于 origin-evolve 的退休验证（grep 项目检查符号是否存在）。手动创建时可选，origin-evolve 写入时必填。
+  - **扩展格式**：`[kind:path-hint:symbol]`，其中 kind 为 `class`/`method`/`field`/`api`/`pattern`（默认无前缀时视为 `class`），path-hint 为符号所在文件的路径片段（可选，提高 grep 定位精度）。
+  - **示例**：`[class:Building/BuildingManager, method:Building/BuildingFunc:OnUpgrade, pattern:EventArgs.Create]`
+  - **兼容**：旧格式 `[BuildingManager, OnUpgrade]`（无 kind/path-hint）仍有效，origin-evolve 在 Append/Merge 时应优先使用扩展格式。
 - `Related`：与本条目相关的其他规则/陷阱编号。用于 Merge 时识别候选，Retire 时标记需要连带审查的条目。
 
 **[RETIRED] 标记**：

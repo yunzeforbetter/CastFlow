@@ -40,6 +40,8 @@ PENDING_PIPELINE_FILE = os.path.join(TRACE_DIR, ".pending_pipeline_result.json")
 NOTIFY_STATE_FILE = os.path.join(TRACE_DIR, ".notify_state.json")
 TRACE_LOCK_FILE = os.path.join(TRACE_DIR, ".trace_lock")
 
+TRACE_SCHEMA_VERSION = 1
+
 DEFAULT_WEIGHTS = {
     "F": 1.0,
     "D": 0.5,
@@ -77,12 +79,33 @@ CRITICAL_TIERS = [
     (re.compile(r"Base\.cs$", re.IGNORECASE), 0.3),
 ]
 
-GENERIC_DIR_SEGMENTS = frozenset([
+_HOOKS_CONFIG_PATH = os.path.join(TRACE_DIR, "hooks.config.json")
+
+_DEFAULT_GENERIC_SEGMENTS = frozenset([
     "Scripts", "Assets", "GameLogic", "Logic", "Render",
     "Common", "Core", "UI", "src", "lib", "utils", "helpers",
 ])
+_DEFAULT_MODULE_PATTERN = r"[Mm]odules/([^/]+)"
 
-MODULE_DIR_PATTERN = re.compile(r"[Mm]odules/([^/]+)")
+
+def _load_module_config():
+    """Load module inference config from hooks.config.json, fall back to defaults."""
+    segments = _DEFAULT_GENERIC_SEGMENTS
+    pattern = _DEFAULT_MODULE_PATTERN
+    if os.path.isfile(_HOOKS_CONFIG_PATH):
+        try:
+            with open(_HOOKS_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data.get("generic_dir_segments"), list):
+                segments = frozenset(data["generic_dir_segments"])
+            if isinstance(data.get("module_dir_pattern"), str):
+                pattern = data["module_dir_pattern"]
+        except (json.JSONDecodeError, OSError):
+            pass
+    return segments, re.compile(pattern)
+
+
+GENERIC_DIR_SEGMENTS, MODULE_DIR_PATTERN = _load_module_config()
 
 
 # ============================================================
@@ -558,7 +581,7 @@ def format_trace(file_paths, modules, score, total_lines, total_edits,
     run_id_value = pipeline_run_id if pipeline_run_id else "_"
 
     return (
-        "<!-- TRACE status:pending -->\n"
+        "<!-- TRACE status:pending schema:{} -->\n"
         "timestamp: {}\n"
         "mode: {}\n"
         "type: {}\n"
@@ -576,6 +599,7 @@ def format_trace(file_paths, modules, score, total_lines, total_edits,
         "score: {}\n"
         "<!-- /TRACE -->\n"
     ).format(
+        TRACE_SCHEMA_VERSION,
         timestamp, mode, entry_type, request, intent,
         correction, validated, run_id_value,
         modules_str, skills, files_str,
@@ -630,12 +654,12 @@ def flush_new_trace(idp):
 
 def count_trace_entries(content):
     """Count total TRACE blocks in trace.md content."""
-    return len(re.findall(r"<!-- TRACE ", content))
+    return len(re.findall(r"<!-- TRACE\b", content))
 
 
 def count_pending_entries(content):
     """Count pending (unprocessed) TRACE blocks."""
-    return len(re.findall(r"<!-- TRACE status:pending -->", content))
+    return len(re.findall(r"<!-- TRACE status:pending\b", content))
 
 
 def check_and_compact():
@@ -665,43 +689,38 @@ def check_and_compact():
     compact_trace(content, limits)
 
 
-def compact_trace(content, limits):
-    """Execute three-level compaction on trace.md content."""
-    now = datetime.now(timezone.utc)
+def _get_block_field(block, field):
+    m = re.search(r"^" + re.escape(field) + r":\s*(.+)$", block, re.MULTILINE)
+    return m.group(1).strip() if m else ""
 
-    trace_block_pattern = re.compile(
-        r"<!-- TRACE[^>]*-->.*?<!-- /TRACE -->",
-        re.DOTALL
-    )
 
-    def get_field(block, field):
-        m = re.search(r"^" + re.escape(field) + r":\s*(.+)$", block, re.MULTILINE)
-        return m.group(1).strip() if m else ""
+def _get_block_age_days(block, now):
+    ts_str = _get_block_field(block, "timestamp")
+    if not ts_str:
+        return 0
+    try:
+        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return (now - ts).days
+    except (ValueError, OverflowError):
+        return 0
 
-    def get_timestamp_age_days(block):
-        ts_str = get_field(block, "timestamp")
-        if not ts_str:
-            return 0
-        try:
-            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-            return (now - ts).days
-        except (ValueError, OverflowError):
-            return 0
 
-    def get_score(block):
-        s = get_field(block, "score")
-        try:
-            return float(s)
-        except ValueError:
-            return 0.0
+def _get_block_score(block):
+    s = _get_block_field(block, "score")
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
 
-    # Level 0: Remove expired PROCESSED/COMPACTED audit lines
+
+def _compact_level0_audit(content, limits, now):
+    """Level 0: Remove expired PROCESSED/COMPACTED audit lines."""
     processed_expire = int(limits.get("processed_expire_days", 30))
     audit_pattern = re.compile(
         r"<!-- (?:PROCESSED|COMPACTED) ts:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)[^>]*-->\n?",
     )
 
-    def remove_expired_audit(m):
+    def remove_expired(m):
         ts_str = m.group(1)
         try:
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
@@ -711,90 +730,98 @@ def compact_trace(content, limits):
             pass
         return m.group(0)
 
-    content = audit_pattern.sub(remove_expired_audit, content)
+    return audit_pattern.sub(remove_expired, content)
 
-    blocks = list(trace_block_pattern.finditer(content))
-    blocks_to_remove = set()
 
-    # Level 1: Unconditional - remove invalid and expired entries
+def _compact_level1_invalid(blocks):
+    """Level 1: Unconditionally remove invalid and expired entries."""
+    to_remove = set()
     for i, m in enumerate(blocks):
         block = m.group(0)
-        validated = get_field(block, "validated")
+        validated = _get_block_field(block, "validated")
         if validated == "pending-pipeline":
-            continue  # never remove pending-pipeline
-        status_match = re.search(r"<!-- TRACE status:(\S+) -->", block)
+            continue
+        status_match = re.search(r"<!-- TRACE status:(\S+)", block)
         status = status_match.group(1) if status_match else "pending"
         if status in ("expired", "invalid") or validated == "invalid":
-            blocks_to_remove.add(i)
+            to_remove.add(i)
+    return to_remove
 
-    # Level 2: Conditional - old low-score entries past age threshold
+
+def _compact_level2_old_low(blocks, already_removed, limits, now):
+    """Level 2: Remove old low-score entries past age threshold."""
+    to_remove = set()
     level2_age = int(limits["level2_age_days"])
     level2_score = float(limits["level2_score_threshold"])
-
     for i, m in enumerate(blocks):
-        if i in blocks_to_remove:
+        if i in already_removed:
             continue
         block = m.group(0)
-        validated = get_field(block, "validated")
+        validated = _get_block_field(block, "validated")
         if validated in ("pending-pipeline", "true", "false"):
             continue
-        age = get_timestamp_age_days(block)
-        score = get_score(block)
+        age = _get_block_age_days(block, now)
+        score = _get_block_score(block)
         if age > level2_age and score < level2_score:
-            blocks_to_remove.add(i)
+            to_remove.add(i)
+    return to_remove
 
-    # Level 3: If still over limit, remove oldest low-score entries
-    remaining = len(blocks) - len(blocks_to_remove)
+
+def _compact_level3_overflow(blocks, already_removed, limits, now):
+    """Level 3: If still over limit, remove oldest low-score entries
+    while preserving keep_top_n_per_module coverage."""
+    remaining = len(blocks) - len(already_removed)
     max_entries = int(limits["compact_max_entries"])
+    if remaining <= max_entries:
+        return set()
 
-    if remaining > max_entries:
-        level3_age = int(limits["level3_age_days"])
-        level3_score = float(limits["level3_score_threshold"])
+    level3_age = int(limits["level3_age_days"])
+    level3_score = float(limits["level3_score_threshold"])
+    keep_top_n = int(limits.get("keep_top_n_per_module", 3))
 
-        candidates = []
-        for i, m in enumerate(blocks):
-            if i in blocks_to_remove:
-                continue
-            block = m.group(0)
-            validated = get_field(block, "validated")
-            if validated in ("pending-pipeline", "false"):
-                continue
-            age = get_timestamp_age_days(block)
-            score = get_score(block)
-            if age > level3_age and score < level3_score:
-                candidates.append((age, score, i))
+    candidates = []
+    module_keep_count = {}
 
-        candidates.sort(key=lambda x: (-x[0], x[1]))
-        overflow = remaining - max_entries
-        keep_top_n = int(limits.get("keep_top_n_per_module", 3))
+    for i, m in enumerate(blocks):
+        if i in already_removed:
+            continue
+        block = m.group(0)
+        validated = _get_block_field(block, "validated")
+        modules_str = _get_block_field(block, "modules")
 
-        module_keep_count = {}
-        for i, m_obj in enumerate(blocks):
-            if i in blocks_to_remove:
-                continue
-            block = m_obj.group(0)
-            modules_str = get_field(block, "modules")
-            for mod in re.findall(r"[A-Za-z_]\w*", modules_str):
-                module_keep_count[mod] = module_keep_count.get(mod, 0) + 1
+        for mod in re.findall(r"[A-Za-z_]\w*", modules_str):
+            module_keep_count[mod] = module_keep_count.get(mod, 0) + 1
 
-        for _, _, idx in candidates[:overflow]:
-            block = blocks[idx].group(0)
-            modules_str = get_field(block, "modules")
-            mods = re.findall(r"[A-Za-z_]\w*", modules_str)
-            if any(module_keep_count.get(mod, 0) <= keep_top_n for mod in mods):
-                continue
-            blocks_to_remove.add(idx)
-            for mod in mods:
-                if mod in module_keep_count:
-                    module_keep_count[mod] -= 1
+        if validated in ("pending-pipeline", "false"):
+            continue
+        age = _get_block_age_days(block, now)
+        score = _get_block_score(block)
+        if age > level3_age and score < level3_score:
+            candidates.append((age, score, i))
 
+    candidates.sort(key=lambda x: (-x[0], x[1]))
+    overflow = remaining - max_entries
+    to_remove = set()
+
+    for _, _, idx in candidates[:overflow]:
+        block = blocks[idx].group(0)
+        modules_str = _get_block_field(block, "modules")
+        mods = re.findall(r"[A-Za-z_]\w*", modules_str)
+        if any(module_keep_count.get(mod, 0) <= keep_top_n for mod in mods):
+            continue
+        to_remove.add(idx)
+        for mod in mods:
+            if mod in module_keep_count:
+                module_keep_count[mod] -= 1
+
+    return to_remove
+
+
+def _rebuild_after_compact(content, blocks, blocks_to_remove, now):
+    """Rebuild content excluding removed blocks, clean whitespace, add audit."""
     removed = len(blocks_to_remove)
-    if removed == 0:
-        return
-
     kept_count = len(blocks) - removed
 
-    # Rebuild content excluding removed blocks
     parts = []
     prev = 0
     for i, m in enumerate(blocks):
@@ -802,17 +829,36 @@ def compact_trace(content, limits):
             parts.append(content[prev:m.start()])
             prev = m.end()
     parts.append(content[prev:])
-    final_content = "".join(parts)
+    final = "".join(parts)
+    final = re.sub(r"\n{3,}", "\n\n", final)
 
-    # Clean up consecutive blank lines left by block removal
-    final_content = re.sub(r"\n{3,}", "\n\n", final_content)
-
-    # Append compaction audit line
     compact_ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     audit_line = "\n<!-- COMPACTED ts:{} removed:{} kept:{} -->\n".format(
-        compact_ts, removed, kept_count
+        compact_ts, removed, kept_count,
     )
-    final_content = final_content.rstrip("\n") + "\n" + audit_line
+    return final.rstrip("\n") + "\n" + audit_line
+
+
+def compact_trace(content, limits):
+    """Execute three-level compaction on trace.md content."""
+    now = datetime.now(timezone.utc)
+
+    trace_block_pattern = re.compile(
+        r"<!-- TRACE[^>]*-->.*?<!-- /TRACE -->",
+        re.DOTALL,
+    )
+
+    content = _compact_level0_audit(content, limits, now)
+    blocks = list(trace_block_pattern.finditer(content))
+
+    blocks_to_remove = _compact_level1_invalid(blocks)
+    blocks_to_remove |= _compact_level2_old_low(blocks, blocks_to_remove, limits, now)
+    blocks_to_remove |= _compact_level3_overflow(blocks, blocks_to_remove, limits, now)
+
+    if not blocks_to_remove:
+        return
+
+    final_content = _rebuild_after_compact(content, blocks, blocks_to_remove, now)
 
     try:
         tmp_file = TRACE_FILE + ".tmp"
@@ -884,10 +930,133 @@ def check_notify():
 
 
 # ============================================================
+# Error logging
+# ============================================================
+
+TRACE_ERROR_LOG = os.path.join(TRACE_DIR, ".trace_error.log")
+_ERROR_LOG_MAX_BYTES = 64 * 1024
+
+
+def _log_error(exc):
+    """Append error to .trace_error.log (capped at 64 KB, rotates on overflow)."""
+    import traceback
+    try:
+        entry = "[{}] {}\n{}\n".format(
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            exc,
+            traceback.format_exc(),
+        )
+        if os.path.isfile(TRACE_ERROR_LOG):
+            try:
+                size = os.path.getsize(TRACE_ERROR_LOG)
+            except OSError:
+                size = 0
+            if size > _ERROR_LOG_MAX_BYTES:
+                rotated = TRACE_ERROR_LOG + ".prev"
+                try:
+                    if os.path.exists(rotated):
+                        os.remove(rotated)
+                    os.rename(TRACE_ERROR_LOG, rotated)
+                except OSError:
+                    pass
+        os.makedirs(os.path.dirname(TRACE_ERROR_LOG), exist_ok=True)
+        with open(TRACE_ERROR_LOG, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except OSError:
+        pass
+
+
+# ============================================================
+# Self-test
+# ============================================================
+
+def selftest():
+    """Verify the trace-flush pipeline can execute end-to-end.
+
+    Checks: weights loading, buffer parsing, module inference, scoring,
+    formatting. Prints results to stdout. Returns True on success.
+    """
+    print("trace-flush self-test")
+    print("=" * 40)
+    ok = True
+
+    print("[1] Load weights... ", end="")
+    try:
+        weights, threshold = load_weights()
+        print("OK (threshold={})".format(threshold))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[2] Parse buffer line... ", end="")
+    try:
+        parts = "Assets/Scripts/Modules/Building/Test.cs|10|3|".split("|")
+        assert len(parts) >= 2
+        print("OK")
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[3] Infer module... ", end="")
+    try:
+        modules = infer_modules(["Assets/Scripts/Modules/Building/Test.cs"])
+        print("OK -> {}".format(modules))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[4] Compute score... ", end="")
+    try:
+        score, breakdown = compute_score(
+            ["test.cs"], ["TestModule"], 10, 3, weights,
+        )
+        print("OK -> {:.2f}".format(score))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[5] Format trace... ", end="")
+    try:
+        entry = format_trace(
+            ["test.cs"], ["TestModule"], 5.0, 10, 3, "_",
+        )
+        assert "<!-- TRACE" in entry
+        assert "<!-- /TRACE -->" in entry
+        print("OK ({} chars)".format(len(entry)))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[6] Config loading... ", end="")
+    try:
+        segs, pat = _load_module_config()
+        print("OK ({} segments, pattern={})".format(len(segs), pat.pattern))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[7] Error log writable... ", end="")
+    try:
+        os.makedirs(os.path.dirname(TRACE_ERROR_LOG), exist_ok=True)
+        print("OK ({})".format(TRACE_ERROR_LOG))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("=" * 40)
+    print("Result: {}".format("ALL PASS" if ok else "SOME FAILED"))
+    return ok
+
+
+# ============================================================
 # Main
 # ============================================================
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
+        success = selftest()
+        sys.exit(0 if success else 1)
+
     idp = None
     try:
         try:
@@ -895,26 +1064,15 @@ def main():
         except Exception:
             pass
 
-        # 1. Apply pending validated signal to most-recent trace entry
         apply_validated_update()
-
-        # 2. Apply pipeline result to batch of trace entries
         apply_pipeline_result()
-
-        # 3. Read IDP (cleaned up in finally regardless of outcome)
         idp = read_pending_idp()
-
-        # 4. Flush new trace entry from buffer
         flush_new_trace(idp)
-
-        # 5. Compact trace.md if over threshold (respects .trace_lock)
         check_and_compact()
-
-        # 6. Check passive trigger threshold
         check_notify()
 
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_error(exc)
     finally:
         cleanup_pending_files()
 

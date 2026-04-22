@@ -24,13 +24,35 @@ TRACE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "trac
 BUFFER_FILE = os.path.join(TRACE_DIR, ".trace_buffer")
 PREV_EDITS_FILE = os.path.join(TRACE_DIR, ".trace_prev_edits")
 
-TRACKED_EXTENSIONS = {
+_HOOKS_CONFIG_PATH = os.path.join(TRACE_DIR, "hooks.config.json")
+
+_DEFAULT_TRACKED = {
     ".cs", ".ts", ".tsx", ".js", ".jsx",
     ".py", ".go", ".java", ".kt", ".rs",
     ".swift", ".cpp", ".c", ".h", ".hpp",
     ".lua", ".rb", ".dart",
 }
-EXCLUDED_EXTENSIONS = {".meta", ".asset", ".prefab", ".unity", ".mat", ".anim", ".controller"}
+_DEFAULT_EXCLUDED = {".meta", ".asset", ".prefab", ".unity", ".mat", ".anim", ".controller"}
+
+
+def _load_hooks_config():
+    """Load extension sets from hooks.config.json, fall back to defaults."""
+    tracked = set(_DEFAULT_TRACKED)
+    excluded = set(_DEFAULT_EXCLUDED)
+    if os.path.isfile(_HOOKS_CONFIG_PATH):
+        try:
+            with open(_HOOKS_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data.get("tracked_extensions"), list):
+                tracked = set(data["tracked_extensions"])
+            if isinstance(data.get("excluded_extensions"), list):
+                excluded = set(data["excluded_extensions"])
+        except (json.JSONDecodeError, OSError):
+            pass
+    return tracked, excluded
+
+
+TRACKED_EXTENSIONS, EXCLUDED_EXTENSIONS = _load_hooks_config()
 
 REVERT_SIMILARITY_THRESHOLD = 0.6
 
@@ -100,9 +122,11 @@ def extract_edit_strings(event_data):
 def detect_revert(path, old_string, new_string):
     """Detect if this edit reverts a previous edit on the same file.
 
-    Checks if the current old_string is similar to the previous new_string,
-    which indicates the AI is correcting its own prior output.
+    Uses SequenceMatcher.ratio() for robust similarity comparison instead
+    of the fragile prefix-matching heuristic.
     """
+    from difflib import SequenceMatcher
+
     if not old_string or len(old_string) < 10:
         return False
 
@@ -119,20 +143,10 @@ def detect_revert(path, old_string, new_string):
     if old_stripped == prev_stripped:
         return True
 
-    if len(old_stripped) > 0 and len(prev_stripped) > 0:
-        shorter = min(len(old_stripped), len(prev_stripped))
-        longer = max(len(old_stripped), len(prev_stripped))
-        if shorter > 20:
-            prefix_match = 0
-            for i in range(min(shorter, 200)):
-                if old_stripped[i] == prev_stripped[i]:
-                    prefix_match += 1
-                else:
-                    break
-            if prefix_match / float(longer) > REVERT_SIMILARITY_THRESHOLD:
-                return True
-
-    return False
+    old_capped = old_stripped[:500]
+    prev_capped = prev_stripped[:500]
+    ratio = SequenceMatcher(None, old_capped, prev_capped).ratio()
+    return ratio > REVERT_SIMILARITY_THRESHOLD
 
 
 def _load_prev_edit(path):
@@ -147,8 +161,15 @@ def _load_prev_edit(path):
         return None
 
 
+_PREV_EDITS_MAX = 50
+
+
 def _save_prev_edit(path, new_string):
-    """Save the new_string for revert detection on next edit."""
+    """Save the new_string for revert detection on next edit.
+
+    Uses LRU eviction: recently accessed entries are moved to the end,
+    and when capacity exceeds _PREV_EDITS_MAX the oldest entries are dropped.
+    """
     store = {}
     if os.path.isfile(PREV_EDITS_FILE):
         try:
@@ -157,12 +178,16 @@ def _save_prev_edit(path, new_string):
         except (json.JSONDecodeError, OSError):
             store = {}
 
+    if path in store:
+        del store[path]
+
     trimmed = new_string[:500] if new_string else ""
     store[path] = trimmed
 
-    if len(store) > 50:
-        keys = sorted(store.keys())
-        store = {k: store[k] for k in keys[-50:]}
+    if len(store) > _PREV_EDITS_MAX:
+        keys = list(store.keys())
+        for k in keys[:len(store) - _PREV_EDITS_MAX]:
+            del store[k]
 
     os.makedirs(os.path.dirname(PREV_EDITS_FILE), exist_ok=True)
     try:

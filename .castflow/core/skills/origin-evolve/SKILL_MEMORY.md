@@ -38,9 +38,9 @@ Self-check: would the proposal still hold if you removed the cited evidence? If 
 
 | Operation | Trigger | Required evidence |
 |-----------|---------|-------------------|
-| Append | No existing rule with anchor Jaccard >= 0.5 against the proposal | Full new entry with Anchors and Related |
+| Append | No existing rule with anchor Jaccard >= 0.5 against the proposal | Full new entry with Anchors (prefer extended format `kind:path-hint:symbol`) and Related |
 | Merge | Existing rule with anchor Jaccard >= 0.5 | Diff showing anchor union and content delta |
-| Retire | Anchor symbols absent from current code | `grep` output proving 0 matches |
+| Retire | Anchor symbols absent from current code (use path-hint if available to narrow grep scope) | `grep` output proving 0 matches |
 
 Thresholds (Jaccard, capacity word count) read from `traces/governance.json` with defaults: Jaccard 0.5, file capacity 2000 words. If file is over capacity, propose Retire of an obsolete entry before Append.
 
@@ -62,7 +62,7 @@ CLAUDE.md changes are always proposed as suggestions to the user; never write di
 
 All generated content follows `.castflow/core/SKILL_ITERATION.md` format rules: no emoji, no dates, no code blocks in SKILL_MEMORY entries.
 
-Before writing: verify file is within capacity. New SKILL_MEMORY entries must include `Anchors:` (code symbols) and `Related:` (cross-references). For Retire, anchors must be `grep`-verified absent.
+Before writing: verify file is within capacity. New SKILL_MEMORY entries must include `Anchors:` (prefer extended format `[kind:path-hint:symbol]` for precision) and `Related:` (cross-references). For Retire, use path-hint to narrow grep scope when available; anchors must be `grep`-verified absent.
 
 ---
 

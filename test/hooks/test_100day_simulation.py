@@ -307,7 +307,7 @@ class SimulationTestBase(unittest.TestCase):
     def count_pending(self, content=None):
         if content is None:
             content = self.read_trace()
-        return len(re.findall(r"<!-- TRACE status:pending -->", content))
+        return len(re.findall(r"<!-- TRACE status:pending\b", content))
 
     def get_all_blocks(self, content=None):
         if content is None:
@@ -1265,7 +1265,7 @@ class TestEndToEndFlowIntegrity(SimulationTestBase):
         })
         self.assertTrue(os.path.isfile(flush.TRACE_FILE))
         content = self.read_trace()
-        self.assertIn("<!-- TRACE status:pending -->", content)
+        self.assertIn("<!-- TRACE status:pending", content)
         self.assertIn("Building", content)
         self.assertFalse(os.path.isfile(collector.BUFFER_FILE), "Buffer should be cleared")
 

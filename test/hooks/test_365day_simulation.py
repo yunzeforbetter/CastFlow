@@ -410,7 +410,7 @@ class SimulationTestBase(unittest.TestCase):
     def count_pending(self, content=None):
         if content is None:
             content = self.read_trace()
-        return len(re.findall(r"<!-- TRACE status:pending -->", content))
+        return len(re.findall(r"<!-- TRACE status:pending\b", content))
 
     def get_all_blocks(self, content=None):
         if content is None:

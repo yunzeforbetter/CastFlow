@@ -40,6 +40,8 @@ Step 1 Read & Triage -> Step 2 Identify Patterns -> Step 3 Generate Proposals ->
 
 Acquire `.trace_lock` (overwrite if stale). Apply lifecycle transitions: `pending` with stale validated -> `expired`; `pending-pipeline` past expiry -> `invalid`.
 
+**Schema version gate**: verify all pending entries have `schema:1` in the TRACE header. Entries without a schema tag are treated as schema 1 (backward compatible). If any entry has `schema:N` where N > 1, abort and report "Unsupported trace schema version N. Update origin-evolve."
+
 Read trace.md, keep `pending` only. If fewer than 5 pending entries and no correction signals, suggest waiting.
 
 Compute three diagnostic counts across `.claude/skills/*/SKILL_MEMORY.md` and include in the analysis summary:
