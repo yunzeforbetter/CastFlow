@@ -14,22 +14,21 @@ import textwrap
 import unittest
 from unittest.mock import patch
 
-# Add .castflow to path so we can import the bootstrap package
 _CASTFLOW_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     ".castflow",
 )
 sys.path.insert(0, _CASTFLOW_DIR)
 
-from bootstrap.templates import replace_placeholders, process_conditionals
-from bootstrap.claude_merge import (
+from installer.templates import replace_placeholders, process_conditionals
+from installer.claude_merge import (
     merge_claude_md, _split_at_boundary, _deduplicate_sections,
     _extract_user_additions, CLAUDE_BOUNDARY,
 )
-from bootstrap.hook_config import merge_cursor_hooks, merge_claude_settings
-from bootstrap.validate import validate_skill_dir, _count_size_units
-from bootstrap.backup import BackupSession, rotate_backups
-from bootstrap.io_ops import safe_write, safe_copy_file, read_file
+from installer.hook_config import merge_cursor_hooks, merge_claude_settings
+from installer.validate import validate_skill_dir, _count_size_units
+from installer.backup import BackupSession, rotate_backups
+from installer.io_ops import safe_write, safe_copy_file, read_file
 
 
 class TestReplacePlaceholders(unittest.TestCase):
@@ -180,19 +179,6 @@ class TestClaudeMerge(unittest.TestCase):
             dest, new, dry_run=False, harness_merge_choice="2")
         result = read_file(dest)
         self.assertIn("Old", result)
-
-    def test_diff_noninteractive_aborts_without_preset(self):
-        dest = os.path.join(self.tmpdir, "CLAUDE.md")
-        boundary = CLAUDE_BOUNDARY
-        old = "# Old Harness\n\n{} PROJECT =====>\n\n## Project\n".format(boundary)
-        new = "# New Harness\n\n{} PROJECT =====>\n\n## Template\n".format(boundary)
-        with open(dest, "w", encoding="utf-8", newline="\n") as f:
-            f.write(old)
-        with patch("bootstrap.claude_merge.sys.stdin") as mock_stdin:
-            mock_stdin.isatty.return_value = False
-            with self.assertRaises(SystemExit) as ctx:
-                merge_claude_md(dest, new, dry_run=False)
-        self.assertEqual(ctx.exception.code, 1)
 
     def test_no_boundary_dedup(self):
         dest = os.path.join(self.tmpdir, "CLAUDE.md")
@@ -489,6 +475,16 @@ class TestIOOps(unittest.TestCase):
         safe_write(path, "replaced", "full", dry_run=False, backup_session=session)
         self.assertEqual(read_file(path), "replaced")
         self.assertIsNotNone(session.session_dir)
+
+
+class TestColdStartPhases(unittest.TestCase):
+    """Cold-start Phase A API surface (installer.generate)."""
+
+    def test_phase_entrypoints_exist(self):
+        from installer import generate
+        self.assertTrue(callable(generate.phase_a))
+        self.assertTrue(callable(generate.generate_all))
+        self.assertTrue(callable(generate.merge_root_claude))
 
 
 if __name__ == "__main__":

@@ -104,7 +104,7 @@ pipeline_run_id: pipeline_20260420_143055
 |--------|-----------|------------|
 | GO | true | 合规实现，成功模式 |
 | GO-WITH-CAUTION | true | 经 Step 6 补全后合规，包含修复经验 |
-| NO-GO | false | P0 反面教材（origin-evolve 优先级最高） |
+| NO-GO | false | P0 反面教材（origin-evolve-skill 优先级最高） |
 
 批量更新匹配 `pipeline_run_id` 的所有 trace 条目后，删除 `.pending_pipeline_result.json`。
 

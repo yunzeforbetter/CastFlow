@@ -3,8 +3,8 @@
 Location: CastFlow/_eval/ (outside .castflow/, NOT shipped by bootstrap.py).
 
 Verifies the deterministic claims in:
-- core/skills/origin-evolve/SKILL.md       (Step 1 diagnostics, attribution)
-- core/skills/origin-evolve/SKILL_MEMORY.md (Rule 2, Rule 3, thresholds)
+- core/skills/origin-evolve-skill/SKILL.md       (Step 1 diagnostics, attribution)
+- core/skills/origin-evolve-skill/SKILL_MEMORY.md (Rule 2, Rule 3, thresholds)
 
 Run: python verify_redesign.py
 """

@@ -1,6 +1,6 @@
 ---
 name: code-pipeline-skill
-description: code_pipeline keyword trigger - orchestrates the full workflow from requirement analysis to delivery
+description: code_pipeline code-pipeline OpenSpec pipeline requirement analysis delivery orchestration multi-agent multi-stage workflow NOT bootstrap castflow install
 ---
 
 # Code Pipeline 工作流
@@ -116,6 +116,6 @@ pipeline 通过 `pipeline_run_id` 将 Step 3 的 trace 与 Step 5 的 GO/NO-GO �
 |-----------|-----------|------|
 | GO | true | 一次性合规，成功模式 |
 | GO-WITH-CAUTION | true | 经补全后合规，包含可复用修复经验 |
-| NO-GO | false | P0 反面教材（origin-evolve 最高优先级） |
+| NO-GO | false | P0 反面教材（origin-evolve-skill 最高优先级） |
 
 详见 pipeline_protocol.md 协议 5。

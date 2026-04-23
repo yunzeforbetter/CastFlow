@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### CastFlow结构调整
+
+- **rewrite**: 全面重写 `CastFlow/README.md`，与当前仓库真实布局及工作流对齐：定位与四层闭环（冷启动装架 / 渐进式披露 / 多模块编排 / 自我进化）、**端到端案例**（submodule 集成 → `bootstrap castflow` Phase 0–6 → 模块 skill → `code_pipeline` → `origin evolve` → 核心更新）、CastFlow 与用户项目双树目录、**全量文件清单**（`bootstrap-skill/`、`installer/`、`core/`、`bootstrap-assets/`、`test/` 及装架产物职责表）、T1–T4 时点摘要、trace / 五维评分 / 四级 compaction / `origin-evolve-skill` 执行流、CLI 与测试命令。
+- **docs**: 明确 **装架与内容生产解耦**：`python .castflow/bootstrap.py` 仅 **Phase A**（同步 `.claude/` 核心、合并根 `CLAUDE.md`、分发 `.claude/templates/`），**不**生成项目级 skill 正文；`architect-skill` / `debug-skill` / `profiler-skill` / `programmer-*-skill` 在 **bootstrap-skill Phase 5** 由主 agent 发「一段话手话」、子代理以 **`skill-creator` 为主路径**落盘，替代旧文档中「安装器从 `content/` 合并生成 skill」的流程描述。
+- **docs**: 目录与命名对齐：`CastFlow/bootstrap-skill/` 为顶层 AI 初始化器（`.claude/` 尚不存在时由宿主加载）；`.castflow/bootstrap.py` 为薄入口，实现位于 `.castflow/installer/`；冷启动专用模板在 `.castflow/bootstrap-assets/skill-templates/`（**不分发**到 `.claude/`）；`CLAUDE.template.md` 位于 `.castflow/core/`；创作元规范 `AUTHORING_GUIDE.md` 位于 `.castflow/core/templates/`；自我进化 skill 文档与装架产物统一为 **`origin-evolve-skill`**。
+- **docs**: CLI 与交互：`--claude-md-only`、`--templates-only`、`--agent <module>`、`--init-manifest` + `--language`、`--claude-md-harness`（1/2/3）、`--project-root` / 备份相关开关；**已移除** `--skill`、`--strict-content` 及任何 Phase B / 安装器写 skill 正文的叙述；清单 canonical 名为 `bootstrap-output/cf_manifest.json`。
+- **docs**: 移除或替换过时锚点：不再以 `CORE_FILE_COPIES` / `CORE_DIR_COPIES` 等内部常量名为用户文档主索引；`CLAUDE.md` 框架段已去掉 `framework_rules` / `project_rules` 占位链路，README 侧与 `CLAUDE.template.md` 及 bootstrap-skill Phase 3 一致（命名约定写入 `naming_conventions` / 项目段）。
+
 ### Bootstrap 清单文件名
 
 - **change**: CastFlow 初始化清单 canonical 文件名为 `bootstrap-output/cf_manifest.json`（避免与 Unity `Packages/manifest.json` 等混淆）。仍可读旧版 `bootstrap-output/manifest.json` 并提示迁移。
@@ -36,17 +44,6 @@
 ### trace-collector.py 语言扩展
 
 - **feat(P2)**: `TRACKED_EXTENSIONS` 从仅 `.cs` 扩展至 18 种主流语言（.ts/.tsx/.js/.jsx/.py/.go/.java/.kt/.rs/.swift/.cpp/.c/.h/.hpp/.lua/.rb/.dart）。
-
-### README.md
-
-- **update**: 修正"四维模式识别"为"六类模式识别"，列出全部六种模式类型。
-- **update**: 新增 Trace Compaction 章节，说明四级自动压缩策略和 validated 保护机制。
-- **update**: 补充 trace 条目的 `validated` 和 `pipeline_run_id` 字段说明及状态流转。
-- **update**: 进化提醒阈值从 `pending >= 10` 更新为 `pending >= 5`。
-- **update**: 目录结构新增测试文件和 CHANGELOG.md。
-- **feat**: 新增「Skill 迭代（冷启动后）」：自然语言触发 `skill-creator`、功能模块与专项职责两类路径、与 skill-creator 对齐的执行流程、与 origin-evolve 的分工（文件级 vs 规则级）。
-- **feat**: 新增「文件清单」：按目录说明 CastFlow 仓库内全部文件（bootstrap、core、agents、hooks、skills、traces、scripts、templates、`test/`）。
-- **update**: 「CastFlow 目录结构」与「初始化后的文件结构」与当前仓库 layout 及 `CORE_FILE_COPIES` / `CORE_DIR_COPIES` 行为一致。
 
 ### 测试套件
 
@@ -142,7 +139,7 @@
   - `trace-collector.py`: 文件编辑时自动记录，过滤 `.meta/.asset/.prefab` 等非代码文件，去重后追加到 buffer。
   - `trace-flush.py`: Agent 结束时汇总 buffer，自动推断 modules（从路径中提取 `Modules/XXX/`），准入过滤（.cs >= 2 个），生成含分类占位符的 trace 条目。
 - **feat**: 四维 trace 分类体系：`type`（任务类型）、`correction`（用户纠正）、`modules`（涉及模块，自动推断）、`skills`（使用的 Skill）。Hook 脚本填充 modules，AI 按 CLAUDE.md 规则补充其余三个维度。
-- **feat**: 智能提醒阈值：pending >= 10 条或含用户纠正的条目 >= 3 条时触发提醒，纠正记录优先触发分析。
+- **feat**: 智能提醒阈值：pending >= 5 条或含修正信号的条目 >= 3 条时触发提醒，纠正记录优先触发分析。（早期文档曾写 10，已与 evolve-reminder / origin-evolve-skill 对齐为 5。）
 - **feat**: 平台配置适配：`.cursor/hooks.json`（Cursor）和 `.claude/settings.json`（Claude Code）分别生成，引用同一套脚本。
 - **feat**: 会话启动提醒规则：`.cursor/rules/evolve-reminder.mdc` 和 `.claude/rules/evolve-reminder.md`。
 
@@ -150,10 +147,3 @@
 
 - **change**: `## 执行记录` 从"AI 全量构造 trace"改为"补充式"——Hook 自动创建条目，AI 仅替换 `type`/`correction`/`skills` 占位符，降低遗忘风险和 token 消耗。
 - **remove**: 移除 `## Bootstrap 触发` 段落。
-
-### README.md
-
-- **rewrite**: 自我进化章节重写，反映两层数据采集架构（Hook 零 token + AI 补充）和四维分类体系。
-- **update**: 安装方式更新，说明支持子目录引入和 `--project-root` 参数。
-- **update**: 文件结构图新增 `.claude/hooks/`、`.claude/settings.json`、`.cursor/hooks.json`。
-- **update**: 技术细节新增 Hook 脚本协议说明和 bootstrap.py 项目根检测逻辑。
