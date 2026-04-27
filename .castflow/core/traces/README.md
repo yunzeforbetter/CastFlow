@@ -4,13 +4,13 @@
 
 | 类别 | 文件 | 说明 |
 |------|------|------|
-| 配置 | `limits.json` | trace-flush 的压缩/通知/过期阈值（运行时可改，无需重启） |
-| 配置 | `hooks.config.json` | trace-collector 与 trace-flush 的语言/路径推断配置（适配非 Unity 项目） |
+| 配置 | `config/limits.json` | trace-flush 的压缩/通知/过期阈值（运行时可改，无需重启） |
+| 配置 | `config/hooks.config.json` | trace-collector 与 trace-flush 的语言/路径推断配置（适配非 Unity 项目） |
 | 数据 | `trace.md` | hook 自动累积的执行记录，由 origin-evolve 消费 |
 | 数据 | `weights.json` | 五维评分权重的自校准结果（首次使用前不存在，由 origin-evolve Step 6 写入） |
 | 状态 | `.trace_buffer` / `.trace_prev_edits` / `.trace_lock` / `.pending_*.json` / `.trace_error.log` | hook 内部状态文件，不要手动编辑 |
 
-修改 `limits.json` 或 `hooks.config.json` 后立即生效。
+修改 `config/limits.json` 或 `config/hooks.config.json` 后立即生效。
 
 ---
 
@@ -41,7 +41,7 @@
 | `correction` | `_` / `auto:minor` / `auto:major` / `minor` / `major` | hook | 自我修正信号，由 collector 自动检测或 AI 标记 |
 | `validated` | `_` / `true` / `false` / `pending-pipeline` / `invalid` | hook | 用户验证信号，从 `.pending_validated.json` 注入 |
 | `pipeline_run_id` | string / `_` | hook | code_pipeline 的 run id |
-| `modules` | `[Mod1, Mod2]` | hook | 从文件路径推断（依赖 hooks.config.json） |
+| `modules` | `[Mod1, Mod2]` | hook | 从文件路径推断（依赖 config/hooks.config.json） |
 | `skills` | `[skill1]` / `[]` | AI（IDP）| 本次涉及的 skill 名称 |
 | `files_modified` | `[path, ...]` | hook | 编辑过的文件（最多前 20 个） |
 | `file_count` | int | hook | 文件总数 |
@@ -55,7 +55,7 @@
 
 ## limits.json 字段说明
 
-控制 trace-flush 的压缩行为、过期策略和通知阈值。
+控制 trace-flush 的压缩行为、过期策略和通知阈值。位于 `config/limits.json`。
 
 ### 压缩触发条件
 
@@ -120,7 +120,7 @@ origin-evolve 的被动触发机制：当积累足够多的 pending trace 时，
 
 ## hooks.config.json 字段说明
 
-控制 hook 脚本对**项目语言/路径结构**的适配。文件本身有 inline `_comment_*` 注释，下表是补充说明。
+控制 hook 脚本对**项目语言/路径结构**的适配。位于 `config/hooks.config.json`，文件本身有 inline `_comment_*` 注释，下表是补充说明。
 
 | 字段 | 作用 | 何时需要修改 |
 |------|------|------------|

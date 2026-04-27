@@ -33,7 +33,7 @@ TRACE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "trac
 BUFFER_FILE = os.path.join(TRACE_DIR, ".trace_buffer")
 TRACE_FILE = os.path.join(TRACE_DIR, "trace.md")
 WEIGHTS_FILE = os.path.join(TRACE_DIR, "weights.json")
-LIMITS_FILE = os.path.join(TRACE_DIR, "limits.json")
+LIMITS_FILE = os.path.join(TRACE_DIR, "config", "limits.json")
 PENDING_IDP_FILE = os.path.join(TRACE_DIR, ".pending_idp.json")
 PENDING_VALIDATED_FILE = os.path.join(TRACE_DIR, ".pending_validated.json")
 PENDING_PIPELINE_FILE = os.path.join(TRACE_DIR, ".pending_pipeline_result.json")
@@ -79,7 +79,7 @@ CRITICAL_TIERS = [
     (re.compile(r"Base\.cs$", re.IGNORECASE), 0.3),
 ]
 
-_HOOKS_CONFIG_PATH = os.path.join(TRACE_DIR, "hooks.config.json")
+_HOOKS_CONFIG_PATH = os.path.join(TRACE_DIR, "config", "hooks.config.json")
 
 _DEFAULT_GENERIC_SEGMENTS = frozenset([
     "Scripts", "Assets", "GameLogic", "Logic", "Render",

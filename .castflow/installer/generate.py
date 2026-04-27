@@ -25,7 +25,7 @@ CORE_FILE_COPIES = [
     ("core/agents/integration-matching-agent.md", "agents/integration-matching-agent.md"),
     ("core/agents/pipeline-verify-agent.md", "agents/pipeline-verify-agent.md"),
     ("core/traces/README.md", "traces/README.md"),
-    ("core/traces/hooks.config.json", "traces/hooks.config.json"),
+    ("core/traces/config/hooks.config.json", "traces/config/hooks.config.json"),
 ]
 
 CORE_DIR_COPIES = [
@@ -62,11 +62,11 @@ def copy_core_files(project_root, manifest, dry_run, backup_session=None):
         safe_copy_dir(src, dst, merge_mode, dry_run, backup_session)
 
     print("\n=== Seeding trace config ===")
-    limits_dst = os.path.join(project_root, CLAUDE, "traces", "limits.json")
+    limits_dst = os.path.join(project_root, CLAUDE, "traces", "config", "limits.json")
     if os.path.isfile(limits_dst):
         print("  [SKIP]   {} (user config preserved)".format(limits_dst))
     else:
-        limits_src = os.path.join(harness_dir, "core", "traces", "limits.json")
+        limits_src = os.path.join(harness_dir, "core", "traces", "config", "limits.json")
         safe_copy_file(limits_src, limits_dst, "full", dry_run, backup_session)
 
     print("\n=== Merging hook configs ===")

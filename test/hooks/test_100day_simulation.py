@@ -247,6 +247,8 @@ class SimulationTestBase(unittest.TestCase):
         self.test_dir = tempfile.mkdtemp(prefix="castflow_sim_")
         self.traces_dir = os.path.join(self.test_dir, "traces")
         os.makedirs(self.traces_dir, exist_ok=True)
+        self.config_dir = os.path.join(self.traces_dir, "config")
+        os.makedirs(self.config_dir, exist_ok=True)
 
         self._saved = {}
         for attr in ["TRACE_DIR", "BUFFER_FILE", "TRACE_FILE", "WEIGHTS_FILE",
@@ -258,7 +260,7 @@ class SimulationTestBase(unittest.TestCase):
         flush.BUFFER_FILE = os.path.join(self.traces_dir, ".trace_buffer")
         flush.TRACE_FILE = os.path.join(self.traces_dir, "trace.md")
         flush.WEIGHTS_FILE = os.path.join(self.traces_dir, "weights.json")
-        flush.LIMITS_FILE = os.path.join(self.traces_dir, "limits.json")
+        flush.LIMITS_FILE = os.path.join(self.config_dir, "limits.json")
         flush.PENDING_IDP_FILE = os.path.join(self.traces_dir, ".pending_idp.json")
         flush.PENDING_VALIDATED_FILE = os.path.join(self.traces_dir, ".pending_validated.json")
         flush.PENDING_PIPELINE_FILE = os.path.join(self.traces_dir, ".pending_pipeline_result.json")

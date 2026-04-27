@@ -121,8 +121,9 @@ CastFlow/
 │   │   ├── scripts/
 │   │   │   └── pipeline_merge.py          #   pipeline Step 3 并行输出聚合
 │   │   └── traces/                        # 默认阈值与字段契约（分发到 .claude/traces/）
-│   │       ├── limits.json                #   compaction 阈值 / 过期天数 / 保护参数
-│   │       ├── hooks.config.json          #   追踪扩展名 / 通用目录段 / 模块推断正则（跨语言适配入口）
+│   │       ├── config/
+│   │       │   ├── limits.json            #   compaction 阈值 / 过期天数 / 保护参数
+│   │       │   └── hooks.config.json      #   追踪扩展名 / 通用目录段 / 模块推断正则（跨语言适配入口）
 │   │       └── README.md                  #   trace 字段契约 + limits / hooks.config 说明
 │   │
 │   └── bootstrap-assets/                  # 仅在冷启动期间使用的资产（不进 .claude/）
@@ -157,7 +158,7 @@ CastFlow/
 │   ├── agents/                            # code-pipeline 调用的 3 个分析 agent
 │   ├── hooks/                             # trace-collector.py + trace-flush.py
 │   ├── templates/                         # AUTHORING_GUIDE + programmer.template + agent 模板
-│   ├── traces/                            # trace.md / weights.json / limits.json / hooks.config.json
+│   ├── traces/                            # trace.md / weights.json / config/limits.json / config/hooks.config.json
 │   ├── rules/                             # origin-evolve 生成的跨模块规则
 │   └── settings.json                      # Claude Code hook 配置（增量合并）
 ├── .cursor/
@@ -303,14 +304,14 @@ cd CastFlow && git pull
 | `agents/requirement-analysis-agent.md` | Pipeline Step 1：拆需求、识别模块、输出可验证接口清单 |
 | `agents/integration-matching-agent.md` | Pipeline Step 2：并行模块的接口一致性、命名对齐、耦合点检查 |
 | `agents/pipeline-verify-agent.md` | Pipeline 验收：集成一致性与质量复核 |
-| `hooks/trace-collector.py` | 每次文件编辑被调用。记录路径/行数/编辑次数；保存 `new_string` 快照（LRU 50）；用 `SequenceMatcher.ratio()` 检测 AI 自我修正标记 `R`；`tracked_extensions` / `excluded_extensions` 从 `traces/hooks.config.json` 加载 |
+| `hooks/trace-collector.py` | 每次文件编辑被调用。记录路径/行数/编辑次数；保存 `new_string` 快照（LRU 50）；用 `SequenceMatcher.ratio()` 检测 AI 自我修正标记 `R`；`tracked_extensions` / `excluded_extensions` 从 `traces/config/hooks.config.json` 加载 |
 | `hooks/trace-flush.py` | 会话结束被调用。读 buffer → 五维评分 F/D/K/S/E → 达标写入 `trace.md`（`schema:N` 版本头）→ 四级 compaction（Level 0 清审计行 / L1 过期低分 / L2 中期低分 / L3 每模块保留 top N）→ validated 条目受保护。含 `--selftest` 子命令 |
 | `templates/AUTHORING_GUIDE.md` | Skill 创作元规范（四份域 README 的共享上游）。包含项目勘察清单、反风格检查、Rubric |
 | `templates/agents/programmer.template.md` | 为功能模块生成专属 programmer agent 时的 prompt 模板 |
 | `templates/skills/programmer.template/` | 模块 skill 四件套模板 + 域 README（最常用，会被分发到 `.claude/templates/`） |
 | `scripts/pipeline_merge.py` | code-pipeline Step 3 调用：聚合并行 agent 输出到 `PIPELINE_CONTEXT.md`（临时文件，pipeline 结束即删） |
-| `traces/limits.json` | compaction 阈值、过期天数、保护参数的运行时默认值 |
-| `traces/hooks.config.json` | Hook 外部化配置：`tracked_extensions`（18 种主流语言）、`excluded_extensions`、`generic_dir_segments`、`module_dir_pattern`。**修改此文件即可适配非 Unity/C# 项目，无需改 Python** |
+| `traces/config/limits.json` | compaction 阈值、过期天数、保护参数的运行时默认值 |
+| `traces/config/hooks.config.json` | Hook 外部化配置：`tracked_extensions`（18 种主流语言）、`excluded_extensions`、`generic_dir_segments`、`module_dir_pattern`。**修改此文件即可适配非 Unity/C# 项目，无需改 Python** |
 | `traces/README.md` | trace 字段契约 + `schema:N` 版本规则 + limits/hooks.config 全字段说明 + Go/React 适配示例 |
 
 ### `.castflow/bootstrap-assets/` — 仅冷启动使用
