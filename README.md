@@ -471,6 +471,7 @@ python .castflow/bootstrap.py --clean-backups      # 清空所有备份并退出
 # Hook 独立健康检查（不依赖真实 hook 事件）
 python .claude/hooks/trace-flush.py --selftest
 ```
+**如果出现python指令无效果，观察是不是未配置环境变量，或者直接使用py -3 来替代**
 
 CLI 的关键移除：
 - **移除 `--skill`**：易与"生成 skill"混淆；Phase 5 项目级 skill 改走子代理 + skill-creator
