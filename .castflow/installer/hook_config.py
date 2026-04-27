@@ -3,32 +3,35 @@
 import json
 import os
 
-TRACE_HOOK_MARKER = ".claude/hooks/trace-"
+TRACE_HOOK_MARKERS = (".claude/hooks/trace-", "run-python.sh trace-")
+
+_RUN = "bash .claude/hooks/run-python.sh"
 
 CURSOR_HOOK_ENTRIES = {
-    "afterFileEdit": {"command": "python .claude/hooks/trace-collector.py"},
-    "stop": {"command": "python .claude/hooks/trace-flush.py"},
+    "afterFileEdit": {"command": "{} trace-collector.py".format(_RUN)},
+    "stop": {"command": "{} trace-flush.py".format(_RUN)},
 }
 
 CLAUDE_HOOK_ENTRIES = {
     "PostToolUse": {
         "matcher": "Write",
-        "hooks": [{"type": "command", "command": "python .claude/hooks/trace-collector.py"}],
+        "hooks": [{"type": "command", "command": "{} trace-collector.py".format(_RUN)}],
     },
     "Stop": {
-        "hooks": [{"type": "command", "command": "python .claude/hooks/trace-flush.py"}],
+        "hooks": [{"type": "command", "command": "{} trace-flush.py".format(_RUN)}],
     },
 }
 
 
 def _has_trace_hook(entries):
-    """Check if any entry in a hook array already references trace-collector."""
+    """Check if any entry in a hook array already references trace hooks."""
     for entry in entries:
         cmd = entry.get("command", "")
-        if TRACE_HOOK_MARKER in cmd:
+        if any(m in cmd for m in TRACE_HOOK_MARKERS):
             return True
         for sub in entry.get("hooks", []):
-            if TRACE_HOOK_MARKER in sub.get("command", ""):
+            sub_cmd = sub.get("command", "")
+            if any(m in sub_cmd for m in TRACE_HOOK_MARKERS):
                 return True
     return False
 
