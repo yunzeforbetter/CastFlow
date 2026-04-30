@@ -5,22 +5,53 @@ import os
 
 TRACE_HOOK_MARKERS = (".claude/hooks/trace-", "run-python.sh trace-")
 
-_RUN = "bash .claude/hooks/run-python.sh"
+_PYTHON = "py" if os.name == "nt" else "python3"
+_TRACE_COLLECTOR_COMMAND = "{} .claude/hooks/trace-collector.py".format(_PYTHON)
+_TRACE_FLUSH_COMMAND = "{} .claude/hooks/trace-flush.py".format(_PYTHON)
 
 CURSOR_HOOK_ENTRIES = {
-    "afterFileEdit": {"command": "{} trace-collector.py".format(_RUN)},
-    "stop": {"command": "{} trace-flush.py".format(_RUN)},
+    "afterFileEdit": {"command": _TRACE_COLLECTOR_COMMAND},
+    "stop": {"command": _TRACE_FLUSH_COMMAND},
 }
 
 CLAUDE_HOOK_ENTRIES = {
     "PostToolUse": {
         "matcher": "Write",
-        "hooks": [{"type": "command", "command": "{} trace-collector.py".format(_RUN)}],
+        "hooks": [{"type": "command", "command": _TRACE_COLLECTOR_COMMAND}],
     },
     "Stop": {
-        "hooks": [{"type": "command", "command": "{} trace-flush.py".format(_RUN)}],
+        "hooks": [{"type": "command", "command": _TRACE_FLUSH_COMMAND}],
     },
 }
+
+
+def _modernize_trace_command(command):
+    """Replace legacy shell-wrapper commands with direct Python invocations."""
+    if "run-python.sh trace-collector.py" in command:
+        return _TRACE_COLLECTOR_COMMAND
+    if "run-python.sh trace-flush.py" in command:
+        return _TRACE_FLUSH_COMMAND
+    return command
+
+
+def _modernize_trace_hooks(entries):
+    """Update existing trace hook commands in place when they use legacy syntax."""
+    changed = False
+    for entry in entries:
+        cmd = entry.get("command", "")
+        modern_cmd = _modernize_trace_command(cmd)
+        if modern_cmd != cmd:
+            entry["command"] = modern_cmd
+            changed = True
+
+        for sub in entry.get("hooks", []):
+            sub_cmd = sub.get("command", "")
+            modern_sub_cmd = _modernize_trace_command(sub_cmd)
+            if modern_sub_cmd != sub_cmd:
+                sub["command"] = modern_sub_cmd
+                changed = True
+
+    return changed
 
 
 def _has_trace_hook(entries):
@@ -58,6 +89,8 @@ def merge_cursor_hooks(dst_path, dry_run):
     for event_name, entry in CURSOR_HOOK_ENTRIES.items():
         if event_name not in data["hooks"]:
             data["hooks"][event_name] = []
+        if _modernize_trace_hooks(data["hooks"][event_name]):
+            changed = True
         if not _has_trace_hook(data["hooks"][event_name]):
             data["hooks"][event_name].append(entry)
             changed = True
@@ -104,6 +137,8 @@ def merge_claude_settings(dst_path, dry_run):
     for event_name, entry in CLAUDE_HOOK_ENTRIES.items():
         if event_name not in data["hooks"]:
             data["hooks"][event_name] = []
+        if _modernize_trace_hooks(data["hooks"][event_name]):
+            changed = True
         if not _has_trace_hook(data["hooks"][event_name]):
             data["hooks"][event_name].append(entry)
             changed = True
