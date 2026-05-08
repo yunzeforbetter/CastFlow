@@ -1,4 +1,4 @@
-﻿# Pipeline Protocol - 执行时扩展协议
+# Pipeline Protocol - 执行时扩展协议
 
 > **性质**：仅在 code-pipeline 执行时生效。GLOBAL_SKILL_MEMORY 的全部 5 条协议（物理证据、约束对齐、执行模式、IDP、validated）**始终生效**，本协议在其上叠加。
 

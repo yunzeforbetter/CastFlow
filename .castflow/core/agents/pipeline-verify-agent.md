@@ -1,4 +1,4 @@
-﻿---
+---
 name: pipeline-verify-agent
 description: 集成验收专家 - 评估多模块代码的集成质量并做 GO/NO-GO 判定
 tools: Read, Grep, Glob, Edit, Write, Bash

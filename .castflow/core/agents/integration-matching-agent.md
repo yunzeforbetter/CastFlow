@@ -1,4 +1,4 @@
-﻿---
+---
 name: integration-matching-agent
 description: 集成匹配专家 - 验证各部分API调用与声明的一致性
 tools: Read, Grep, Glob, Edit, Write, Bash

@@ -1,4 +1,4 @@
-﻿---
+---
 name: requirement-analysis-agent
 description: 需求分析专家 - 深度探索->拆分功能需求->声明API->建模依赖关系
 tools: Read, Grep, Glob, Edit, Write, Bash
