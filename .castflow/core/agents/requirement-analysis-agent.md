@@ -1,4 +1,4 @@
----
+﻿---
 name: requirement-analysis-agent
 description: 需求分析专家 - 深度探索->拆分功能需求->声明API->建模依赖关系
 tools: Read, Grep, Glob, Edit, Write, Bash
@@ -174,9 +174,13 @@ Phase 2 末尾需要基于复杂度提议是否执行 Step 2（约束同步与�
      - `### ATOMIC_EXECUTION`
 
 2. **PIPELINE_CONTEXT.md (Step 1 部分)**
+   - 使用固定骨架输出：`功能拆分清单 / API声明表 / 依赖关系图 / Handoff Draft / Handoff Level Decision / Freeze Recommendation / Step 2 建议 / Step 3 建议`
    - 功能拆分清单
    - API声明表
    - 依赖关系图
+   - 多 agent / 多模块协作时，按 `config/handoff_protocol.md` 生成 Handoff Draft
+   - Handoff Level Decision：L0 / L1 / L2 / L3 + 理由
+   - Freeze Recommendation：Ready / Needs Step 2 / Needs UserDecision / Needs Sub-pipeline
    - **Step 2 建议**：推荐 / 跳过 + 理由
    - **Step 3 建议**：主 agent 直接实现 / 启动 sub-agent 并行 + 理由（基于上下文压力评估）
 
@@ -190,6 +194,8 @@ Phase 2 末尾需要基于复杂度提议是否执行 Step 2（约束同步与�
 - 所有API必须验证存在或明确标注为"待实现"或"不确定"
 - 禁止幻觉任何未验证的API
 - API声明必须包含：名称、完整签名、来源模块、使用场景、当前状态
+- Handoff 的 Owns 必须是职责边界，不是文件列表；L2/L3 必须包含 Done Criteria
+- Open Questions 必须分类为 UserDecision / TODO / Risk；UserDecision 未解决时不得建议进入 Step 3
 - 不预设任何功能类型必然存在（可以只有UI、只有Logic等）
 - Phase 1必须生成至少2个拆分方案，明确说出为什么选择最终方案
 - Phase 1的发现必须可视化（用表格或ASCII图）
@@ -235,7 +241,7 @@ Task 8: 生成API声明（Phase 2开始）
 └─ 梳理依赖关系
 
 Task 9: 评估是否需要Step 2
-└─ 基于"Step 2建议的判断标准"检查
+└─ 基于"Step 2建议的判断标准"检查：3+模块 / 事件或状态契约 / unknown Blocks / Risk / Freeze Recommendation
 └─ 在PIPELINE_CONTEXT.md中明确提议
 └─ 记录理由
 

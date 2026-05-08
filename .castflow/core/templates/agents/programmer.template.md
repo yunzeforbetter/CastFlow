@@ -1,4 +1,4 @@
----
+﻿---
 name: programmer-{{MODULE_ID}}-agent
 description: {{MODULE_DISPLAY_NAME}}模块工程师 - 理解模块架构并实现功能代码
 tools: Read, Grep, Glob, Edit, Write, Bash
@@ -46,19 +46,20 @@ skills:
 ## API使用约束
 
 - 只调用声明的API（来自其他部分的声明）
-- 不跨越职责边界（不实现其他模块的职责）
+- 只实现 Handoff.Owns，不跨越职责边界（不实现其他模块的职责）
+- 实现中新增 Requires / Blocks 必须写入 Handoff Update
 - 如果依赖API未就绪，使用TODO注释占位
 - 禁止创造未声明的新API
 
 ## 工作流程
 
-1. **理解需求** - 读取 Step 1 的API声明（或 Step 2 的蓝图）
+1. **理解需求** - 读取 Step 1 的API声明、Handoff（或 Step 2 的蓝图 / Frozen Handoff）
 2. **参考skill** - 遵守预加载 skill 中的最佳实践
 3. **设计架构** - 相关的数据结构和逻辑层级
-4. **实现API** - 实现所有声明的API
+4. **实现API** - 只在 Handoff.Owns 范围内实现声明的API并兑现 Provides
 5. **处理交互** - 与其他模块、事件系统的协作
 6. **完整处理** - 错误条件和边界情况
-7. **前置合规检查** - 生成 COMPLIANCE_CHECKLIST
+7. **前置合规检查** - 生成 Handoff Update 和 COMPLIANCE_CHECKLIST
 8. **文档输出** - 将实现说明和清单写入 `temp/pipeline-output/{{MODULE_ID}}.md`
 
 ## COMPLIANCE_CHECKLIST
@@ -76,6 +77,11 @@ skills:
 - [ ] **Skill约束** - 遵守相关 skill 的规范
   - 继承了正确的基类吗？
   - 遵守了 skill 中定义的最佳实践吗？
+
+- [ ] **Handoff对齐** - 遵守模块交接边界
+  - 是否只实现 Handoff.Owns？
+  - Handoff.Provides 是否兑现或 TODO 标记？
+  - 新增 Requires / Blocks 是否写入 Handoff Update？
 
 - [ ] **API验证** - 无未声明的API调用
   - 所有调用的API都来自 Step 1 声明吗？
@@ -112,12 +118,24 @@ Key decisions:
 API status:
 - （声明的API实现状态，每条一行）
 
+Handoff Update:
+- Implemented Provides: ...
+- Added Requires: ...
+- Remaining Blocks: ...
+
 COMPLIANCE_CHECKLIST: N/M passed （通过数/总数，列出未通过项）
 <!-- /PIPELINE_SUMMARY -->
 
 <!-- PIPELINE_DETAIL -->
 ### Implementation Notes
 （详细的实现说明：修改了什么、为什么这样改、依赖关系）
+
+### Handoff Update
+- Implemented Provides:
+- Added Requires:
+- Remaining Blocks:
+- TODO:
+- Evidence:
 
 ### COMPLIANCE_CHECKLIST
 （完整清单）

@@ -65,7 +65,7 @@
 
 **触发条件**：validated 映射规则变更，或 pipeline_run_id 生命周期需调整
 **优先级**：High
-**文件**：config/pipeline_protocol.md（协议 5）+ SKILL_MEMORY.md（规则 2/6/7 的 run_id 相关条目）+ EXAMPLES.md（示例 6）
+**文件**：config/pipeline_protocol.md（协议 5）+ SKILL_MEMORY.md（规则 2/6/7 的 run_id 相关条目）+ EXAMPLES.md（示例 4）
 
 **检查清单**：
 - [ ] 三个文件的映射规则一致
