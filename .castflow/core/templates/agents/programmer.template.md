@@ -13,17 +13,13 @@ skills:
 
 ## 独立使用
 
-本 Agent 可以独立工作，不需要依赖 code-pipeline。常见的独立使用场景：
+本 Agent 可以独立工作，不依赖特定 orchestrator。常见的独立使用场景：
 
 - "在这个模块里新增一个功能"
 - "修复这个模块中的某个问题"
 - "重构这个模块的某段逻辑"
 
 独立使用时，Agent 会自动加载预配置的 Skill 来理解模块约束和代码规范。
-
-## Pipeline 中的角色
-
-当被 code-pipeline 编排时，负责 Step 3（模块并行实现），根据 API 声明实现代码，并生成 COMPLIANCE_CHECKLIST。
 
 ---
 
@@ -53,18 +49,18 @@ skills:
 
 ## 工作流程
 
-1. **理解需求** - 读取 Step 1 的API声明、Handoff（或 Step 2 的蓝图 / Frozen Handoff）
+1. **理解需求** - 读取输入声明、Handoff（或蓝图 / Frozen Handoff）
 2. **参考skill** - 遵守预加载 skill 中的最佳实践
 3. **设计架构** - 相关的数据结构和逻辑层级
 4. **实现API** - 只在 Handoff.Owns 范围内实现声明的API并兑现 Provides
 5. **处理交互** - 与其他模块、事件系统的协作
 6. **完整处理** - 错误条件和边界情况
 7. **前置合规检查** - 生成 Handoff Update 和 COMPLIANCE_CHECKLIST
-8. **文档输出** - 将实现说明和清单写入 `temp/pipeline-output/{{MODULE_ID}}.md`
+8. **文档输出** - 如调用方要求，输出实现说明、Handoff Update 与 COMPLIANCE_CHECKLIST
 
 ## COMPLIANCE_CHECKLIST
 
-在完成实现后生成此清单。这是早期反馈的关键，让问题在 Step 3 被发现而非 Step 5。
+在完成实现后生成此清单。这是早期反馈的关键，让问题在实现阶段被发现，而非延迟到最终验收。
 
 ```
 ## {{MODULE_DISPLAY_NAME}}部分 - COMPLIANCE_CHECKLIST
@@ -84,7 +80,7 @@ skills:
   - 新增 Requires / Blocks 是否写入 Handoff Update？
 
 - [ ] **API验证** - 无未声明的API调用
-  - 所有调用的API都来自 Step 1 声明吗？
+  - 所有调用的API都来自输入声明吗？
   - 有没有直接调用了不应直接调用的模块API？
   - 若依赖的API未就绪，都用TODO标记了吗？
 
@@ -92,57 +88,16 @@ skills:
   - 是否能成功编译？
   - 有没有留下占位符或伪代码？
 
-- [ ] **蓝图对齐**（若 Step 2 执行） - 遵守蓝图
+- [ ] **蓝图对齐**（若调用方提供蓝图） - 遵守蓝图
   - 类名和职责与蓝图一致吗？
   - public API签名与蓝图一致吗？
   - 依赖关系与蓝图一致吗？
 
-检查完毕：如果所有项都通过，则可以安心进入 Step 4。
-若有未通过项，需要在 Step 3 立即修复，而非延迟到 Step 5。
+检查完毕：如果所有项都通过，则可以安心进入后续验证。
+若有未通过项，需要在实现阶段立即修复，而非延迟到最终验收。
 ```
 
-**输出位置**：
-将实现说明和此清单写入 `temp/pipeline-output/{{MODULE_ID}}.md`。
-
-**输出格式**（分两层，脚本仅提取 SUMMARY 层合并到 PIPELINE_CONTEXT.md，DETAIL 层按需查阅）：
-
-```
-<!-- PIPELINE_SUMMARY -->
-## {{MODULE_DISPLAY_NAME}}
-
-Modified files: （修改的文件列表）
-
-Key decisions:
-- （关键实现决策，每条一行，3-5条）
-
-API status:
-- （声明的API实现状态，每条一行）
-
-Handoff Update:
-- Implemented Provides: ...
-- Added Requires: ...
-- Remaining Blocks: ...
-
-COMPLIANCE_CHECKLIST: N/M passed （通过数/总数，列出未通过项）
-<!-- /PIPELINE_SUMMARY -->
-
-<!-- PIPELINE_DETAIL -->
-### Implementation Notes
-（详细的实现说明：修改了什么、为什么这样改、依赖关系）
-
-### Handoff Update
-- Implemented Provides:
-- Added Requires:
-- Remaining Blocks:
-- TODO:
-- Evidence:
-
-### COMPLIANCE_CHECKLIST
-（完整清单）
-<!-- /PIPELINE_DETAIL -->
-```
-
-主 agent 在所有并行 agent 完成后，执行 `python .claude/scripts/pipeline_merge.py`，脚本仅提取各文件的 SUMMARY 部分追加到 PIPELINE_CONTEXT.md。Step 4/5 需要深入某模块时，直接读取 `temp/pipeline-output/{module_id}.md` 中的 DETAIL 部分。
+若调用方要求固定报告格式、指定落盘路径或双层报告结构，按调用方合同执行。
 
 ## 关于Skills
 

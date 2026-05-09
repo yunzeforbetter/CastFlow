@@ -1,99 +1,56 @@
-# ITERATION_GUIDE - Code Pipeline Skill 迭代指南
+# ITERATION_GUIDE - Code Pipeline Skill
 
 ## Skill 定位
 
-**code-pipeline-skill 是流程编排者 (Process Orchestrator)**
-
-核心职责：
-- 根据 L1 参数驱动执行流程
-- 通过 PIPELINE_CONTEXT.md（含 PCB 头部区）管理工程信息
-- 协调各角色 subagent 的执行顺序
-- 通过 pipeline_run_id 与进化系统形成反馈闭环
-
-不负责：
-- 具体的代码生成逻辑（交给各 implementer agent）
-- 规则和约束的定义（来自 Step 1 的 API 声明 + L2 约束源）
-- 功能模块的具体实现细节
-
----
+`code-pipeline-skill` 只做流程编排，不做具体业务实现。
 
 ## 迭代规则
 
-### 规则 0：Token 消耗优化与上下文管理
+### 规则 1：工作流骨架变化
 
-**触发条件**：token 消耗过高
-**优先级**：High
-**文件**：SKILL_MEMORY.md（规则 12）
+- 触发条件：Step 增减、入口条件变化、质量门变化
+- 优先修改：`SKILL.md`
+- 联动检查：`SKILL_MEMORY.md`、`config/*`、`EXAMPLES.md`
+- 额外要求：`SKILL.md` 必须保留标准模式可执行的逐步流程说明；禁止退化成“只有 Step 表格 + 去别处看协议”
 
-**优化方案**：
-1. 禁止中间输出文件：所有分析结果直接写入 PIPELINE_CONTEXT.md（含 PCB）
-2. 生成 PIPELINE_INDEX.md：行号索引，帮助 Agent 精准定位
-3. 精简 Agent Prompt：限制在 200-300 行
-4. 约束文件缓存：第一个 Agent 读取并摘要，后续 Agent 读取 PCB.CONFIG_SYNTHESIS 而非原始约束
+### 规则 2：执行期协议变化
 
----
+- 触发条件：PCB、run_id、复杂系统产物、Step 3 归并规则变化
+- 优先修改：`config/pipeline_protocol.md`
+- 联动检查：`SKILL.md`、`SKILL_MEMORY.md`、`EXAMPLES.md`
+- 额外要求：若协议变更影响 `pipeline_run_id`、result signal、Step 3 归并或 Step 9 清理，`EXAMPLES.md` 必须保留至少一个端到端闭环示例
 
-### 规则 1：Workflow 步骤的演进
+### 规则 3：Handoff 机制变化
 
-**触发条件**：现有步骤无法满足新的工作流需求
-**优先级**：Medium
-**文件**：SKILL.md + EXAMPLES.md
+- 触发条件：Level、Freeze、Closure、Coverage、`Parent Summary` 变化
+- 优先修改：`config/handoff_protocol.md`
+- 联动检查：`SKILL.md`、`SKILL_MEMORY.md`、`examples/subpipeline-example.md`
 
-**检查清单**：
-- [ ] 新步骤的职责清晰
-- [ ] PIPELINE_CONTEXT.md 结构已更新（包括 PCB 区的变更）
-- [ ] EXAMPLES.md 中有新步骤示例
-- [ ] 与 pipeline_run_id 生命周期的交互已明确
+### 规则 4：复杂系统主定义变化
 
----
-
-### 规则 2：Subagent 职责的边界
-
-**触发条件**：某 subagent 职责模糊或与其他 agent 重叠
-**优先级**：High
-**文件**：SKILL.md + SKILL_MEMORY.md
-
-**检查清单**：
-- [ ] 每个 subagent 有唯一职责
-- [ ] 输入和输出必须清晰
-- [ ] 不强加超出职责范围的约束
-- [ ] Agent 名称与 `.claude/agents/` 目录中的文件名一致
-
----
-
-### 规则 3：进化系统对接的演进
-
-**触发条件**：validated 映射规则变更，或 pipeline_run_id 生命周期需调整
-**优先级**：High
-**文件**：config/pipeline_protocol.md（协议 5）+ SKILL_MEMORY.md（规则 2/6/7 的 run_id 相关条目）+ EXAMPLES.md（示例 4）
-
-**检查清单**：
-- [ ] 三个文件的映射规则一致
-- [ ] 新增 result 类型是否有对应的 validated 取值
-- [ ] Step 9 的清理逻辑是否覆盖新场景
-
----
+- 触发条件：`ArtifactState`、barrier、wave、recovery、verification 的主规则变化
+- 优先修改：对应 `architecture/*.md`
+- 联动检查：`config/pipeline_protocol.md`、`EXAMPLES.md`、对应 `examples/*`
 
 ## 文件职责
 
 | 文件 | 何时修改 | 禁止内容 |
-|-----|--------|--------|
-| SKILL.md | 工作流骨架变化时（步骤增减、L1 参数变更） | 代码示例、规则详细定义 |
-| EXAMPLES.md | 新场景出现时 | 规则定义、日期 |
-| SKILL_MEMORY.md | 发现新硬性约束时 | 日期、版本、过程记录 |
-| ITERATION_GUIDE.md | 定位变化时 | 日期、版本、检查记录 |
-| config/pipeline_protocol.md | 执行期协议变化时（PCB 结构、run_id 流程、L1/L2 合成规则） | 日期、与 SKILL_MEMORY 重复的规则 |
-| config/params.schema.json | L1 参数定义变化时 | 默认值说明（放 defaults.json） |
-| config/defaults.json | L1 默认值调整时 | 非 schema 字段 |
+|---|---|---|
+| `README.md` | 人类入口、模式选择、阅读顺序变化时 | AI 运行期规则、命令细节、维护细节 |
+| `SKILL.md` | Step 骨架或主流程读取顺序变化时 | 长 FAQ、协议复本、代码示例 |
+| `SKILL_MEMORY.md` | 硬规则与门禁变化时 | 字段级模板、长解释、时间记录 |
+| `config/pipeline_protocol.md` | 执行期控制变化时 | Handoff 模板、重复架构解释 |
+| `config/handoff_protocol.md` | Handoff 机制变化时 | 执行期控制、重复架构解释 |
+| `architecture/*.md` | 复杂系统某个主定义变化时 | 协议模板、维护清单 |
+| `EXAMPLES.md` | 最小模板或判例变化时 | 协议主定义、维护日志 |
+| `examples/*` | 某个专题示例变化时 | 新规则定义、维护日志 |
 
----
+## 维护联动检查
 
-## 禁止事项
-
-- 创建除 PIPELINE_CONTEXT.md / PIPELINE_INDEX.md / temp/pipeline-output/ 外的临时分析文件
-- 让 code-pipeline-skill 本身包含实现逻辑，仅编排不实现
-- 跳过 PIPELINE_CONTEXT.md，直接通过 agent 通信
-- 在 Step 4 时修改代码逻辑，仅验证和分类
-- 在 Step 5 时直接修改代码，仅评估和决策
-- 在 PCB 区域凭记忆填写，必须从 L1/L2 合成（协议 1）
-- 遗留未清理的 pipeline_run_id 行（Persist 模式的常见陷阱）
+- `README.md` 与 `architecture/README.md` 只给人看，不作为 AI 规则源
+- `SKILL.md` 必须是 AI 的最小骨架入口，同时能独立解释标准模式下 Step 1-9 的节奏与下一步出口
+- `PIPELINE_SUMMARY` 与 `Parent Summary` 的区别必须同时在主流程文档与示例中可见
+- `HandoffStatus` 与 `ArtifactState` 不能混写
+- 同一概念只能有一个主定义页
+- 示例层只展示最小模板和高信号判例，不复写协议
+- `EXAMPLES.md` 不能只剩模板碎片；至少保留一个 `pipeline_run_id -> trace -> result signal -> cleanup` 的闭环示例

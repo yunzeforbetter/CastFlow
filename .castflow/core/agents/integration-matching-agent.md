@@ -12,17 +12,13 @@ skills:
 
 ## 独立使用
 
-本 Agent 可以独立工作，不需要依赖 code-pipeline。常见的独立使用场景：
+本 Agent 可以独立工作，不依赖特定 orchestrator。常见的独立使用场景：
 
 - "检查模块A和模块B之间的API调用是否一致"
 - "验证这次重构有没有破坏其他模块的调用"
 - "帮我梳理这几个模块之间实际的依赖关系"
 
 独立使用时，输出 Dependency Closure Report 直接给用户。
-
-## Pipeline 中的角色
-
-当被 code-pipeline 编排时，负责 Step 4（Dependency Closure），验证各模块 Handoff / Handoff Update / API 调用是否闭合，输出写入 PIPELINE_CONTEXT.md。
 
 ---
 
@@ -36,14 +32,14 @@ skills:
 ## 验证内容
 
 ### 1. API签名一致性检查
-- 每个模块调用的API是否与 Step 1 声明一致？
+- 每个模块调用的API是否与输入声明一致？
 - 签名、参数、返回值是否完全匹配？
-- 是否有API在实现中使用但 Handoff / Step 1 未声明？（ImplicitRequires - 严重问题）
+- 是否有API在实现中使用但 Handoff / 输入声明未覆盖？（ImplicitRequires - 严重问题）
 - 是否有API在声明但实现中未使用？（通常正常）
 
 ### 2. Dependency Closure 分类
 
-**不替换 TODO，仅分类**供 Step 5 决策：
+**不替换 TODO，仅分类**供后续决策：
 
 - **[Closed]** - Requires 已被 Provides 满足
 
@@ -56,7 +52,7 @@ skills:
 - **[MissingProvider]** - Requires 找不到 Provider（严重问题）
   - 记录调用位置
   - 记录被调用的API
-  - 是否在 Step 1 声明中
+  - 是否在输入声明中
 
 - **[CompletableBlocks]** - 依赖已完成的阻塞（可补全）
   - 记录TODO位置
@@ -82,21 +78,21 @@ skills:
 - 清晰指出任何不一致
 - 生成详细的 Dependency Closure Report
 - 标记 CompletableBlocks 供后续步骤补全
-- 标记问题供 Step 5 决策
+- 标记问题供后续决策单元处理
 
 禁止做：
 - 不修改代码逻辑（即使发现问题）
 - 不替换TODO（即使依赖已完成）
-- 不创建新API（API由 Step 1 声明定义）
-- 不强加新约束（约束来自 Step 1 或 Step 2）
-- 不做深度代码审查（Step 3 的 COMPLIANCE_CHECKLIST 已做）
+- 不创建新API（API由输入声明定义）
+- 不强加新约束（约束来自输入声明或调用方约束）
+- 不做深度代码审查（COMPLIANCE_CHECKLIST 已做前置自检）
 
-**关键原则**：Step 4 严格验证报告，权力留给 Step 5 决策。
+**关键原则**：本 Agent 严格验证并报告，最终决策留给调用方或后续验收单元。
 
 ## 工作流程
 
-1. **读取声明** - Step 1 API声明表、Handoff、Handoff Update 和 Step 2 蓝图（若执行）
-2. **对比实现** - 逐个审查 Step 3 中每个模块的代码和 COMPLIANCE_CHECKLIST
+1. **读取声明** - API声明表、Handoff、Handoff Update 和约束/蓝图产物（若有）
+2. **对比实现** - 逐个审查输入范围内每个模块的代码和 COMPLIANCE_CHECKLIST
 3. **逐项检查** - 对于每个模块的 Requires / Provides / API 调用：
    - 验证 Requires 是否有 Provider
    - 验证 Provides 是否实际实现
@@ -105,8 +101,8 @@ skills:
 4. **分析TODO** - 找出所有TODO并验证其有效性
    - 分类：CompletableBlocks（依赖已完成）vs BlockingBlocks（依赖未完成）
    - 记录位置和理由
-5. **生成 Dependency Closure Report** - 结构化报告，添加到 PIPELINE_CONTEXT.md Step 4 部分
-6. **完成任务** - Step 4 的职责到此结束，不做决策，由 Step 5 进行
+5. **生成 Dependency Closure Report** - 直接返回，或按调用方合同写入指定工作文档
+6. **完成任务** - 本 Agent 的职责到此结束，不做最终决策
 
 ## 关于Skills
 

@@ -5,10 +5,11 @@ CastFlow Trace Flush - Cross-platform hook script.
 Triggered when the agent stops (Claude Code: Stop).
 Responsibilities (in order):
   1. apply_validated_update  - update validated field for most-recent pending entry
-  2. apply_pipeline_result   - batch-update validated for a pipeline run
+  2. apply_pipeline_result   - consume code-pipeline's component-owned result signal
   3. flush_new_trace         - read buffer, score, write new trace entry (with IDP)
-  4. check_and_compact       - compress trace.md if over threshold (skipped when locked)
-  5. check_notify            - passive trigger notification via NOTIFY block in trace.md
+  4. apply_trace_expiration  - expire stale pending-pipeline / uncertain trace entries
+  5. check_and_compact       - compress trace.md if over threshold (skipped when locked)
+  6. check_notify            - passive trigger notification via NOTIFY block in trace.md
 
 Scoring model (v2):
   F (file count)        min(file_count / 3, 1.0)
@@ -36,6 +37,7 @@ WEIGHTS_FILE = os.path.join(TRACE_DIR, "weights.json")
 LIMITS_FILE = os.path.join(TRACE_DIR, "config", "limits.json")
 PENDING_IDP_FILE = os.path.join(TRACE_DIR, ".pending_idp.json")
 PENDING_VALIDATED_FILE = os.path.join(TRACE_DIR, ".pending_validated.json")
+# code-pipeline own runtime signal; consumed by the shared trace hook.
 PENDING_PIPELINE_FILE = os.path.join(TRACE_DIR, ".pending_pipeline_result.json")
 NOTIFY_STATE_FILE = os.path.join(TRACE_DIR, ".notify_state.json")
 TRACE_LOCK_FILE = os.path.join(TRACE_DIR, ".trace_lock")
@@ -442,15 +444,43 @@ def apply_validated_update():
 # Pipeline result batch update
 # ============================================================
 
-def detect_pipeline_context():
-    """Detect active pipeline run_id from PIPELINE_CONTEXT.md.
+def _detect_project_root_from_trace_dir():
+    """Resolve the project root for an installed `.claude/traces` layout.
 
-    Searches for PIPELINE_CONTEXT.md starting from the project root
-    (three levels up from TRACE_DIR, which is hooks/../traces).
+    Runtime hooks are copied to `.claude/hooks/` and use `TRACE_DIR = .claude/traces`.
+    The project root is therefore the parent directory of `.claude/`.
+    If the expected layout is unavailable, fall back to walking upward looking
+    for a directory that contains `.claude/`.
+    """
+    trace_dir = os.path.abspath(TRACE_DIR)
+    claude_dir = os.path.dirname(trace_dir)
+    if os.path.basename(claude_dir) == ".claude":
+        return os.path.dirname(claude_dir)
+
+    candidate = trace_dir
+    for _ in range(6):
+        if os.path.isdir(os.path.join(candidate, ".claude")):
+            return candidate
+        parent = os.path.dirname(candidate)
+        if parent == candidate:
+            break
+        candidate = parent
+
+    return None
+
+
+def detect_pipeline_context():
+    """Detect active code-pipeline run_id from PIPELINE_CONTEXT.md.
+
+    Searches for PIPELINE_CONTEXT.md from the installed `.claude/traces`
+    runtime layout. Falls back to an upward search for a directory containing
+    `.claude/` if the expected layout is unavailable.
     Returns run_id string if file exists and contains pipeline_run_id field,
     otherwise returns None.
     """
-    search_dir = os.path.abspath(os.path.join(TRACE_DIR, "..", "..", ".."))
+    search_dir = _detect_project_root_from_trace_dir()
+    if not search_dir:
+        return None
     candidate = os.path.join(search_dir, "PIPELINE_CONTEXT.md")
 
     if not os.path.isfile(candidate):
@@ -469,82 +499,216 @@ def detect_pipeline_context():
 
 
 def apply_pipeline_result():
-    """Read .pending_pipeline_result.json and batch-update validated for matching trace entries."""
+    """Read code-pipeline's result signal and batch-update matching trace entries."""
     if not os.path.isfile(PENDING_PIPELINE_FILE):
         return
-
-    run_id = None
-    validated_value = None
-    result_str = ""
 
     try:
         with open(PENDING_PIPELINE_FILE, "r", encoding="utf-8") as f:
             content_str = f.read()
-
-        # Support both JSON and simple key:value format
-        try:
-            data = json.loads(content_str)
-            run_id = data.get("pipeline_run_id", "")
-            result_str = data.get("result", "")
-        except json.JSONDecodeError:
-            for line in content_str.splitlines():
-                m = re.match(r"pipeline_run_id:\s*(\S+)", line)
-                if m:
-                    run_id = m.group(1)
-                m2 = re.match(r"result:\s*(\S+)", line)
-                if m2:
-                    result_str = m2.group(1)
-
-        if run_id and result_str:
-            # GO (一次性合规) 和 GO-WITH-CAUTION (经 Step 6 补全后合规) 都视为 validated=true
-            # NO-GO 及任何未知 result 视为 false
-            validated_value = "true" if result_str.upper() in ("GO", "GO-WITH-CAUTION") else "false"
-
     except OSError:
-        pass
-    finally:
-        try:
-            os.remove(PENDING_PIPELINE_FILE)
-        except OSError:
-            pass
+        return
 
-    if not run_id or not validated_value or not os.path.isfile(TRACE_FILE):
+    try:
+        target_run_id, target_validated = parse_pipeline_result_signal(content_str)
+    except ValueError as exc:
+        _log_error(exc)
+        return
+
+    if not os.path.isfile(TRACE_FILE):
         return
 
     try:
         with open(TRACE_FILE, "r", encoding="utf-8") as f:
             content = f.read()
+    except OSError:
+        return
 
-        trace_block_pattern = re.compile(
-            r"(<!-- TRACE[^>]*-->.*?<!-- /TRACE -->)",
-            re.DOTALL
+    trace_block_pattern = re.compile(
+        r"(<!-- TRACE[^>]*-->.*?<!-- /TRACE -->)",
+        re.DOTALL
+    )
+    matched_any = 0
+    consumed_any = False
+
+    def replace_pipeline_validated(m):
+        nonlocal matched_any, consumed_any
+        block = m.group(1)
+        if ("pipeline_run_id: " + target_run_id) not in block:
+            return block
+        matched_any += 1
+        if target_validated == "pending-pipeline":
+            if re.search(r"^validated:\s*pending-pipeline\s*$", block, re.MULTILINE):
+                consumed_any = True
+            return block
+        if not re.search(r"^validated:\s*pending-pipeline\s*$", block, re.MULTILINE):
+            return block
+        consumed_any = True
+        return re.sub(
+            r"^(validated:\s*)pending-pipeline\s*$",
+            r"\g<1>" + target_validated,
+            block,
+            count=1,
+            flags=re.MULTILINE,
         )
 
-        target_run_id = run_id
-        target_validated = validated_value
+    new_content = trace_block_pattern.sub(replace_pipeline_validated, content)
 
-        def replace_pipeline_validated(m):
-            block = m.group(1)
-            if ("pipeline_run_id: " + target_run_id) not in block:
-                return block
-            if not re.search(r"^validated:\s*pending-pipeline\s*$", block, re.MULTILINE):
-                return block
-            return re.sub(
-                r"^(validated:\s*)pending-pipeline\s*$",
-                r"\g<1>" + target_validated,
-                block,
-                count=1,
-                flags=re.MULTILINE,
-            )
+    if matched_any == 0 or not consumed_any:
+        return
 
-        new_content = trace_block_pattern.sub(replace_pipeline_validated, content)
-
-        if new_content != content:
+    if new_content != content:
+        try:
             tmp_file = TRACE_FILE + ".tmp"
             with open(tmp_file, "w", encoding="utf-8", newline="\n") as f:
                 f.write(new_content)
             os.replace(tmp_file, TRACE_FILE)
+        except OSError:
+            return
 
+    try:
+        os.remove(PENDING_PIPELINE_FILE)
+    except OSError:
+        pass
+
+
+def _parse_bool_token(value, field_name):
+    if isinstance(value, bool):
+        return value
+    token = str(value).strip().lower()
+    if token in ("true", "1", "yes"):
+        return True
+    if token in ("false", "0", "no"):
+        return False
+    raise ValueError("Invalid {} value in pipeline result signal: {!r}".format(
+        field_name, value))
+
+
+def parse_pipeline_result_signal(content_str):
+    """Parse and validate code-pipeline's result signal."""
+    run_id = ""
+    result_str = ""
+    finalized = None
+
+    try:
+        data = json.loads(content_str)
+        run_id = data.get("pipeline_run_id", "")
+        result_str = data.get("result", "")
+        finalized = data.get("finalized")
+    except json.JSONDecodeError:
+        for line in content_str.splitlines():
+            m = re.match(r"pipeline_run_id:\s*(\S+)", line)
+            if m:
+                run_id = m.group(1)
+            m2 = re.match(r"result:\s*(\S+)", line)
+            if m2:
+                result_str = m2.group(1)
+            m3 = re.match(r"finalized:\s*(\S+)", line)
+            if m3:
+                finalized = m3.group(1)
+
+    if not run_id:
+        raise ValueError("Pipeline result signal missing pipeline_run_id")
+    if not re.match(r"^pipeline_\d{8}_\d{6}$", run_id):
+        raise ValueError("Invalid pipeline_run_id in pipeline result signal: {}".format(run_id))
+    if not result_str:
+        raise ValueError("Pipeline result signal missing result")
+
+    result_upper = str(result_str).strip().upper()
+    if result_upper not in ("GO", "GO-WITH-CAUTION", "NO-GO"):
+        raise ValueError("Invalid result in pipeline result signal: {}".format(result_str))
+    if finalized is None:
+        raise ValueError("Pipeline result signal missing finalized")
+
+    finalized_bool = _parse_bool_token(finalized, "finalized")
+    if result_upper in ("GO", "NO-GO") and not finalized_bool:
+        raise ValueError("{} requires finalized=true in pipeline result signal".format(
+            result_upper))
+
+    if result_upper == "GO-WITH-CAUTION":
+        validated_value = "true" if finalized_bool else "pending-pipeline"
+    elif result_upper == "GO":
+        validated_value = "true"
+    else:
+        validated_value = "false"
+
+    return run_id, validated_value
+
+
+# ============================================================
+# Trace lifecycle updates
+# ============================================================
+
+def apply_trace_expiration():
+    """Expire stale pending-pipeline and uncertain pending trace entries."""
+    if not os.path.isfile(TRACE_FILE):
+        return
+
+    limits = load_limits()
+    now = datetime.now(timezone.utc)
+    pipeline_pending_expire = int(limits.get("pipeline_pending_expire_days", 7))
+    validated_uncertain_expire = int(limits.get("validated_uncertain_expire_days", 14))
+
+    try:
+        with open(TRACE_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError:
+        return
+
+    trace_block_pattern = re.compile(
+        r"(<!-- TRACE[^>]*-->.*?<!-- /TRACE -->)",
+        re.DOTALL,
+    )
+
+    changed = False
+
+    def update_block(m):
+        nonlocal changed
+        block = m.group(1)
+        age = _get_block_age_days(block, now)
+        validated = _get_block_field(block, "validated")
+        status_match = re.search(r"<!-- TRACE status:(\S+)", block)
+        status = status_match.group(1) if status_match else "pending"
+        new_block = block
+
+        if validated == "pending-pipeline" and age > pipeline_pending_expire:
+            new_block = re.sub(
+                r"^(validated:\s*)pending-pipeline\s*$",
+                r"\g<1>invalid",
+                new_block,
+                count=1,
+                flags=re.MULTILINE,
+            )
+            new_block = re.sub(
+                r"^(<!-- TRACE status:)(\S+)",
+                r"\g<1>invalid",
+                new_block,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        elif validated == "_" and status == "pending" and age > validated_uncertain_expire:
+            new_block = re.sub(
+                r"^(<!-- TRACE status:)(\S+)",
+                r"\g<1>expired",
+                new_block,
+                count=1,
+                flags=re.MULTILINE,
+            )
+
+        if new_block != block:
+            changed = True
+        return new_block
+
+    new_content = trace_block_pattern.sub(update_block, content)
+
+    if not changed:
+        return
+
+    try:
+        tmp_file = TRACE_FILE + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8", newline="\n") as f:
+            f.write(new_content)
+        os.replace(tmp_file, TRACE_FILE)
     except OSError:
         pass
 
@@ -658,8 +822,24 @@ def count_trace_entries(content):
 
 
 def count_pending_entries(content):
-    """Count pending (unprocessed) TRACE blocks."""
-    return len(re.findall(r"<!-- TRACE status:pending\b", content))
+    """Count pending TRACE blocks eligible for origin-evolve analysis.
+
+    Entries still waiting for pipeline finalization (`validated:pending-pipeline`)
+    remain pending in lifecycle terms, but they should not trigger passive
+    origin-evolve notifications until the pipeline reaches a final verdict or
+    expires to invalid.
+    """
+    trace_block_pattern = re.compile(
+        r"<!-- TRACE status:pending\b[^>]*-->.*?<!-- /TRACE -->",
+        re.DOTALL,
+    )
+    count = 0
+    for m in trace_block_pattern.finditer(content):
+        block = m.group(0)
+        if _get_block_field(block, "validated") == "pending-pipeline":
+            continue
+        count += 1
+    return count
 
 
 def check_and_compact():
@@ -874,7 +1054,7 @@ def compact_trace(content, limits):
 # ============================================================
 
 def check_notify():
-    """Check if pending count crosses threshold and write NOTIFY block if so."""
+    """Check if analyzable pending count crosses threshold and notify."""
     if not os.path.isfile(TRACE_FILE):
         return
 
@@ -1068,6 +1248,7 @@ def main():
         apply_pipeline_result()
         idp = read_pending_idp()
         flush_new_trace(idp)
+        apply_trace_expiration()
         check_and_compact()
         check_notify()
 

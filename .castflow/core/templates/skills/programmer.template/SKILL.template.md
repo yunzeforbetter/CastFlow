@@ -10,7 +10,7 @@ description: {{MODULE_ID}} module {{MODULE_DISPLAY_NAME}} codebase API implement
 **使用方式**:
 - **直接使用**: "用 programmer-{{MODULE_ID}}-skill 帮我理解模块的核心逻辑"
 - **Agent 加载**: implementer agent 自动加载此 skill 来理解模块约束
-- **Pipeline 编排**: code-pipeline 在 Step 3 中通过 agent 间接使用
+- **上层编排**: 可由上层 agent 通过实现工作流间接使用
 
 **核心职责**:
 1. 提供 {{MODULE_DISPLAY_NAME}} 模块的架构概览和核心类关系

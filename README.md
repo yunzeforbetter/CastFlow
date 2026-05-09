@@ -56,7 +56,7 @@ Skill 内容不会在每次调用时全量入上下文。按 **T1-PREPARE / T2-E
 
 ### 3. 多模块编排：code-pipeline 工序流
 
-`code_pipeline 实现 X` 触发 9 步标准流水：需求分析 → 集成匹配 → 并行实现 → 验收复核。每个 Step 有专属 agent（`requirement-analysis-agent` / `integration-matching-agent` / `pipeline-verify-agent`），跨模块并行而不丢上下文。
+`code_pipeline 实现 X` 触发 **9 步**标准流水：**Step 1** 需求拆分与 API 声明（`requirement-analysis-agent`）→ **Step 2** 约束同步与 Handoff 冻结（同 agent，按需）→ **Step 3** 各模块实现（**模块配对执行单元**：`programmer-<module>-agent` + 同模块 skill）→ **Step 4** 依赖闭合（`integration-matching-agent`）→ **Step 5** 覆盖验收与 verdict（`pipeline-verify-agent`）→ **Step 6** 补全 `CompletableBlocks`（按需）→ **Step 7/8** 调试与性能（可选）→ **Step 9** 收尾与 `pipeline_run_id` 清理。编排合同与 Step 调度卡见装架产物 `skills/code-pipeline-skill/config/pipeline_protocol.md`；AI 入口见同目录 `SKILL.md`。
 
 ### 4. 自我进化：零 token 采集 + 五维评分 + 人在回路
 
@@ -224,7 +224,7 @@ AI 加载 `CastFlow/bootstrap-skill/SKILL.md` 并按 Phase 0-6 执行：
 code_pipeline 实现用户交易系统
 ```
 
-触发 9 步工序：需求分析 agent 拆接口 → 集成匹配 agent 对齐命名 → 并行子 agent 各自实现（每个模块带自己的 skill）→ `pipeline_merge.py` 聚合 → `pipeline-verify-agent` 验收。 **非常适合完整系统开发**
+触发 9 步工序：需求分析 agent 拆模块与 API →（可选）约束冻结 → 各模块 **配对执行单元** 并行实现 → `pipeline_merge.py` 将 Step 3 摘要归并到 `PIPELINE_CONTEXT.md` → 集成匹配 agent 做依赖闭合 → `pipeline-verify-agent` 验收与 verdict →（按需）补全与重跑闭合 → 收尾。 **非常适合完整系统开发**
 
 ### 步骤 5 — 自主进化（零干预采集，人在回路审批）
 
@@ -298,18 +298,18 @@ cd CastFlow && git pull
 | `SKILL_ITERATION.md` | Skill 四文件元规范：各文件职责隔离、Anchors/Related 格式、容量治理阈值、硬性约束清单 |
 | `protocols/idp-protocol.md` | Intent Declaration Protocol 写入规则（T2-EXECUTE 按需） |
 | `protocols/validated-protocol.md` | 用户接受/拒绝信号判定与写入规则（T3-FEEDBACK） |
-| `skills/code-pipeline-skill/` | 多模块协作 9 步工序。含 `config/pipeline_protocol.md` + `config/defaults.json` + `config/params.schema.json` |
+| `skills/code-pipeline-skill/` | 多模块协作 9 步工序（复合组件）。含 `SKILL.md`（工作流总览）、`config/pipeline_protocol.md`（含 Step 调度卡）、`config/handoff_protocol.md`、`architecture/*.md`（复杂系统）、`EXAMPLES.md` + `examples/*`、`config/defaults.json` + `config/params.schema.json` |
 | `skills/origin-evolve-skill/` | 自我进化引擎。读 trace、识别六类模式、生成 Append/Merge/Retire 提议，走用户审批 |
 | `skills/skill-creator/` | Skill 生成与迭代工具链。含 `agents/{analyzer,comparator,grader}.md`、`scripts/` 7 个工具（eval 运行、benchmark 聚合、打包、描述优化等）、`eval-viewer/`、`references/schemas.md` |
-| `agents/requirement-analysis-agent.md` | Pipeline Step 1：拆需求、识别模块、输出可验证接口清单 |
-| `agents/integration-matching-agent.md` | Pipeline Step 2：并行模块的接口一致性、命名对齐、耦合点检查 |
-| `agents/pipeline-verify-agent.md` | Pipeline 验收：集成一致性与质量复核 |
+| `agents/requirement-analysis-agent.md` | Pipeline **Step 1 / Step 2**：需求拆分、API 声明、（可选）约束同步与蓝图冻结 |
+| `agents/integration-matching-agent.md` | Pipeline **Step 4**：依赖闭合验证（Dependency Closure Report） |
+| `agents/pipeline-verify-agent.md` | Pipeline **Step 5**：Done Criteria 与 Module/Global Verdict、result signal |
 | `hooks/trace-collector.py` | 每次文件编辑被调用。记录路径/行数/编辑次数；保存 `new_string` 快照（LRU 50）；用 `SequenceMatcher.ratio()` 检测 AI 自我修正标记 `R`；`tracked_extensions` / `excluded_extensions` 从 `traces/config/hooks.config.json` 加载 |
-| `hooks/trace-flush.py` | 会话结束被调用。读 buffer → 五维评分 F/D/K/S/E → 达标写入 `trace.md`（`schema:N` 版本头）→ 四级 compaction（Level 0 清审计行 / L1 过期低分 / L2 中期低分 / L3 每模块保留 top N）→ validated 条目受保护。含 `--selftest` 子命令 |
+| `hooks/trace-flush.py` | 会话结束被调用。读 buffer → 五维评分 F/D/K/S/E → 达标写入 `trace.md`（`schema:N` 版本头）→ 四级 compaction（Level 0 清审计行 / L1 过期低分 / L2 中期低分 / L3 每模块保留 top N）→ validated 条目受保护；消费 pipeline 的 `.pending_pipeline_result.json` 时校验 `pipeline_run_id` / `result` / `finalized`，非法信号不删文件。含 `--selftest` 子命令 |
 | `templates/AUTHORING_GUIDE.md` | Skill 创作元规范（四份域 README 的共享上游）。包含项目勘察清单、反风格检查、Rubric |
 | `templates/agents/programmer.template.md` | 为功能模块生成专属 programmer agent 时的 prompt 模板 |
 | `templates/skills/programmer.template/` | 模块 skill 四件套模板 + 域 README（最常用，会被分发到 `.claude/templates/`） |
-| `scripts/pipeline_merge.py` | code-pipeline Step 3 调用：聚合并行 agent 输出到 `PIPELINE_CONTEXT.md`（临时文件，pipeline 结束即删） |
+| `scripts/pipeline_merge.py` | code-pipeline **Step 3** 调用：从各模块 `temp/pipeline-output/*.md` 提取 `PIPELINE_SUMMARY`，写入 `PIPELINE_CONTEXT.md` 内受控归并块（幂等替换）；缺标记或混入 `Parent Summary` 时 fail-closed |
 | `traces/config/limits.json` | compaction 阈值、过期天数、保护参数的运行时默认值 |
 | `traces/config/hooks.config.json` | Hook 外部化配置：`tracked_extensions`（18 种主流语言）、`excluded_extensions`、`generic_dir_segments`、`module_dir_pattern`。**修改此文件即可适配非 Unity/C# 项目，无需改 Python** |
 | `traces/README.md` | trace 字段契约 + `schema:N` 版本规则 + limits/hooks.config 全字段说明 + Go/React 适配示例 |

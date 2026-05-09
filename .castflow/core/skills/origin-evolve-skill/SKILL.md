@@ -42,7 +42,7 @@ Acquire `.trace_lock` (overwrite if stale). Apply lifecycle transitions: `pendin
 
 **Schema version gate**: verify all pending entries have `schema:1` in the TRACE header. Entries without a schema tag are treated as schema 1 (backward compatible). If any entry has `schema:N` where N > 1, abort and report "Unsupported trace schema version N. Update origin-evolve."
 
-Read trace.md, keep `pending` only. If fewer than 5 pending entries and no correction signals, suggest waiting.
+Read trace.md, keep `pending` only, then exclude entries with `validated:pending-pipeline` from proposal candidates until they are finalized to `true` / `false` or expire to `invalid`. If fewer than 5 analyzable pending entries remain and no correction signals exist, suggest waiting.
 
 Compute three diagnostic counts across `.claude/skills/*/SKILL_MEMORY.md` and include in the analysis summary:
 - within-skill rule pairs with anchor Jaccard >= 0.5
@@ -52,6 +52,7 @@ Compute three diagnostic counts across `.claude/skills/*/SKILL_MEMORY.md` and in
 Non-zero counts indicate prior attribution or merge errors and should inform Step 2 proposal generation.
 
 Sort priority:
+- Exclude `validated:pending-pipeline` from the priority queue; they are runtime-in-flight, not proposal evidence.
 - P0: `validated:false` (sub-sort: auto:major > auto:minor > `_`)
 - P1: `validated:true` + correction:auto:major
 - P2: `validated:true` + correction:auto:minor

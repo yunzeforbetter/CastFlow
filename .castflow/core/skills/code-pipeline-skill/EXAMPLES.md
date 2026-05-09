@@ -1,416 +1,362 @@
 # Code Pipeline 示例库
 
-## 使用方式
+> 这里只保留最小骨架与高信号判例。字段规则、读写路径与 Step 调度合同以 `config/pipeline_protocol.md` / `config/handoff_protocol.md` 为准。
 
-这个文件回答“我要看什么样的例子”。
+## 用法
 
-- 想快速判断 Step 2 / Step 3 怎么走：看 **A. 决策速查**
-- 想看 `PIPELINE_CONTEXT.md` 应该长什么样：看 **B. 核心模板**
-- 想看 Step 1 的典型输出：看 **C. Step 1 输入 / 输出样例**
-- 想看多模块协作的 Handoff / Closure / Verdict：看 **D. Handoff 协作样例**
-- 想统一 Step 4 / Step 5 的判定口径：看 **E. Step 4 / Step 5 判例**
-- 想确认 `pipeline_run_id` 生命周期：看 **F. run_id 生命周期**
-
-示例重点是**帮助读者快速建立工作流心智模型**，不是穷举业务场景。
-
----
+| 你要看什么 | 去哪看 |
+|---|---|
+| Step 2 / Step 3 怎么走 | `A. 决策速查` |
+| `PIPELINE_CONTEXT.md` 最小形状 | `B. 核心模板` |
+| Step 1 与 Handoff 最小输出 | `C. Step 1 / Handoff` |
+| Step 3 模块输出 | `D. Step 3 模块输出` |
+| Step 4 / Step 5 判例 | `E. Closure / Verdict 判例` |
+| `pipeline_run_id` / result signal / Step 9 清理 | `F. run_id 生命周期` |
+| 复杂系统模式 | `examples/*` |
 
 ## A. 决策速查
 
-### 示例 A1：Step 1 / Step 2 / Step 3 决策速查
-
-统一收敛轻 / 中 / 重三类场景的 Step 2 / Step 3 建议，避免重复示例堆叠。
-
-| 场景 | 特征 | Step 2 建议 | Step 3 建议 | 典型 verdict 预期 |
-|---|---|---|---|---|
-| 单模块 | 无跨模块依赖，API 已存在 | 跳过 | 主 agent 直接实现 | GO |
-| 双模块 | 一方提供数据，一方消费 API | 可选 | 视修改量决定是否并行 | GO / GO-WITH-CAUTION |
-| 多模块 | 3+ 模块、存在状态或事件契约 | 推荐 / 必须 | sub-agent 并行，先冻结 Handoff | GO-WITH-CAUTION / NO-GO |
-
----
+| 场景 | 特征 | Step 2 建议 | Step 3 建议 |
+|---|---|---|---|
+| 单模块 | API 已存在、无跨模块依赖 | 跳过 | 主 agent 或单个模块配对执行单元 |
+| 双模块 | 一方提供 API，另一方消费 | 可选 | 视修改量决定是否并行 |
+| 多模块 | 3+ 模块、共享契约、存在并行实现 | 必须 | 先 Freeze，再并行 |
+| 复杂系统 | 3+ 模块、长时间 churn、需要 wave / 子 pipeline | 必须 | 按 dispatch 放行，不全量同时开工 |
 
 ## B. 核心模板
 
-### 示例 B1：`PIPELINE_CONTEXT.md` 标准结构
+### `PIPELINE_CONTEXT.md` 最小骨架
 
-单一事实来源文件模板。头部 PCB 区常驻，尾部 Step 段落追加。
-
-```markdown
+```md
 # PIPELINE_CONTEXT.md - [功能名称]
 
 pipeline_run_id: pipeline_20260420_143055
 
 ---
 
-## PCB - Pipeline Control Board
+## PCB
 
 ### SHADOW_BANS
-- 禁止 Update 中 GetComponent / Find [来源: CLAUDE.md]
-- 禁止 Logic 层引用 UnityEngine [来源: CLAUDE.md]
+- 禁止项
 
 ### CONFIG_SYNTHESIS
-- 命名空间: GameLogic.Modules.[Module]
-- 基类: ManagerBase / MonoBehaviour
-- 命名规范: 私有字段 _camelCase，公共 PascalCase [来源: CLAUDE.md]
+- 命名、基类、命名空间、运行参数
 
 ### MACRO_SCOPE
-- 功能点1 -> 功能点2 -> 功能点3
-- 模块A <-> 模块B（事件通信）
+- 功能点
+- 模块关系
 
 ### BLUEPRINT
-- BuildingManager : ManagerBase
-  - public void UpgradeBuilding(int buildingId)
-  - public event Action<int> OnBuildingUpgraded
-- BuildingPanelUI : MonoBehaviour
-  - private void HandleUpgradeClick()
+- 类、职责、Public API、事件契约
 
 ### ATOMIC_EXECUTION
-- [x] 创建 BuildingManager 骨架
-- [ ] 实现 UpgradeBuilding 核心逻辑
-- [ ] UI 订阅 OnBuildingUpgraded
+- [ ] 原子任务 1
+- [ ] 原子任务 2
 
 ---
 
-## Step 1: 需求拆分与 API 声明
+## Step 1
 ### 功能拆分
-### API 声明表
+### API 声明
+### 依赖关系
+### Handoff Draft / No-Handoff Rationale
+### Handoff Level Decision
+### Freeze Recommendation
 ### Step 2 建议
 ### Step 3 建议
 
 ---
 
-## Step 2: 约束同步与蓝图生成 [可选]
-（PCB 的 CONFIG_SYNTHESIS / SHADOW_BANS / BLUEPRINT 的合成过程记录）
+## Step 2
+### 约束同步
+### BLUEPRINT
+### Handoff Freeze
 
 ---
 
-## Step 3: 模块实现结果
-### 模块A（详见 temp/pipeline-output/moduleA.md）
-#### COMPLIANCE_CHECKLIST
-### 模块B（详见 temp/pipeline-output/moduleB.md）
-#### COMPLIANCE_CHECKLIST
+## Step 3
+### 模块输出归并
 
 ---
 
-## Step 4: 依赖闭合
+## Step 4
 ### Dependency Closure Report
-#### [Closed]
-#### [SignatureMismatch]
-#### [MissingProvider]
-#### [BoundaryViolation]
-#### [CompletableBlocks]
-#### [BlockingBlocks]
-#### [ImplicitRequires]
 
 ---
 
-## Step 5: 集成验收
+## Step 5
+### Done Criteria Coverage
 ### VERIFICATION_REPORT
-#### 最终判定: GO / GO-WITH-CAUTION / NO-GO
-#### 回填信号: 已写入 .claude/traces/.pending_pipeline_result.json
-
----
-
-## Step 6-9: 可选步骤与完成
 ```
 
-### 示例 B2：TODO 注释格式
-
-当一个模块需要调用另一个模块的 API，但该 API 尚未实现时的占位规范。
+### 复杂系统模式追加段落
 
 ```md
-// TODO: 等待 [模块名].[API名]() 完成后替换
-// 预期签名：[返回类型] [API名]([参数列表])
-// 使用场景：[在什么场景下调用]
+## Artifact State Table
+
+| Module | Type | ArtifactState | DependsOn | CurrentBarrier | LastCheckpoint |
+|---|---|---|---|---|---|
+| MI_AUTH | SharedCore | Frozen | - | SharedBarrier | CP-01 |
+| M8 | DomainComplex | NeedsSubpipeline | MI_EVENT,M4,M5 | LocalBarrier | CP-02 |
+
+## Wave Plan
+
+| Wave | EntryCondition | IncludedModules | DeferredModules | ExitArtifact |
+|---|---|---|---|---|
+| Wave 1 | Step 1 complete | MI_AUTH, MI_EVENT | M1, M8 | SharedBarrier Ready |
+
+## Wave Dispatch Table
+
+| Wave | Module | ArtifactState | Barrier | DispatchTarget | Inputs | ExpectedOutput | Fallback |
+|---|---|---|---|---|---|---|---|
+| Wave 2 | M1 | Frozen | SharedBarrier=Ready | programmer-m1-agent | Frozen Handoff, PCB | temp/pipeline-output/M1.md | main agent |
+
+## Checkpoint Record
+
+### CP-02
+- Scope: M8
+- ArtifactState: NeedsSubpipeline
+- NewArtifacts: Shared Core Frozen
+- BlockingArtifact: Map contract not Frozen
+- TimeboxUntil: next recovery review
+- NextAction: spawn sub-pipeline
+- RecoveryAction: remove from normal dispatch
 ```
 
-**常见陷阱**：
-- 不写 TODO，直接留下编译错误
-- TODO 注释缺少依赖 API 全名或预期签名
+## C. Step 1 / Handoff
 
----
+### Step 1 最小输出
 
-## C. Step 1 输入 / 输出样例
+```md
+## Step 1
 
-### 示例 C1：PDF / 导图类需求的 Step 1（协议 2 触发）
+### 功能拆分
+- UI
+- Logic
+- Battle
 
-**输入**：用户附带 UI 截图 + 需求描述“实现这个界面的登录流程”。
+### API 声明
+- UI -> Logic.GetStatus()
+- Logic -> Battle.StartBattle()
 
-**Step 1 必须双阶段解构**：
-
-#### 阶段 1：原始资产清单
-
-```markdown
-顶部：LOGO、标题"欢迎登录"
-中部：
-  - 输入框1：label "账号"、placeholder "请输入手机号"
-  - 输入框2：label "密码"、placeholder "请输入密码"、右侧眼睛图标
-  - 复选框："记住我"
-底部：
-  - 主按钮："登录"、橙色填充
-  - 文字链接："忘记密码？"、"新用户注册"
-```
-
-#### 阶段 2：功能关联报告
-
-```markdown
-- 账号输入框 -> 前端校验手机号格式 -> 存入 LoginForm.phone
-- 密码输入框 -> 眼睛图标切换 type=password/text -> 存入 LoginForm.password
-- 登录按钮 -> 触发 AuthService.Login(phone, password) -> 成功跳转主页 / 失败弹错误
-- 忘记密码链接 -> 跳转 ResetPasswordPage
-- 注册链接 -> 跳转 RegisterPage
-```
-
-**门控**：两阶段输出必须一并提交用户确认，确认前禁止进入 API 声明阶段。
-
-### 示例 C2：Step 1 固定输出骨架（多模块）
-
-Step 1 在多模块场景下推荐使用统一骨架，降低后续 agent 解析成本。
-
-```markdown
-## Step 1: 需求拆分与 API 声明
-
-### 功能拆分清单
-- UI：活动入口展示、点击交互、状态刷新
-- Logic：活动状态、资格判断、进入流程编排
-- Battle：启动活动战斗
-
-### API声明表
-| API名称 | 签名 | 来源模块 | 使用方 | 场景 | 状态 |
-|--------|------|---------|--------|------|------|
-| GetActivityState | ActivityState GetActivityState(int activityId) | Logic | UI | 刷新入口状态 | 待实现 |
-| CheckEnterEligibility | bool CheckEnterEligibility(int activityId) | Logic | UI | 判断是否可进入 | 待实现 |
-| StartActivityBattle | void StartActivityBattle(int activityId) | Battle | Logic | 启动活动战斗 | 待实现 |
-
-### 依赖关系图
-- UI -> Logic
-- Logic -> Battle
+### 依赖关系
+- UI 依赖 Logic
+- Logic 依赖 Battle
 
 ### Handoff Draft
-- 见各模块 Handoff 段落
+- UI / Logic / Battle
 
 ### Handoff Level Decision
-- L2：3 模块协作，存在跨模块 API 与业务完成条件
+- `L2`：存在跨模块 Requires / Provides，需要冻结边界
 
 ### Freeze Recommendation
-- Needs Step 2：需先固化事件/状态约束再并行实现
+- Needs Step 2
 
 ### Step 2 建议
-- 推荐：涉及 3 模块、状态契约需要对齐
+- 推荐：共享 Battle API 与 UI 刷新事件需要先冻结
 
 ### Step 3 建议
-- 启动 sub-agent 并行：UI / Logic / Battle
+- 使用模块配对执行单元并行推进 UI / Logic，Battle 保持 provider 优先
 ```
 
----
+### `L0` 最小输出
 
-## D. Handoff 协作样例
+```md
+## Step 1
 
-### 示例 D1：Handoff Quality Gate（多模块轻量交接）
+### 功能拆分
+- Inventory
 
-**场景**：礼包功能涉及 UI 与 Logic 两个模块。
+### API 声明
+- Inventory.Refresh()
 
-#### Handoff Draft（Step 1）
+### 依赖关系
+- 无跨模块依赖
 
-```markdown
-## Handoff: UI
+### No-Handoff Rationale
+- `L0`：单模块、单 agent、无跨模块 `Requires / Provides`
+
+### Handoff Level Decision
+- `L0`
+
+### Freeze Recommendation
+- 走 `L0` 快速路径，跳过正式 Handoff Freeze
+
+### Step 2 建议
+- 跳过
+
+### Step 3 建议
+- 直接进入单模块实现，但若新增跨模块依赖需回退升级到 `L1+`
+```
+
+### 非文本输入的双阶段解构
+
+```md
+### 阶段 1：原始资产清单
+- 顶部：标题“登录”
+- 中部：账号输入框、密码输入框、登录按钮
+
+### 阶段 2：功能关联报告
+- 登录按钮 -> AuthService.Login(phone, password)
+- 忘记密码 -> ResetPasswordPage
+```
+
+### `L2` Handoff 最小模板
+
+```md
+## Handoff: AllianceMember
 
 ### Goal
-- 展示礼包入口、状态和购买反馈。
+- 完成成员管理模块
 
 ### Owns
-- PopupBundleUI 展示与交互。
+- 成员列表、阶级调整、踢人
 
 ### Provides
-- RefreshBundleState(int bundleId)
+- AllianceMemberList()
+- AllianceRankUpdate()
 
 ### Requires
-- Logic.GetBundleState(int bundleId)
-- Logic.PurchaseBundle(int bundleId)
+- MI_AUTH.CheckPermission()
+- MI_EVENT.PublishAllianceEvent()
 
 ### Blocks
-- unknown：PurchaseBundle 返回结构未确认。
+- None
 
 ### Constraints
-- 遵守 programmer-ui-skill 与项目 UI 命名规范。
+- 权限检查必须走 MI_AUTH
 
 ### Done Criteria
-- 礼包入口按配置显示/隐藏。
-- 购买成功后 UI 状态刷新。
-- 购买失败时不改变本地状态。
+- 成员阶级调整后 UI 正确刷新
 
 ### Open Questions
-- TODO：PurchaseBundle 返回结构未确认，先用 TODO 占位。
+- Risk: 官职加成规则待策划确认
 ```
 
-#### Handoff Update（Step 3）
+## D. Step 3 模块输出
 
-```markdown
-## Handoff Update: UI
+```md
+<!-- PIPELINE_SUMMARY -->
+## AllianceMember
 
-### Implemented Provides
-- RefreshBundleState(int bundleId)
+Modified files:
+- Assets/Scripts/.../AllianceMemberData.cs
 
-### Added Requires
-- None
+Key decisions:
+- 权限检查统一走 MI_AUTH
+- 事件更新统一走 MI_EVENT
 
-### Remaining Blocks
-- completable：等待 Logic.PurchaseBundle 返回结构后补全失败分支。
+API status:
+- AllianceMemberList: implemented
+- AllianceRankUpdate: implemented
 
-### TODO
-- TODO: 等待 Logic.PurchaseBundle(int bundleId) 返回结构确认后替换
+Handoff Update:
+- Implemented Provides: AllianceMemberList, AllianceRankUpdate
+- Added Requires: None
+- Remaining Blocks: None
 
-### Evidence
-- 修改文件：Assets/Scripts/GameLogic/Render/UI/Shop/PopupBundles/PopupBundleUI.cs
-- 参考 API：现有按钮绑定和弹窗刷新模式
+COMPLIANCE_CHECKLIST: 6/6 passed
+<!-- /PIPELINE_SUMMARY -->
+
+<!-- PIPELINE_DETAIL -->
+### Implementation Notes
+- 详细实现说明
+
+### Handoff Update
+- Implemented Provides:
+- Added Requires:
+- Remaining Blocks:
+- TODO:
+- Evidence:
+
+### COMPLIANCE_CHECKLIST
+- [x] 命名规范
+- [x] Handoff 对齐
+<!-- /PIPELINE_DETAIL -->
 ```
 
-#### Dependency Closure（Step 4）
+归并规则见 `config/pipeline_protocol.md` 协议 4；这里只保留最小模板。
 
-```markdown
+## E. Closure / Verdict 判例
+
+### 判例 E1：`GO`
+
+```md
 ## Dependency Closure Report
-
 ### Closed
-- UI.Requires Logic.GetBundleState -> Logic.Provides GetBundleState
+- M1.Requires X -> MI_AUTH.Provides X
 
+## Done Criteria Coverage
+### M1
+- [x] 所有业务条件已覆盖
+
+## VERIFICATION_REPORT
+### Module Verdicts
+- M1: GO
+
+### Global Verdict
+- GO
+
+### Reasons
+- `Dependency Closure Report` 全部闭合
+- `Done Criteria Coverage` 无缺口
+
+### NextAction
+- Step 9
+```
+
+### 判例 E2：`GO-WITH-CAUTION`
+
+```md
+## Dependency Closure Report
 ### CompletableBlocks
-- UI 购买失败分支等待 Logic.PurchaseBundle 返回结构。
+- M4 等待 M6.AddPlayerContribution()
 
-### BlockingBlocks
-- None
-```
-
-#### Coverage + Verdict（Step 5）
-
-```markdown
 ## Done Criteria Coverage
+### M4
+- [x] 主流程完成
+- [ ] 贡献结算待 Step 6 补全
 
-### UI
-- [x] 礼包入口按配置显示/隐藏
-- [x] 购买成功后 UI 状态刷新
-- [ ] 购买失败时不改变本地状态：等待 PurchaseBundle 返回结构补全
+## VERIFICATION_REPORT
+### Module Verdicts
+- M4: GO-WITH-CAUTION
 
-## Module Verdicts
-- UI: GO-WITH-CAUTION
-- Logic: GO
+### Global Verdict
+- GO-WITH-CAUTION
 
-## Global Verdict
-GO-WITH-CAUTION
+### Reasons
+- 主流程闭合
+- `CompletableBlocks` 只影响增量结算
+
+### NextAction
+- Step 6
 ```
 
----
+### 判例 E3：`NO-GO`
 
-## E. Step 4 / Step 5 判例
-
-### 示例 E1：BoundaryViolation 判定样例
-
-帮助 Step 4 / Step 5 统一理解什么算“越出 Owns”。
-
-#### 应判为 BoundaryViolation
-- UI 模块直接实现活动资格判断，而不是调用 Logic 提供的资格 API。
-- Logic 模块直接拼接 UI 展示文案或控制按钮显隐。
-- Battle 模块直接读取 UI 本地状态决定是否开战。
-
-#### 不应判为 BoundaryViolation
-- UI 调用 Logic.GetActivityState() 刷新显示。
-- Logic 调用 Battle.StartActivityBattle() 触发战斗。
-- 模块内为兑现自身 Provides 而新增私有辅助函数。
-
-#### 灰区处理
-- 如果某逻辑既像展示又像业务，优先看 Handoff.Owns；不在 Owns 内就按 BoundaryViolation 处理。
-
-### 示例 E2：Step 5 Verdict Checklist 轻量判定
-
-用最小 decision table 约束 Step 5 的 verdict 输出，减少 agent 漂移。
-
-#### 情况 A：只有 CompletableBlocks
-
-```markdown
+```md
 ## Dependency Closure Report
+### MissingProvider
+- M8.Requires CityBoundaryProvider, provider not found
 
-### Closed
-- UI.Requires Logic.GetBundleState -> Logic.Provides GetBundleState
+## VERIFICATION_REPORT
+### Module Verdicts
+- M8: NO-GO
 
-### CompletableBlocks
-- UI 购买失败分支等待已完成的返回结构接入。
+### Global Verdict
+- NO-GO
 
-## Done Criteria Coverage
+### Reasons
+- `MissingProvider` 未闭合
+- 当前无可接受降级路径
 
-### UI
-- [x] 礼包入口按配置显示/隐藏
-- [x] 购买成功后 UI 状态刷新
-- [ ] 购买失败时不改变本地状态：可在 Step 6 补全
-
-## Module Verdicts
-- UI: GO-WITH-CAUTION
-- Logic: GO
-
-## Global Verdict
-GO-WITH-CAUTION
+### NextAction
+- Recovery / re-dispatch
 ```
-
-#### 情况 B：出现 BoundaryViolation
-
-```markdown
-## Dependency Closure Report
-
-### BoundaryViolation
-- UI 模块直接实现礼包可购买资格判断，而不是调用 Logic.CheckBundleEligibility。
-
-## Done Criteria Coverage
-
-### UI
-- [x] 礼包入口按配置显示/隐藏
-- [x] 购买成功后 UI 状态刷新
-
-## Module Verdicts
-- UI: NO-GO
-- Logic: GO
-
-## Global Verdict
-NO-GO
-```
-
-#### 情况 C：Closure 无阻塞且 Coverage 完整
-
-```markdown
-## Dependency Closure Report
-
-### Closed
-- UI.Requires Logic.GetBundleState -> Logic.Provides GetBundleState
-- UI.Requires Logic.PurchaseBundle -> Logic.Provides PurchaseBundle
-
-## Done Criteria Coverage
-
-### UI
-- [x] 礼包入口按配置显示/隐藏
-- [x] 购买成功后 UI 状态刷新
-- [x] 购买失败时不改变本地状态
-
-## Module Verdicts
-- UI: GO
-- Logic: GO
-
-## Global Verdict
-GO
-```
-
-**最小判定规则**：
-- 命中 `BoundaryViolation / MissingProvider / ImplicitRequires / BlockingBlocks` -> `NO-GO`
-- 无 blocker，但存在 `CompletableBlocks` 或可补全 coverage caution -> `GO-WITH-CAUTION`
-- 无 blocker，且 coverage 完整 -> `GO`
-
-#### SignatureMismatch 严重度最小样例
-
-- **轻微 / 可接受或 caution**：参数名不同；不改变调用语义的非关键参数顺序调整。
-- **严重 / 必须 NO-GO**：返回类型不同；必需参数缺失；参数类型不兼容导致契约变化。
-- **灰区 / 按影响判**：新增可选参数；默认值参数变化；nullable 语义变化。若调用方无需改动且语义不变，可记为 caution；否则按严重处理。
-
----
 
 ## F. `pipeline_run_id` 生命周期
 
-### 示例 F1：`pipeline_run_id` 完整生命周期
+### 示例 F1：标准闭环中的 run_id / trace / signal / cleanup
 
 #### Step 1（生成）
 
@@ -422,71 +368,75 @@ pipeline_run_id: pipeline_20260420_143055
 
 #### Step 3（自动打标）
 
-`trace-flush` 在本次 pipeline 期间产生的所有 trace 条目形如：
+`trace-flush` 在本次 pipeline 期间产生的 trace 条目形如：
 
 ```md
-<!-- TRACE status:pending -->
+<!-- TRACE status:pending schema:1 -->
 timestamp: 2026-04-20T14:35:12Z
-pipeline_run_id: pipeline_20260420_143055
 validated: pending-pipeline
+pipeline_run_id: pipeline_20260420_143055
 modules: [Building, UI]
 ...
 <!-- /TRACE -->
 ```
 
-programmer-agent 无需主动感知此字段。
+模块实现单元无需主动写 `validated`；这是 hook 与 `pipeline_run_id` 的联动结果。
 
 #### Step 5（写回填信号）
 
-`pipeline-verify-agent` 在给出 GO/NO-GO 判定后写入 `.claude/traces/.pending_pipeline_result.json`：
+`pipeline-verify-agent` 输出 verdict 后，写入 `.claude/traces/.pending_pipeline_result.json`：
 
 ```json
 {
   "pipeline_run_id": "pipeline_20260420_143055",
-  "result": "GO-WITH-CAUTION"
+  "result": "GO-WITH-CAUTION",
+  "finalized": false
 }
 ```
 
 #### Stop Hook（批量回填）
 
-`trace-flush` 触发时读取此文件，将所有 `pipeline_run_id: pipeline_20260420_143055` 的条目 `validated` 批量更新：
+`trace-flush` 读取 result signal 后，按下表处理：
 
-| result | validated |
-|---|---|
-| GO | true |
-| GO-WITH-CAUTION | true |
-| NO-GO | false |
+| result | finalized | validated | 含义 |
+|---|---|---|---|
+| GO | true | true | 一次性合规 |
+| GO-WITH-CAUTION | false | pending-pipeline | 还要进入 Step 6 / 重跑 Step 4 / Step 5 |
+| GO-WITH-CAUTION | true | true | 补全完成并已重新验收 |
+| NO-GO | true | false | 本次 pipeline 判定失败 |
 
-然后删除 `.pending_pipeline_result.json`。
+非法或不完整的 result signal 不得被消费；hook 会保留原文件，等待修复后重试。
 
 #### Step 9（清理）
 
-- Cleanup 模式：`PIPELINE_CONTEXT.md` 随整体删除
-- Persist 模式：主 agent 手动删除 `PIPELINE_CONTEXT.md` 中的 `pipeline_run_id:` 行
+- Cleanup：`PIPELINE_CONTEXT.md` 随整体删除
+- Persist：必须删除 `pipeline_run_id:` 行
+- 若 `pending-pipeline` 长时间没有被最终 verdict 覆盖，hook 会按过期策略标记为 `invalid`
 
----
+## G. 标准模式最小闭环总结表
 
-## G. 总结表
+### 示例 G1：Step 1 -> Step 5 / 6 / 9 的最小节奏
 
-### 示例 G1：Pipeline 工作流总结表
-
-| 步骤 | 负责Agent | 核心职责 | 输出 |
+| 步骤 | 负责单元 | 核心问题 | 最小输出 |
 |---|---|---|---|
-| **Step 1** | requirement-analysis-agent | Phase 1 探索 + Phase 2 API 声明 + Handoff Draft + 生成 run_id | `PIPELINE_CONTEXT.md`（含 PCB 骨架 / Handoff） |
-| **Step 2**（可选） | requirement-analysis-agent | L1×L2 合成、BLUEPRINT、ATOMIC_EXECUTION、Handoff Freeze | 填充 PCB / 冻结 Handoff |
-| **Step 3** | programmer-{module}-agent | 实现代码 + Handoff Update + COMPLIANCE_CHECKLIST | 代码 + `temp/pipeline-output/*.md` |
-| **Step 4** | integration-matching-agent | 验证依赖闭合 | Dependency Closure Report |
-| **Step 5** | pipeline-verify-agent | Done Criteria Coverage + Module/Global Verdict + 写回填信号 | `VERIFICATION_REPORT` + `.pending_pipeline_result.json` |
-| **Step 6**（可选） | programmer-{module}-agent | 补全 CompletableBlocks，完成后回到 Step 4/5 验证闭环 | 代码更新 + 新 Closure/Verdict |
-| **Step 7**（可选） | debug-skill | 边界条件测试 | 修复建议 / 代码更新 |
-| **Step 8**（可选） | profiler-skill | 性能诊断 | 优化建议 / 代码更新 |
-| **Step 9** | 主 agent | 清理（Cleanup/Persist）+ run_id 处理 | 文件删除或 run_id 行移除 |
+| Step 1 | `requirement-analysis-agent` | 需求怎么拆、API 怎么声明、下一步走 Step 2 还是 Step 3 | Step 1 段落 + `pipeline_run_id` + Step 2 / Step 3 建议 |
+| Step 2 | `requirement-analysis-agent` | 哪些约束必须先冻结 | PCB + `Frozen Handoff`（`L1+`） |
+| Step 3 | 模块配对执行单元 | 在边界内实现模块 | 代码 + `temp/pipeline-output/{module_id}.md` |
+| Step 4 | `integration-matching-agent` | 依赖是否闭合 | Dependency Closure Report |
+| Step 5 | `pipeline-verify-agent` | 业务完成度是否足够 | Done Criteria Coverage + VERIFICATION_REPORT + result signal |
+| Step 6 | 模块配对执行单元 / `main agent` | 只补 `CompletableBlocks` | 更新后的模块输出 + 重跑 Step 4 / Step 5 |
+| Step 9 | `main agent` | 收尾、Cleanup / Persist | run_id 清理、上下文终结 |
 
----
+## H. TODO 格式
 
-## 不预设的原则
+```md
+// TODO: 等待 [模块名].[API名]() 完成后替换
+// 预期签名：[返回类型] [API名]([参数列表])
+// 使用场景：[场景描述]
+```
 
-- 功能不必然包含特定模块类型
-- 功能不必然遵循某个特定的架构模式
-- 模块类型和数量完全由需求决定
-- Step 2 / 6 / 7 / 8 按需启用，由 L1 参数或 Step 1 建议决定
+常见问题：
+
+- 不写模块名和 API 全名
+- 没写预期签名
+- 留下编译错误而不是规范 TODO

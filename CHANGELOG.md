@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### code-pipeline-skill 与执行层（真源 `.castflow/core/`）
+
+- **why（改造原因）**: **功能与模块拆成多波次并行时**，旧编排缺少逐步「给—读—写—交」的合同化收口，易出现 **互相等待、依赖未显式闭合的编排死锁**；通过 Step 调度卡、Handoff / merge / result signal 的明确契约与脚本侧 fail-closed，每步有唯一产物与前进条件，避免无限挂起。
+- **why**: 修复 pipeline 对 **公共 agents、templates 等 shared 模块的浸染**——非 pipeline 场景不应被迫携带工序特例；shared 仅保留通用契约，pipeline 专用语义不再写入其正文。
+- **why**: 将编排门禁 **收拢到 `code-pipeline-skill` 自身**（`config/*`、四件套与架构页），以 **复合 Skill（复合编排组件）** 存在：独立演进编排语义，**不升格为框架根**，也不绑架全局 agent/skill 定义。
+- **design**: 将 `code-pipeline-skill` 明确为**复合编排组件**（非框架根）：执行期合同与读写路径集中在 `config/pipeline_protocol.md`；shared agents / templates 保持 orchestrator 无关本体，pipeline 专用消费方式不写入其正文。
+- **feat**: `config/pipeline_protocol.md` 增加 **Step 调度卡**（给 / 读 / 写 / 交 / 不足兜底）；`SKILL_MEMORY.md` **规则 0**：调度各 Step 时必须附带对应调度卡，禁止只喊「执行 Step N」。
+- **feat**: Handoff 与快速路径：`L0`（`No-Handoff Rationale`）与 `L1+`（`Handoff Draft` / Freeze）在 `handoff_protocol` 与 Step 1 骨架中对齐；复杂系统下 `NeedsSubpipeline` 仅允许显式 `sub-pipeline` 派发行。
+- **docs**: `SKILL.md` 恢复 **可执行入口**：场景入口、AI 读取顺序、Step 1–9 **工作流总览**（每步解决什么问题、产物、下一步出口）、最小运行心智模型；YAML `description` 补充步骤语义便于路由。
+- **docs**: `EXAMPLES.md` 增补 **`pipeline_run_id` → trace → result signal → Step 9 清理** 闭环示例与标准模式最小节奏表；导航表链到 F/G 节。
+- **docs**: `ITERATION_GUIDE.md` 增加**防回归**：禁止 `SKILL.md` 退化为「仅 Step 表格 + 外链协议」；协议变更影响 run_id / signal / 归并时须同步示例闭环。
+- **fix**: `core/scripts/pipeline_merge.py`：Step 3 输出须含唯一 `PIPELINE_SUMMARY` / `PIPELINE_DETAIL` 标记；检测 **Parent Summary** 误入模块文件则 fail-closed；`PIPELINE_CONTEXT.md` / `PIPELINE_INDEX.md` 使用 **受控 merge 块** 幂等替换，避免重复 append 污染上下文。
+- **fix**: `core/hooks/trace-flush.py`：消费 `.pending_pipeline_result.json` 前 **校验** `pipeline_run_id` / `result` / `finalized`；`GO-WITH-CAUTION` + `finalized=false` 保持 `pending-pipeline` 直至最终验收；非法或不完整信号 **不删除文件** 并记日志；实现 `pending-pipeline` 与 `validated:_` 不确定条目的**过期**处理（与 `traces/README.md` 中 limits 字段一致）。
+- **docs**: `core/traces/README.md` 补充对 `finalized` 与 component-owned pending 的说明。
+- **note**: 模块实现侧术语统一为 **模块配对执行单元**（`programmer-<module>-agent` + 同模块 `programmer-<module>-skill`）；示例中派发表使用 `programmer-m*-agent` 等形式，避免与泛化 `programmer-ui-agent` 混淆。
+
 ### CastFlow结构调整
 
 - **rewrite**: 全面重写 `CastFlow/README.md`，与当前仓库真实布局及工作流对齐：定位与四层闭环（冷启动装架 / 渐进式披露 / 多模块编排 / 自我进化）、**端到端案例**（submodule 集成 → `bootstrap castflow` Phase 0–6 → 模块 skill → `code_pipeline` → `origin evolve` → 核心更新）、CastFlow 与用户项目双树目录、**全量文件清单**（`bootstrap-skill/`、`installer/`、`core/`、`bootstrap-assets/`、`test/` 及装架产物职责表）、T1–T4 时点摘要、trace / 五维评分 / 四级 compaction / `origin-evolve-skill` 执行流、CLI 与测试命令。

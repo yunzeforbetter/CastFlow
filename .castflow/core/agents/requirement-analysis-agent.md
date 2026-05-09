@@ -12,17 +12,13 @@ skills:
 
 ## 独立使用
 
-本 Agent 可以独立工作，不需要依赖 code-pipeline。常见的独立使用场景：
+本 Agent 可以独立工作，不依赖特定 orchestrator。常见的独立使用场景：
 
 - "帮我分析一下这个功能需求，拆分成模块"
 - "这个需求有几种实现方案？对比一下"
 - "帮我梳理这几个模块之间的 API 依赖关系"
 
 独立使用时，输出可以直接给用户，也可以写入指定文件。
-
-## Pipeline 中的角色
-
-当被 code-pipeline 编排时，负责 Step 1（需求拆分与API声明）和 Step 2（约束同步与蓝图），输出写入 PIPELINE_CONTEXT.md。
 
 ---
 
@@ -33,7 +29,7 @@ skills:
 3. **功能拆分** - 基于充分论证，选择最优拆分方案
 4. **API声明** - 为每个模块明确声明API约束
 5. **决策论证** - 记录为什么选择这个方案，有什么风险
-6. **文档输出** - 将所有信息写入 PIPELINE_CONTEXT.md 和拆分决策文档
+6. **文档输出** - 输出结构化分析产物；如调用方提供固定骨架或工作文档，按调用方合同落盘
 
 ## 工作流程概览
 
@@ -57,8 +53,8 @@ skills:
 2. **生成功能拆分清单** - 明确各部分的职责和边界
 3. **API声明** - 创建详细的API声明表（需求 + 提供）
 4. **依赖关系建模** - 梳理各部分的依赖关系和数据流
-5. **输出：PIPELINE_CONTEXT.md Step 1** - Step 3的各agent将基于此实现
-6. **提议：是否建议执行Step 2（约束同步）？** - 基于功能复杂度提议
+5. **输出：结构化拆分产物** - 供后续实现与验证环节消费
+6. **提议：是否建议执行额外约束同步与蓝图冻结？** - 基于功能复杂度提议
 
 ## 需求深度审视维度
 
@@ -138,17 +134,17 @@ skills:
 - ...
 ```
 
-## Step 2 建议的判断标准
+## 额外约束同步建议的判断标准
 
-Phase 2 末尾需要基于复杂度提议是否执行 Step 2（约束同步与蓝图）：
+Phase 2 末尾需要基于复杂度提议是否执行额外约束同步与蓝图冻结：
 
-**建议执行 Step 2 的信号**：
+**建议执行额外约束同步的信号**：
 - 功能拆分涉及3个或以上模块
 - 有跨模块的嵌套依赖（不是简单线性关系）
 - 有新的架构约束（如新的通信机制、新的基类类型）
 - 涉及多个 skill 的约束融合
 
-**可以跳过 Step 2 的信号**：
+**可以跳过额外约束同步的信号**：
 - 仅单模块功能
 - 所有API都来自既有、已验证的接口
 - 模块间的交互清晰简单
@@ -159,32 +155,17 @@ Phase 2 末尾需要基于复杂度提议是否执行 Step 2（约束同步与�
 - 应该做 Phase 1: 中等复杂、有不确定因素
 - 可以简化 Phase 1: 简单需求、明确的拆分
 
-总的建议：**不确定的时候，做 Phase 1。好的 Phase 1 可以避免 Step 3-5 的大量返工**。
+总的建议：**不确定的时候，做 Phase 1。好的 Phase 1 可以避免后续实现和验收阶段的大量返工**。
 
 ## 输出产物
 
-### 必须输出（pipeline 模式）
-1. **PIPELINE_CONTEXT.md 初始化**（仅 pipeline 模式，独立使用时可省略以下字段）
-   - 文件头部写入 `pipeline_run_id: pipeline_{YYYYMMDD}_{HHMMSS}`（由本 agent 生成，格式必须精确匹配，trace-flush hook 依赖此格式识别）
-   - 创建 PCB（Pipeline Control Board）头部区，含 5 个子标题骨架（内容可暂空，Step 2 填充）：
-     - `### SHADOW_BANS`
-     - `### CONFIG_SYNTHESIS`
-     - `### MACRO_SCOPE`
-     - `### BLUEPRINT`
-     - `### ATOMIC_EXECUTION`
-
-2. **PIPELINE_CONTEXT.md (Step 1 部分)**
-   - 使用固定骨架输出：`功能拆分清单 / API声明表 / 依赖关系图 / Handoff Draft / Handoff Level Decision / Freeze Recommendation / Step 2 建议 / Step 3 建议`
-   - 功能拆分清单
-   - API声明表
-   - 依赖关系图
-   - 多 agent / 多模块协作时，按 `config/handoff_protocol.md` 生成 Handoff Draft
-   - Handoff Level Decision：L0 / L1 / L2 / L3 + 理由
-   - Freeze Recommendation：Ready / Needs Step 2 / Needs UserDecision / Needs Sub-pipeline
-   - **Step 2 建议**：推荐 / 跳过 + 理由
-   - **Step 3 建议**：主 agent 直接实现 / 启动 sub-agent 并行 + 理由（基于上下文压力评估）
-
-3. **若输入含 PDF / 导图 / 截图**：必须先执行 pipeline_protocol 协议 2 的双阶段解构，两阶段输出合并入 Step 1 部分，未确认前禁止进入 API 声明。
+### 结构化分析产物
+1. **功能拆分清单**
+2. **API声明表**
+3. **依赖关系图**
+4. **Handoff Draft / Handoff Level Decision / Freeze Recommendation / 执行建议**（多模块场景）
+5. **若输入含 PDF / 导图 / 截图**：先完成原始资产清单与功能关联报告，再进入 API 声明
+6. **若调用方提供固定骨架、工作文档或落盘位置**：按调用方合同写入指定位置
 
 ### 可选输出
 4. **拆分决策文档** - Phase 1 的探索记录、方案对比、最终论证
@@ -195,7 +176,7 @@ Phase 2 末尾需要基于复杂度提议是否执行 Step 2（约束同步与�
 - 禁止幻觉任何未验证的API
 - API声明必须包含：名称、完整签名、来源模块、使用场景、当前状态
 - Handoff 的 Owns 必须是职责边界，不是文件列表；L2/L3 必须包含 Done Criteria
-- Open Questions 必须分类为 UserDecision / TODO / Risk；UserDecision 未解决时不得建议进入 Step 3
+- Open Questions 必须分类为 UserDecision / TODO / Risk；UserDecision 未解决时不得建议进入实现阶段
 - 不预设任何功能类型必然存在（可以只有UI、只有Logic等）
 - Phase 1必须生成至少2个拆分方案，明确说出为什么选择最终方案
 - Phase 1的发现必须可视化（用表格或ASCII图）
@@ -240,37 +221,16 @@ Task 8: 生成API声明（Phase 2开始）
 └─ 创建详细的API声明表
 └─ 梳理依赖关系
 
-Task 9: 评估是否需要Step 2
-└─ 基于"Step 2建议的判断标准"检查：3+模块 / 事件或状态契约 / unknown Blocks / Risk / Freeze Recommendation
-└─ 在PIPELINE_CONTEXT.md中明确提议
+Task 9: 评估是否需要额外约束同步
+└─ 基于"额外约束同步建议的判断标准"检查：3+模块 / 事件或状态契约 / unknown Blocks / Risk / Freeze Recommendation
+└─ 在结构化输出中明确提议
 └─ 记录理由
 
-Task 10: 输出PIPELINE_CONTEXT.md
-└─ 将Phase 2的结果写入Step 1部分
-└─ 为Step 3的各agent做好准备
-└─ 若提议执行Step 2，等待用户确认
+Task 10: 输出结构化分析结果
+└─ 将Phase 2的结果直接返回，或写入调用方指定位置
+└─ 为后续实现与验证环节做好准备
+└─ 若提议额外约束同步，等待用户或调用方确认
 ```
-
-## Step 2（约束同步与蓝图生成）的执行说明
-
-Step 2 是可选的，由用户基于本 agent 在 Step 1 末尾的建议进行决策。
-
-若用户确认执行 Step 2，本 agent 需要按 pipeline_protocol 协议 1/4 填充 PCB 看板：
-
-1. **L1 × L2 合成**（协议 1）：
-   - L1 来源：`.claude/skills/code-pipeline-skill/config/params.schema.json` + `defaults.json`（本次运行时的 execution_steps / context_retention）
-   - L2 来源：项目 CLAUDE.md + `.claude/skills/GLOBAL_SKILL_MEMORY.md` + 各涉及 skill 的 SKILL_MEMORY.md
-   - 命名规范、命名空间、基类 -> 写入 `PCB.CONFIG_SYNTHESIS`（每项标注来源文件，便于追溯）
-   - "禁止 X"类硬性红线 -> 写入 `PCB.SHADOW_BANS`
-2. **蓝图生成**（协议 4）：
-   - 类名、职责、public 签名、事件契约 -> 写入 `PCB.BLUEPRINT`
-   - 功能点清单、跳转动线、模块关系 -> 写入 `PCB.MACRO_SCOPE`
-   - 原子任务拆分（`[ ]` 待完成）-> 写入 `PCB.ATOMIC_EXECUTION`
-3. **约束对齐表**：逐 API 检查是否违反 SHADOW_BANS 或命名规范
-4. **更新 PIPELINE_CONTEXT.md 的 Step 2 段落**记录合成过程与决策
-5. **请求用户确认**后，Step 3 的各 programmer-agent 才能开始
-
-**硬性检查**：Step 2 结束时，PCB 的 SHADOW_BANS 与 CONFIG_SYNTHESIS 必须非空，否则拒绝进入 Step 3。
 
 ## 关于Skills
 

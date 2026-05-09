@@ -8,7 +8,7 @@
 | 配置 | `config/hooks.config.json` | trace-collector 与 trace-flush 的语言/路径推断配置（适配非 Unity 项目） |
 | 数据 | `trace.md` | hook 自动累积的执行记录，由 origin-evolve 消费 |
 | 数据 | `weights.json` | 五维评分权重的自校准结果（首次使用前不存在，由 origin-evolve Step 6 写入） |
-| 状态 | `.trace_buffer` / `.trace_prev_edits` / `.trace_lock` / `.pending_*.json` / `.trace_error.log` | hook 内部状态文件，不要手动编辑 |
+| 状态 | `.trace_buffer` / `.trace_prev_edits` / `.trace_lock` / `.pending_*.json` / `.trace_error.log` | hook 内部状态文件，不要手动编辑；其中 `.pending_*.json` 既可能是框架共享信号，也可能是某个复合组件 own 的 runtime state |
 
 修改 `config/limits.json` 或 `config/hooks.config.json` 后立即生效。
 
@@ -39,8 +39,8 @@
 | `request` | string | AI（IDP）| 用户请求摘要 |
 | `intent` | string | AI（IDP）| AI 理解的意图 |
 | `correction` | `_` / `auto:minor` / `auto:major` / `minor` / `major` | hook | 自我修正信号，由 collector 自动检测或 AI 标记 |
-| `validated` | `_` / `true` / `false` / `pending-pipeline` / `invalid` | hook | 用户验证信号，从 `.pending_validated.json` 注入 |
-| `pipeline_run_id` | string / `_` | hook | code_pipeline 的 run id |
+| `validated` | `_` / `true` / `false` / `pending-pipeline` / `invalid` | hook | 用户验证信号，从 `.pending_validated.json` 注入；`pending-pipeline` 表示当前 trace 仍在等待 code-pipeline own 的最终结果信号回填 |
+| `pipeline_run_id` | string / `_` | hook | 可选的 code-pipeline 运行标记；仅当当前 trace 来自该复合组件时出现 |
 | `modules` | `[Mod1, Mod2]` | hook | 从文件路径推断（依赖 config/hooks.config.json） |
 | `skills` | `[skill1]` / `[]` | AI（IDP）| 本次涉及的 skill 名称 |
 | `files_modified` | `[path, ...]` | hook | 编辑过的文件（最多前 20 个） |
@@ -50,6 +50,13 @@
 | `score` | float | hook | 五维评分结果，>= 阈值才会写入此 trace |
 
 **真理来源**：字段格式由 `trace-flush.py` 的 `format_trace()` 函数生成。修改字段时同步更新 `schema` 版本号，origin-evolve 会拒绝读取未知版本，避免静默漂移。
+
+## 复合组件 own 的 pending state
+
+- `trace` / `validated` 机制本身属于框架共享 runtime 机制。
+- 某些复合组件会通过 `.pending_*.json` 向 shared hook 提交结果信号。
+- 例如：`.pending_pipeline_result.json` 属于 `code-pipeline` own 的 runtime state，由 shared `trace-flush.py` 消费并回填 `validated`；当 `result=GO-WITH-CAUTION` 且 `finalized=false` 时，hook 会保留 `pending-pipeline`，直到最终 verdict 到达。
+- 这些 pending 文件是 runtime 投影结果，不反向充当 source 真源。
 
 ---
 
@@ -92,12 +99,12 @@ Level 2 后若条目数仍超过 compact_max_entries，Level 3 从最老、最�
 
 ### 被动触发通知
 
-origin-evolve 的被动触发机制：当积累足够多的 pending trace 时，在 trace.md 中写入 NOTIFY 块提醒用户执行分析。
+origin-evolve 的被动触发机制：当积累足够多的**可分析 pending trace** 时，在 trace.md 中写入 NOTIFY 块提醒用户执行分析。`validated:pending-pipeline` 仍属运行中条目，不计入被动触发阈值。
 
 | 字段 | 默认值 | 作用 |
 |------|--------|------|
-| `passive_trigger_threshold` | 10 | pending 条目总数达到此值时，允许发送通知 |
-| `passive_trigger_min_new` | 5 | 距上次通知后新增的 pending 条目数必须达到此值才再次通知 |
+| `passive_trigger_threshold` | 10 | 可分析 pending 条目总数（不含 `validated:pending-pipeline`）达到此值时，允许发送通知 |
+| `passive_trigger_min_new` | 5 | 距上次通知后新增的可分析 pending 条目数必须达到此值才再次通知 |
 
 示例：上次通知时有 10 条 pending，现在有 14 条，new=4 < min_new(5)，不通知。等到 15 条时 new=5，触发通知。
 

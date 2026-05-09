@@ -1,152 +1,142 @@
 ---
 name: code-pipeline-skill
-description: code_pipeline code-pipeline OpenSpec pipeline requirement analysis delivery orchestration multi-agent multi-stage workflow NOT bootstrap castflow install
+description: code_pipeline code-pipeline 功能开发流程编排 Step1需求拆分 Step2约束冻结 Step3模块实现 Step4依赖闭合 Step5验收 verdict 多模块 复杂系统 子pipeline
 ---
 
 # Code Pipeline 工作流
 
-**定位**：流程编排者（Process Orchestrator）。协调多 Skill / Agent 按标准工序协作，输出可追溯的工程决策与代码实现。
+`code-pipeline-skill` 是一个复合组件：它组合 shared agents、模块配对执行单元与可选 skill，在 pipeline 执行期间维护自己的 component-owned 协议与运行态文件；它不定义 shared components 的本体规则。
 
-**不是**：代码生成者、规则定义者、执行引擎。
+## 场景入口
 
-**适用**：多模块协作、跨系统改造、高风险功能。简单任务直接用 Skill / Agent，不走 pipeline。
+- 标准模式：单模块、双模块、依赖链短，但仍需要 Step 1 / 3 / 4 / 5 的最小闭环
+- 复杂系统模式：3+ 模块、共享契约重、需要 wave / dispatch / checkpoint / sub-pipeline
+- 简单局部改动：若一个 skill 或单个 agent 就能收敛，不值得启 pipeline
 
----
+## AI 读取顺序
 
-## 快速导航
-
-### 场景入口
-
-- **单模块 / 小改动**：先看 Step 1、Step 3 的最小路径；通常跳过 Step 2，少量场景可跳过 Step 4
-- **双模块依赖**：重点看 Step 1、Step 4、Step 5，确认 API 声明、依赖闭合和最终判定
-- **多模块复杂协作**：重点看 Step 2、Handoff、Step 4、Step 5，先冻结边界，再并行实现
-
-### 常见问题 -> 去哪里看
-
-| 你想知道什么 | 去哪里看 |
-|---|---|
-| 这个需求要不要进 pipeline | 本页“场景入口” + “工作流总览” |
-| 什么时候必须执行 Step 2 | `SKILL_MEMORY.md` 规则 3 + `EXAMPLES.md` 决策速查 |
-| Handoff 什么时候需要、要写到什么程度 | `config/handoff_protocol.md` |
-| Step 4 和 Step 5 的区别 | 本页“工作流总览” + `EXAMPLES.md` Step 4/5 判例 |
-| PCB / run_id / PIPELINE_CONTEXT 是怎么工作的 | `config/pipeline_protocol.md` |
-| 要抄模板或看判例 | `EXAMPLES.md` |
-| 某个 agent 到底负责什么 | 对应 agent 文档 |
-
-### 文件分层
-
-- **入口层**：`SKILL.md`
-- **规则层**：`SKILL_MEMORY.md`
-- **机制层**：`config/pipeline_protocol.md`、`config/handoff_protocol.md`
-- **模板 / 判例层**：`EXAMPLES.md`
-- **执行层**：`requirement-analysis-agent.md`、`integration-matching-agent.md`、`pipeline-verify-agent.md`
-- **维护层**：`ITERATION_GUIDE.md`
-
----
+1. `SKILL_MEMORY.md`
+2. `config/pipeline_protocol.md`
+3. 进入 `L1+`、多模块协作或需要 Freeze / Closure / Coverage 时，再读 `config/handoff_protocol.md`
+4. 进入复杂系统模式后，再按需读取对应主定义页：
+   - 总模型：`architecture/orchestration-model.md`
+   - 状态：`architecture/artifact-state-machine.md`
+   - barrier / wave / dispatch：`architecture/barrier-and-wave-scheduling.md`
+   - 子 pipeline：`architecture/subpipeline-strategy.md`
+   - stalled / recovery：`architecture/stall-recovery.md`
+   - 局部 / 全局验证：`architecture/verification-architecture.md`
+5. 需要模板或判例时读取 `EXAMPLES.md` 与 `examples/*`
 
 ## 工作流总览
 
-### Step 1：需求拆分 + API 声明 + Handoff Draft
-- Agent：`requirement-analysis-agent`
-- 解决的问题：这次需求要拆成哪些模块、谁提供什么 API、谁依赖谁
-- 关键产物：功能拆分清单、API 声明表、依赖关系图、Handoff Draft、Step 2 / Step 3 建议
-- 深读：`SKILL_MEMORY.md` 规则 2、`EXAMPLES.md` Step 1 样例、`requirement-analysis-agent.md`
+精确调度合同、读写路径与返回结构见 `config/pipeline_protocol.md` 的“Step 调度卡”；本页负责回答“现在走到哪一步、这一步解决什么、下一步该去哪里”。
 
-### Step 2：约束同步 + BLUEPRINT + Handoff Freeze（可选）
-- Agent：`requirement-analysis-agent`
-- 解决的问题：跨模块协作前，哪些约束、签名、事件和边界必须先锁定
-- 关键产物：PCB 中的 `SHADOW_BANS / CONFIG_SYNTHESIS / BLUEPRINT / ATOMIC_EXECUTION`，以及 Frozen Handoff
-- 深读：`SKILL_MEMORY.md` 规则 3、`config/pipeline_protocol.md`、`config/handoff_protocol.md`
+### Step 1：需求拆分 + API 声明 + Handoff Draft / No-Handoff Rationale
+- 执行单元：`requirement-analysis-agent`
+- 解决的问题：这次需求要拆成哪些模块、谁提供什么 API、是否需要进入 `L1+` 协作
+- 关键产物：功能拆分、API 声明、依赖关系、`Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）、Handoff Level Decision、Freeze Recommendation、Step 2 / Step 3 建议
+- 下一步出口：明确进入 Step 2、直接进 Step 3、先回用户关闭 `UserDecision`，或升级为子 pipeline
+- 深读：`SKILL_MEMORY.md` 规则 2 / 3 / 10、`EXAMPLES.md` 的 Step 1 / Handoff 样例
+
+### Step 2：约束同步 + BLUEPRINT + Handoff Freeze
+- 执行单元：`requirement-analysis-agent`
+- 解决的问题：跨模块协作前，哪些约束、签名、事件与边界必须先锁死
+- 关键产物：PCB、`BLUEPRINT`、`Frozen Handoff`（`L1+`）；复杂系统时补 `Artifact State Table`、`Wave Plan`
+- 触发条件：`SKILL_MEMORY.md` 规则 3 命中，或复杂系统模式需要先冻结共享底座
+- 深读：`config/pipeline_protocol.md`、`config/handoff_protocol.md`
 
 ### Step 3：模块实现
-- Agent：`programmer-{module}-agent`
-- 解决的问题：各模块在已冻结边界内独立实现，并回写 Handoff Update
-- 关键产物：代码、`temp/pipeline-output/{module_id}.md`、COMPLIANCE_CHECKLIST、Handoff Update
-- 深读：`SKILL_MEMORY.md` 规则 4 / 10 / 11 / 14
+- 执行单元：模块配对执行单元；`L0` 快速路径允许单个 `main agent` 或单模块实现单元直接推进
+- 解决的问题：各模块在 Frozen 边界（`L1+`）或单模块职责（`L0`）内独立实现
+- 关键产物：代码、`temp/pipeline-output/{module_id}.md`、Handoff Update、COMPLIANCE_CHECKLIST
+- 进入门槛：`L1+` 必须先过 Freeze Gate；`L0` 必须已有 `No-Handoff Rationale`，且一旦出现跨模块依赖立即回退升级到 `L1+`
+- 深读：`SKILL_MEMORY.md` 规则 4 / 5 / 10 / 11、`EXAMPLES.md` 的 Step 3 模板
 
-### Step 4：依赖闭合（严格验证，禁止改代码）
-- Agent：`integration-matching-agent`
+### Step 4：依赖闭合
+- 执行单元：`integration-matching-agent`
 - 解决的问题：Requires / Provides / TODO / 边界是否真的闭合
 - 关键产物：Dependency Closure Report
-- 深读：`SKILL_MEMORY.md` 规则 5 / 15、`config/handoff_protocol.md`、`EXAMPLES.md` Step 4 判例、`integration-matching-agent.md`
+- 约束：只验证，不改代码；无法证明闭合时必须保守落入缺口类分区
+- 深读：`config/handoff_protocol.md` 的 closure 模板、`EXAMPLES.md` 判例
 
-### Step 5：覆盖验收（仅决策，禁止改代码）
-- Agent：`pipeline-verify-agent`
-- 解决的问题：依赖闭合之后，业务完成度是否足够，最终能否 GO
-- 关键产物：Done Criteria Coverage、Module / Global Verdict、`.pending_pipeline_result.json`
-- 深读：`SKILL_MEMORY.md` 规则 6 / 15、`EXAMPLES.md` Step 5 判例、`pipeline-verify-agent.md`
+### Step 5：覆盖验收
+- 执行单元：`pipeline-verify-agent`
+- 解决的问题：在 closure 基础上判断业务完成度是否足够，最终是否 `GO / GO-WITH-CAUTION / NO-GO`
+- 关键产物：Done Criteria Coverage、VERIFICATION_REPORT、pipeline result signal
+- 下一步出口：`GO` 进入 Step 9；`GO-WITH-CAUTION` 进入 Step 6；`NO-GO` 回 recovery / re-dispatch
+- 深读：`config/pipeline_protocol.md` 协议 5、`config/handoff_protocol.md` 的 coverage / re-closure 约束
 
-### Step 6：补全 CompletableBlocks（可选）
+### Step 6：补全 CompletableBlocks
+- 执行单元：模块配对执行单元 / `main agent`
 - 触发时机：Step 5 = `GO-WITH-CAUTION`
-- 关键要求：补完后至少回到 Step 4；若 Closure 变化影响 Coverage / Verdict，再回到 Step 5
-- 深读：`config/handoff_protocol.md`“Step 6 Re-closure”
+- 关键要求：只补 `CompletableBlocks`；补完后至少重跑 Step 4，若 closure 变化影响 coverage / verdict，再重跑 Step 5
 
-### Step 7：边界条件测试（可选）
-- Skill：`debug-skill`
+### Step 7：边界条件测试
+- 执行单元：`debug-skill`
+- 输出：问题列表与修复建议
 
-### Step 8：性能诊断（可选）
-- Skill：`profiler-skill`
+### Step 8：性能诊断
+- 执行单元：`profiler-skill`
+- 输出：性能问题与优化建议
 
 ### Step 9：完成与清理
-- 解决的问题：收尾、保留或清理上下文，以及终结 `pipeline_run_id`
-- 深读：`SKILL_MEMORY.md` 规则 7、`config/pipeline_protocol.md` 协议 5
-
----
+- 执行单元：`main agent`
+- 解决的问题：终结 pipeline、清理或保留上下文，以及处理 `pipeline_run_id`
+- 深读：`config/pipeline_protocol.md` 协议 5、`SKILL_MEMORY.md` 规则 12
 
 ## 最小运行心智模型
 
-### 1. 入口文件
-`PIPELINE_CONTEXT.md` 是单一事实来源，头部是 PCB，看当前约束；尾部是 Step 记录，看当前进度。
+### 1. 单一事实来源
+`PIPELINE_CONTEXT.md` 是本组件的单一事实来源：头部 PCB 看当前约束，Step 段落看当前进度。
 
-### 2. 两类核心质量门
-- **Handoff Freeze Gate**：进入 Step 3 前，先锁边界
-- **Closure / Coverage / Verdict Gate**：Step 4 / Step 5 决定能否放行
+### 2. 三个关键门
+- Step 1 / Step 2：决定当前走 `L0`、`L1+` 还是复杂系统模式
+- Step 3：只有 Freeze Gate 或 `L0` 快速路径满足时才允许实现
+- Step 4 / Step 5：决定是进入 Step 6 补全，还是进入 Step 9 收尾
 
-### 3. 两类关键协议
-- **pipeline_protocol**：讲执行期机制，解决 PCB、run_id、L1×L2 合成、协议触发
-- **handoff_protocol**：讲模块协作机制，解决 Level、模板、Freeze、Update、Closure、Coverage
+### 3. 复杂系统模式不是“更多并行”
+复杂系统模式下，主流程看 `ArtifactState`、wave readiness、dispatch scope、checkpoint，而不是把所有模块一次性开工。
 
----
+## 组件边界
 
-## 运行前置（按序加载）
+- shared inputs：项目 `CLAUDE.md`、`GLOBAL_SKILL_MEMORY.md`、相关 skill 的 `SKILL_MEMORY.md`、shared agents、模块配对执行单元
+- component-owned runtime state：`PIPELINE_CONTEXT.md`、`temp/pipeline-output/{module_id}.md`、pipeline result signal
+- component-owned runtime binding：运行时投影脚本 `pipeline_merge.py`
+- 本组件可以消费 shared components，但不要求 shared components 把自己的本体规则改写成 pipeline 语义
 
-1. `GLOBAL_SKILL_MEMORY.md` 协议 1-5
-2. `config/pipeline_protocol.md` 协议 1-6
-3. 涉及多 agent / 多模块协作时，按需读取 `config/handoff_protocol.md`
-4. `config/params.schema.json` + `config/defaults.json` -> 合成 L1 参数
-5. 项目 `CLAUDE.md` + 相关 `SKILL_MEMORY` -> 提取 L2 约束
-6. 初始化 `PIPELINE_CONTEXT.md`（含 PCB 头部区 + run_id）
+## Step 3 输出归并
 
----
+- 每个模块输出到 `temp/pipeline-output/{module_id}.md`
+- 该文件分为两层：`PIPELINE_SUMMARY` 与 `PIPELINE_DETAIL`
+- 本组件 own 的运行时投影脚本 `pipeline_merge.py` 只提取 `PIPELINE_SUMMARY` 并合并回 `PIPELINE_CONTEXT.md`
+- Step 4 / Step 5 深读模块实现时，读取 `PIPELINE_DETAIL`
+- 双层输出的最小模板看 `EXAMPLES.md`
+- `Parent Summary` 只用于子 pipeline 回传父 pipeline，不等于 Step 3 模块 summary；定义见 `config/handoff_protocol.md`
 
-## 核心资产
+## 最小质量门
 
-**`PIPELINE_CONTEXT.md` 是单一事实来源**，含两个正交维度：
+- 在 `code-pipeline` 执行期间，`PIPELINE_CONTEXT.md` 是本组件的单一事实来源
+- 进入 Step 3 前：`L1+` 先过 Handoff Freeze Gate，`L0` 走 No-Handoff 快速路径
+- Step 4 只验证，不改代码
+- Step 5 只决策，不改代码
+- Step 9 必须执行
 
-- **PCB 看板区**（头部，常驻）：`SHADOW_BANS / CONFIG_SYNTHESIS / MACRO_SCOPE / BLUEPRINT / ATOMIC_EXECUTION`
-- **Step 段落区**（尾部，追加）：Step 1-9 流转记录
+## 复杂系统模式的主判断
 
-每个原子单元开工前都必须先读 `PIPELINE_CONTEXT.md`。PCB 未记录的逻辑视为无证据幻觉。
+- 主流程看 `ArtifactState`、barrier、wave readiness，而不是只等某个 agent 结束
+- 共享底座优先冻结
+- 只有满足局部 barrier 的模块才进入当前 wave
+- `NeedsSubpipeline / Stalled / Blocked` 不进入普通模块配对执行单元派发
+- 进入复杂系统模式后，`Step 3 / Step 4 / Step 5 / Step 6` 的调度必须显式携带 wave / dispatch / checkpoint / verification scope，而不是沿用标准模式最小卡
 
----
+## 主定义页
 
-## L1 运行参数
-
-- `execution_steps`：数组，要执行的步骤子集（Step1/3/4/5/9 为必选，其他可选）
-- `context_retention`：`Cleanup` | `Persist`
-
-详见 `config/params.schema.json`。
-
----
-
-## 进化系统对接
-
-pipeline 通过 `pipeline_run_id` 将 Step 3 的 trace 与 Step 5 的结果关联，为自我进化提供验证信号：
-
-| Step 5 判定 | validated | 含义 |
-|---|---|---|
-| GO | true | 一次性合规，成功模式 |
-| GO-WITH-CAUTION | true | 经补全后合规，包含可复用修复经验 |
-| NO-GO | false | P0 反面教材 |
-
-详见 `config/pipeline_protocol.md` 协议 5。
+| 主题 | 文件 |
+|---|---|
+| 执行期控制、PCB、run_id、复杂系统产物 | `config/pipeline_protocol.md` |
+| Handoff、Freeze、Closure、Coverage、Parent Summary | `config/handoff_protocol.md` |
+| `ArtifactState` 与派发资格 | `architecture/artifact-state-machine.md` |
+| barrier / wave / dispatch | `architecture/barrier-and-wave-scheduling.md` |
+| 子 pipeline 升级与回传 | `architecture/subpipeline-strategy.md` |
+| stalled / heartbeat / checkpoint / recovery | `architecture/stall-recovery.md` |
+| 局部 / 全局验证与重跑 | `architecture/verification-architecture.md` |
