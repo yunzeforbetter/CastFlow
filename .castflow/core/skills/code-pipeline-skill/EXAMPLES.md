@@ -135,6 +135,18 @@ pipeline_run_id: pipeline_20260420_143055
 - Logic
 - Battle
 
+### 类似功能检索结果
+- `Battle`：检索到 `Modules/Battle`，职责与需求高度重合，可作为主承载实现
+- `UI`：检索到 `Modules/CommonUI/BattlePanel`，交互流相近，可复用部分展示逻辑
+- `Logic`：未检索到可直接承载的现有实现，需要新增逻辑承载层
+
+### 模块策略建议
+- 默认：依托已有 `Battle` 能力迭代
+- `Logic` 作为新增承载层拆出
+
+### UserDecision
+- Battle：若无额外约束，默认按“在已有能力上迭代”推进；如用户指定隔离演进，再切换为全新实现
+
 ### API 声明
 - UI -> Logic.GetStatus()
 - Logic -> Battle.StartBattle()
@@ -166,6 +178,15 @@ pipeline_run_id: pipeline_20260420_143055
 
 ### 功能拆分
 - Inventory
+
+### 类似功能检索结果
+- `InventoryPanel`：检索到现有背包展示与刷新链路，可直接作为承载实现
+
+### 模块策略建议
+- 默认：在已有 `InventoryPanel` 能力上迭代
+
+### UserDecision
+- Inventory：若无额外隔离诉求，默认按“在已有能力上迭代”推进
 
 ### API 声明
 - Inventory.Refresh()

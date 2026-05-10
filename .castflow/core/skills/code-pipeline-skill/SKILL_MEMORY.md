@@ -28,11 +28,16 @@
 
 ## 规则 2：Step 1 必须产出固定骨架
 
+`requirement-analysis-agent` 在 Step 1 产出骨架前，必须先在项目中检索是否已有类似功能、相近职责实现或可直接承载的现有模块；若找到可复用候选，必须把“依托已有能力迭代”作为默认策略，并把是基于已有能力迭代还是全新实现收敛为显式 `UserDecision`。
+
 `requirement-analysis-agent` 在 Step 1 至少必须产出：
 
 - 功能拆分
 - API 声明
 - 依赖关系
+- 类似功能检索结果
+- 模块策略建议（默认优先依托已有能力迭代）
+- `UserDecision`（存在可复用候选时必填）
 - `Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）
 - Handoff Level Decision
 - Freeze Recommendation

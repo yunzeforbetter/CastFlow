@@ -33,8 +33,8 @@ description: code_pipeline code-pipeline 功能开发流程编排 Step1需求拆
 
 ### Step 1：需求拆分 + API 声明 + Handoff Draft / No-Handoff Rationale
 - 执行单元：`requirement-analysis-agent`
-- 解决的问题：这次需求要拆成哪些模块、谁提供什么 API、是否需要进入 `L1+` 协作
-- 关键产物：功能拆分、API 声明、依赖关系、`Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）、Handoff Level Decision、Freeze Recommendation、Step 2 / Step 3 建议
+- 解决的问题：这次需求要拆成哪些模块、谁提供什么 API、是否需要进入 `L1+` 协作，以及应基于类似功能/已有实现迭代还是全新实现
+- 关键产物：功能拆分、API 声明、依赖关系、类似功能检索结果、模块策略建议（默认优先依托已有能力迭代）、`UserDecision`（存在可复用候选时必填）、`Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）、Handoff Level Decision、Freeze Recommendation、Step 2 / Step 3 建议
 - 下一步出口：明确进入 Step 2、直接进 Step 3、先回用户关闭 `UserDecision`，或升级为子 pipeline
 - 深读：`SKILL_MEMORY.md` 规则 2 / 3 / 10、`EXAMPLES.md` 的 Step 1 / Handoff 样例
 
