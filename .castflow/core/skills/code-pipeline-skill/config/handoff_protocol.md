@@ -103,6 +103,7 @@
 - Step 1 已明确 `Handoff Level Decision = L0`
 - `No-Handoff Rationale` 已说明单模块 / 单 agent / 无跨模块依赖
 - Step 1 不得出现跨模块 `Requires / Provides`
+- Step 1 路线决策门禁已通过：`类似功能检索结果`、`模块策略建议` 已齐备；存在可复用候选时 `UserDecision` 已解决
 - `PCB.SHADOW_BANS` 与 `PCB.CONFIG_SYNTHESIS` 已就绪
 
 `L1` / `L2` / `L3` 进入 Step 3 前，Handoff 必须满足：
@@ -112,6 +113,7 @@
 - `Provides` 明确到 API / 数据 / 事件
 - `Requires` 有候选 Provider，或明确标记 `unknown`
 - `Blocks` 已分类
+- Step 1 路线决策门禁已通过：`类似功能检索结果`、`模块策略建议` 已齐备；存在可复用候选时 `UserDecision` 已解决
 - `UserDecision` 已解决
 
 `L2` / `L3` 额外要求：

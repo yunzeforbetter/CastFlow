@@ -16,73 +16,35 @@ description: code_pipeline code-pipeline 功能开发流程编排 Step1需求拆
 ## AI 读取顺序
 
 1. `SKILL_MEMORY.md`
-2. `config/pipeline_protocol.md`
-3. 进入 `L1+`、多模块协作或需要 Freeze / Closure / Coverage 时，再读 `config/handoff_protocol.md`
-4. 进入复杂系统模式后，再按需读取对应主定义页：
+2. `config/step_contracts.md`
+3. `config/pipeline_protocol.md`
+4. 进入 `L1+`、多模块协作或需要 Freeze / Closure / Coverage 时，再读 `config/handoff_protocol.md`
+5. 进入复杂系统模式后，再按需读取对应主定义页：
    - 总模型：`architecture/orchestration-model.md`
    - 状态：`architecture/artifact-state-machine.md`
    - barrier / wave / dispatch：`architecture/barrier-and-wave-scheduling.md`
    - 子 pipeline：`architecture/subpipeline-strategy.md`
    - stalled / recovery：`architecture/stall-recovery.md`
    - 局部 / 全局验证：`architecture/verification-architecture.md`
-5. 需要模板或判例时读取 `EXAMPLES.md` 与 `examples/*`
+6. 需要模板或判例时读取 `EXAMPLES.md` 与 `examples/*`
 
 ## 工作流总览
 
-精确调度合同、读写路径与返回结构见 `config/pipeline_protocol.md` 的“Step 调度卡”；本页负责回答“现在走到哪一步、这一步解决什么、下一步该去哪里”。
+Step 1-9 的唯一 Step 收口页与 Step 级强规则入口见 `config/step_contracts.md`；执行期的精确调度合同、读写路径与返回结构见 `config/pipeline_protocol.md` 的“Step 调度卡”。本页只负责回答“什么时候应该启 pipeline、现在走到哪一步、下一步该去哪里”。
 
-### Step 1：需求拆分 + API 声明 + Handoff Draft / No-Handoff Rationale
-- 执行单元：`requirement-analysis-agent`
-- 解决的问题：这次需求要拆成哪些模块、谁提供什么 API、是否需要进入 `L1+` 协作，以及应基于类似功能/已有实现迭代还是全新实现
-- 关键产物：功能拆分、API 声明、依赖关系、类似功能检索结果、模块策略建议（默认优先依托已有能力迭代）、`UserDecision`（存在可复用候选时必填）、`Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）、Handoff Level Decision、Freeze Recommendation、Step 2 / Step 3 建议
-- 下一步出口：明确进入 Step 2、直接进 Step 3、先回用户关闭 `UserDecision`，或升级为子 pipeline
-- 深读：`SKILL_MEMORY.md` 规则 2 / 3 / 10、`EXAMPLES.md` 的 Step 1 / Handoff 样例
+## Step 导航
 
-### Step 2：约束同步 + BLUEPRINT + Handoff Freeze
-- 执行单元：`requirement-analysis-agent`
-- 解决的问题：跨模块协作前，哪些约束、签名、事件与边界必须先锁死
-- 关键产物：PCB、`BLUEPRINT`、`Frozen Handoff`（`L1+`）；复杂系统时补 `Artifact State Table`、`Wave Plan`
-- 触发条件：`SKILL_MEMORY.md` 规则 3 命中，或复杂系统模式需要先冻结共享底座
-- 深读：`config/pipeline_protocol.md`、`config/handoff_protocol.md`
-
-### Step 3：模块实现
-- 执行单元：模块配对执行单元；`L0` 快速路径允许单个 `main agent` 或单模块实现单元直接推进
-- 解决的问题：各模块在 Frozen 边界（`L1+`）或单模块职责（`L0`）内独立实现
-- 关键产物：代码、`temp/pipeline-output/{module_id}.md`、Handoff Update、COMPLIANCE_CHECKLIST
-- 进入门槛：`L1+` 必须先过 Freeze Gate；`L0` 必须已有 `No-Handoff Rationale`，且一旦出现跨模块依赖立即回退升级到 `L1+`
-- 深读：`SKILL_MEMORY.md` 规则 4 / 5 / 10 / 11、`EXAMPLES.md` 的 Step 3 模板
-
-### Step 4：依赖闭合
-- 执行单元：`integration-matching-agent`
-- 解决的问题：Requires / Provides / TODO / 边界是否真的闭合
-- 关键产物：Dependency Closure Report
-- 约束：只验证，不改代码；无法证明闭合时必须保守落入缺口类分区
-- 深读：`config/handoff_protocol.md` 的 closure 模板、`EXAMPLES.md` 判例
-
-### Step 5：覆盖验收
-- 执行单元：`pipeline-verify-agent`
-- 解决的问题：在 closure 基础上判断业务完成度是否足够，最终是否 `GO / GO-WITH-CAUTION / NO-GO`
-- 关键产物：Done Criteria Coverage、VERIFICATION_REPORT、pipeline result signal
-- 下一步出口：`GO` 进入 Step 9；`GO-WITH-CAUTION` 进入 Step 6；`NO-GO` 回 recovery / re-dispatch
-- 深读：`config/pipeline_protocol.md` 协议 5、`config/handoff_protocol.md` 的 coverage / re-closure 约束
-
-### Step 6：补全 CompletableBlocks
-- 执行单元：模块配对执行单元 / `main agent`
-- 触发时机：Step 5 = `GO-WITH-CAUTION`
-- 关键要求：只补 `CompletableBlocks`；补完后至少重跑 Step 4，若 closure 变化影响 coverage / verdict，再重跑 Step 5
-
-### Step 7：边界条件测试
-- 执行单元：`debug-skill`
-- 输出：问题列表与修复建议
-
-### Step 8：性能诊断
-- 执行单元：`profiler-skill`
-- 输出：性能问题与优化建议
-
-### Step 9：完成与清理
-- 执行单元：`main agent`
-- 解决的问题：终结 pipeline、清理或保留上下文，以及处理 `pipeline_run_id`
-- 深读：`config/pipeline_protocol.md` 协议 5、`SKILL_MEMORY.md` 规则 12
+| Step | 执行单元 | 本页只保留的导航信息 | 深读 |
+|---|---|---|---|
+| Step 1 | `requirement-analysis-agent` | 做路线判定；若 Step 1 门禁未过，只能补分析或回用户，不得进入后续实现链路 | `config/step_contracts.md`、`EXAMPLES.md` |
+| Step 2 | `requirement-analysis-agent` | 只在命中冻结条件时进入；完成后才允许进入需要 Freeze 的实现链路 | `config/step_contracts.md`、`config/pipeline_protocol.md`、`config/handoff_protocol.md` |
+| Step 3 | 模块配对执行单元 / `main agent`（`L0`） | 负责实现；进入前必须确认路线门禁与 Freeze Gate 已过 | `config/step_contracts.md`、`EXAMPLES.md` |
+| Step 4 | `integration-matching-agent` | 只做依赖闭合验证，不改代码 | `config/step_contracts.md`、`config/handoff_protocol.md` |
+| Step 5 | `pipeline-verify-agent` | 只做 coverage / verdict 决策，不改代码 | `config/step_contracts.md`、`config/pipeline_protocol.md`、`config/handoff_protocol.md` |
+| Step 6 | 模块配对执行单元 / `main agent` | 只补 `CompletableBlocks`，补完后至少回 Step 4 | `config/step_contracts.md`、`config/handoff_protocol.md` |
+| Step 7 | `debug-skill` | 只在需要边界条件验证时进入 | `config/step_contracts.md` |
+| Step 8 | `profiler-skill` | 只在需要性能诊断时进入 | `config/step_contracts.md` |
+| Step 9 | `main agent` | 必做收尾；未完成 run_id / signal 清理不得结束 pipeline | `config/step_contracts.md`、`config/pipeline_protocol.md` |
 
 ## 最小运行心智模型
 
@@ -90,8 +52,8 @@ description: code_pipeline code-pipeline 功能开发流程编排 Step1需求拆
 `PIPELINE_CONTEXT.md` 是本组件的单一事实来源：头部 PCB 看当前约束，Step 段落看当前进度。
 
 ### 2. 三个关键门
-- Step 1 / Step 2：决定当前走 `L0`、`L1+` 还是复杂系统模式
-- Step 3：只有 Freeze Gate 或 `L0` 快速路径满足时才允许实现
+- Step 1：先完成类似功能检索、路线推荐与必要的 `UserDecision`
+- Step 2 / Step 3：只有 Step 1 路线门禁与 Freeze Gate 满足时才允许冻结或实现
 - Step 4 / Step 5：决定是进入 Step 6 补全，还是进入 Step 9 收尾
 
 ### 3. 复杂系统模式不是“更多并行”

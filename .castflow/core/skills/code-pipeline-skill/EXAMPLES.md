@@ -6,24 +6,26 @@
 
 | 你要看什么 | 去哪看 |
 |---|---|
-| Step 2 / Step 3 怎么走 | `A. 决策速查` |
-| `PIPELINE_CONTEXT.md` 最小形状 | `B. 核心模板` |
-| Step 1 与 Handoff 最小输出 | `C. Step 1 / Handoff` |
-| Step 3 模块输出 | `D. Step 3 模块输出` |
-| Step 4 / Step 5 判例 | `E. Closure / Verdict 判例` |
-| `pipeline_run_id` / result signal / Step 9 清理 | `F. run_id 生命周期` |
+| Step 2 / Step 3 怎么走 | `决策速查` |
+| `PIPELINE_CONTEXT.md` 最小形状 | `核心模板` |
+| Step 1 与 Handoff 最小输出 | `Step 1 / Handoff` |
+| Step 3 模块输出 | `Step 3 模块输出` |
+| Step 4 / Step 5 判例 | `Closure / Verdict 判例` |
+| `pipeline_run_id` / result signal / Step 9 清理 | `pipeline_run_id 生命周期` |
 | 复杂系统模式 | `examples/*` |
 
-## A. 决策速查
+## 决策速查
 
-| 场景 | 特征 | Step 2 建议 | Step 3 建议 |
-|---|---|---|---|
-| 单模块 | API 已存在、无跨模块依赖 | 跳过 | 主 agent 或单个模块配对执行单元 |
-| 双模块 | 一方提供 API，另一方消费 | 可选 | 视修改量决定是否并行 |
-| 多模块 | 3+ 模块、共享契约、存在并行实现 | 必须 | 先 Freeze，再并行 |
-| 复杂系统 | 3+ 模块、长时间 churn、需要 wave / 子 pipeline | 必须 | 按 dispatch 放行，不全量同时开工 |
+这个区块只给快速找样例入口；Step 进入条件、强规则与 fail-closed 以 `config/step_contracts.md` 为准。
 
-## B. 核心模板
+| 场景 | 特征 | 推荐去看 |
+|---|---|---|
+| 单模块 | API 已存在、无跨模块依赖 | `Step 1 / Handoff` 中的 `L0` 示例 |
+| 双模块 | 一方提供 API，另一方消费 | `Step 1 / Handoff` + `Step 3 模块输出` |
+| 多模块 | 3+ 模块、共享契约、存在并行实现 | `Step 1 / Handoff` 中的 `L2` Handoff 示例 |
+| 复杂系统 | 3+ 模块、长时间 churn、需要 wave / 子 pipeline | `核心模板` 的复杂系统追加段落 + `examples/*` |
+
+## 核心模板
 
 ### `PIPELINE_CONTEXT.md` 最小骨架
 
@@ -123,7 +125,7 @@ pipeline_run_id: pipeline_20260420_143055
 - RecoveryAction: remove from normal dispatch
 ```
 
-## C. Step 1 / Handoff
+## Step 1 / Handoff
 
 ### Step 1 最小输出
 
@@ -254,7 +256,7 @@ pipeline_run_id: pipeline_20260420_143055
 - Risk: 官职加成规则待策划确认
 ```
 
-## D. Step 3 模块输出
+## Step 3 模块输出
 
 ```md
 <!-- PIPELINE_SUMMARY -->
@@ -298,7 +300,7 @@ COMPLIANCE_CHECKLIST: 6/6 passed
 
 归并规则见 `config/pipeline_protocol.md` 协议 4；这里只保留最小模板。
 
-## E. Closure / Verdict 判例
+## Closure / Verdict 判例
 
 ### 判例 E1：`GO`
 
@@ -375,9 +377,11 @@ COMPLIANCE_CHECKLIST: 6/6 passed
 - Recovery / re-dispatch
 ```
 
-## F. `pipeline_run_id` 生命周期
+## `pipeline_run_id` 生命周期
 
 ### 示例 F1：标准闭环中的 run_id / trace / signal / cleanup
+
+下面只展示一个最小时序样例；生命周期规则与合法取值以 `config/pipeline_protocol.md` 为准。
 
 #### Step 1（生成）
 
@@ -434,19 +438,21 @@ modules: [Building, UI]
 - Persist：必须删除 `pipeline_run_id:` 行
 - 若 `pending-pipeline` 长时间没有被最终 verdict 覆盖，hook 会按过期策略标记为 `invalid`
 
-## G. 标准模式最小闭环总结表
+## 标准模式最小闭环示意
+
+这个表只帮助快速定位标准模式的最小样例链路，不承担 Step 合同职责；Step 目标、输入、输出、进入条件与出口统一看 `config/step_contracts.md`。
 
 ### 示例 G1：Step 1 -> Step 5 / 6 / 9 的最小节奏
 
-| 步骤 | 负责单元 | 核心问题 | 最小输出 |
-|---|---|---|---|
-| Step 1 | `requirement-analysis-agent` | 需求怎么拆、API 怎么声明、下一步走 Step 2 还是 Step 3 | Step 1 段落 + `pipeline_run_id` + Step 2 / Step 3 建议 |
-| Step 2 | `requirement-analysis-agent` | 哪些约束必须先冻结 | PCB + `Frozen Handoff`（`L1+`） |
-| Step 3 | 模块配对执行单元 | 在边界内实现模块 | 代码 + `temp/pipeline-output/{module_id}.md` |
-| Step 4 | `integration-matching-agent` | 依赖是否闭合 | Dependency Closure Report |
-| Step 5 | `pipeline-verify-agent` | 业务完成度是否足够 | Done Criteria Coverage + VERIFICATION_REPORT + result signal |
-| Step 6 | 模块配对执行单元 / `main agent` | 只补 `CompletableBlocks` | 更新后的模块输出 + 重跑 Step 4 / Step 5 |
-| Step 9 | `main agent` | 收尾、Cleanup / Persist | run_id 清理、上下文终结 |
+| 步骤 | 对应样例 |
+|---|---|
+| Step 1 | `Step 1 / Handoff` |
+| Step 2 | `核心模板` 中的 `PIPELINE_CONTEXT.md` 骨架 |
+| Step 3 | `Step 3 模块输出` |
+| Step 4 | `Closure / Verdict 判例` |
+| Step 5 | `Closure / Verdict 判例` |
+| Step 6 | `Closure / Verdict 判例` 中的 `GO-WITH-CAUTION` |
+| Step 9 | `pipeline_run_id 生命周期` |
 
 ## H. TODO 格式
 

@@ -61,7 +61,33 @@ Step 3 / Step 6 中的“模块配对执行单元”指：
 
 进入 Step 3 前，`SHADOW_BANS` 与 `CONFIG_SYNTHESIS` 必须非空。
 
-## 协议 2：非文本输入先双阶段解构
+## 协议 2：Step 1 路线决策门禁
+
+Step 1 产物不是提示性说明，而是进入 Step 2 / Step 3 的前置门禁。主 agent 在推进后续步骤前，必须先在 `PIPELINE_CONTEXT.md` 的 Step 1 段落确认以下字段齐备：
+
+1. `类似功能检索结果`
+2. `模块策略建议`
+3. `UserDecision`（存在可复用候选时必填）
+
+### Gate 判定规则
+
+- 若 `类似功能检索结果` 缺失：视为 Step 1 未完成，不得进入 Step 2 / Step 3
+- 若已识别到可复用候选，但 `模块策略建议` 缺失：视为 Step 1 未完成，不得进入 Step 2 / Step 3
+- 若已识别到可复用候选，且存在“已有能力迭代 / 全新实现”的路线分歧，但 `UserDecision` 缺失或仍未解决：必须先回用户确认，不得进入 Step 2 / Step 3
+- 若 `UserDecision` 明确选择“在已有能力上迭代”：Step 2 / Step 3 的后续拆分、蓝图与实现必须优先基于已有能力展开，不得无理由退回全新实现
+- 只有在 `类似功能检索结果` 明确说明无可复用候选时，才允许无 `UserDecision` 直接继续后续步骤
+
+### 不足兜底
+
+若 Gate 未通过，只能回写以下内容之一：
+
+- 补充 `类似功能检索结果`
+- 补充 `模块策略建议`
+- 输出待用户确认的 `UserDecision`
+
+禁止在 Gate 未通过时冻结 Handoff、生成最终 BLUEPRINT、或进入任何实现步骤。
+
+## 协议 3：非文本输入先双阶段解构
 
 当 Step 1 输入包含 PDF、导图、截图或设计稿时，先输出：
 
@@ -70,7 +96,7 @@ Step 3 / Step 6 中的“模块配对执行单元”指：
 
 用户确认前，禁止进入 API 声明与代码实现。输出位置在 `PIPELINE_CONTEXT.md` 的 Step 1 段落。
 
-## 协议 3：实现前先读 PCB
+## 协议 4：实现前先读 PCB
 
 每次进入 Step 3 / Step 6 的原子实现单元前，必须：
 
@@ -80,7 +106,7 @@ Step 3 / Step 6 中的“模块配对执行单元”指：
 
 PCB 未记录的逻辑，不得直接实现。
 
-## 协议 4：Step 3 模块输出与归并
+## 协议 5：Step 3 模块输出与归并
 
 每个模块输出到：
 
@@ -119,7 +145,7 @@ PCB 未记录的逻辑，不得直接实现。
 
 `Parent Summary` 只在 `config/handoff_protocol.md` 定义，不参与 Step 3 模块归并。
 
-## 协议 5：`pipeline_run_id` 生命周期
+## 协议 6：`pipeline_run_id` 生命周期
 
 每次完整 `code-pipeline` 生命周期都必须使用唯一 run_id：
 
@@ -179,7 +205,7 @@ pipeline_run_id: pipeline_20260420_143055
 
 禁止遗留过期 run_id。
 
-## 协议 6：何时切到 Handoff 协议
+## 协议 7：何时切到 Handoff 协议
 
 满足任一条件时，必须读取 `config/handoff_protocol.md`：
 
@@ -191,7 +217,7 @@ pipeline_run_id: pipeline_20260420_143055
 
 `HandoffStatus` 的定义和模板只以 `config/handoff_protocol.md` 为准。
 
-## 协议 7：复杂系统模式产物
+## 协议 8：复杂系统模式产物
 
 复杂系统模式激活后，`PIPELINE_CONTEXT.md` 除 PCB 与 Step 记录外，还必须维护以下四类产物。
 
@@ -255,7 +281,7 @@ pipeline_run_id: pipeline_20260420_143055
 | NextAction | 下一动作 |
 | RecoveryAction | stalled 时的恢复动作 |
 
-## 协议 8：复杂系统模式的读写顺序
+## 协议 9：复杂系统模式的读写顺序
 
 复杂系统模式不是附加说明。进入该模式后，`Step 3 / Step 4 / Step 5 / Step 6` 的调度卡必须显式携带当前 wave / dispatch / checkpoint / verification scope 信息，不能只复用标准模式最小卡。
 
