@@ -4,10 +4,11 @@ code-pipeline-owned runtime merge script.
 
 Merge Step 3 parallel agent outputs into PIPELINE_CONTEXT.md.
 
-Reads all .md files from temp/pipeline-output/, extracts the
-PIPELINE_SUMMARY section from each, and writes a managed Step 3
-merge block into PIPELINE_CONTEXT.md. Full details remain in the original files
-for on-demand reference by subsequent pipeline steps.
+This script only projects Step 3 summaries back into the human-readable
+pipeline context. It does not decide whether a pipeline may enter Step 3,
+does not validate decision-state gates, and is not the runtime truth source.
+Full details remain in the original files for on-demand reference by
+subsequent pipeline steps.
 
 This script belongs to code-pipeline's component-owned runtime binding.
 It is not a generic framework merge primitive.
@@ -69,21 +70,25 @@ def replace_or_append_managed_block(file_path, block_pattern, block, dry_run, la
     with open(file_path, "r", encoding="utf-8-sig") as f:
         content = f.read()
 
-    matches = list(block_pattern.finditer(content))
+    header, body = split_context_header(content)
+
+    matches = list(block_pattern.finditer(body))
     if len(matches) > 1:
         print("Error: {} has {} managed {} blocks.".format(
             file_path, len(matches), label))
         sys.exit(1)
 
     if matches:
-        new_content = block_pattern.sub(block, content, count=1)
+        new_body = block_pattern.sub(block, body, count=1)
         action = "replace"
     else:
         prefix = ""
-        if content:
-            prefix = "\n" if content.endswith("\n") else "\n\n"
-        new_content = content + prefix + block
+        if body:
+            prefix = "\n" if body.endswith("\n") else "\n\n"
+        new_body = body + prefix + block
         action = "append"
+
+    new_content = header + new_body
 
     if dry_run:
         print("\n--- Preview (would {} {}) ---".format(action, label))
@@ -94,6 +99,28 @@ def replace_or_append_managed_block(file_path, block_pattern, block, dry_run, la
         f.write(new_content)
 
     print("  [{}] {} -> {}".format(action.upper(), label, file_path))
+
+
+def split_context_header(content):
+    lines = content.splitlines(True)
+    header_lines = []
+    body_start = 0
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "---":
+            header_lines.append(line)
+            body_start = i + 1
+            break
+        if stripped.startswith("pipeline_") or stripped == "" or stripped.startswith("# "):
+            header_lines.append(line)
+            continue
+        body_start = i
+        break
+    else:
+        body_start = len(lines)
+
+    return "".join(header_lines), "".join(lines[body_start:])
 
 
 def find_project_root():

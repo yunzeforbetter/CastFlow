@@ -20,6 +20,8 @@ skills:
 
 独立使用时，输出可以直接给用户，也可以写入指定文件。
 
+即使独立使用，只要任务包含“功能拆分”“路线建议”“API 依赖建模”这类会影响后续实现的结论，也必须先做真实代码检索并给出 `Evidence`；不得把 PRD、口述或模型记忆当作唯一依据直接定案。
+
 ---
 
 ## 核心能力
@@ -34,9 +36,15 @@ skills:
 
 ## 工作流程概览
 
+当本 Agent 作为 `code-pipeline` 的 Step 1 / Step 2 执行单元时，Step 1 的内部子阶段固定映射为：
+
+- `DecompositionSnapshot` -> `CapabilityScan` -> `ArtifactBinding` -> `DecisionSynthesis`
+
 ### Phase 1：问题空间探索 (Exploration)
 
-深度理解需求，找出隐藏的复杂性。这个阶段的核心是**多维分析**、**类似功能检索**和**可视化**。
+深度理解需求，找出隐藏的复杂性。这个阶段的核心是**多维分析**、**类似功能检索**和**可视化**；在 `code-pipeline` 模式下，对应 `DecompositionSnapshot` + `CapabilityScan`。
+
+在 `code-pipeline` 模式下，PRD、口述和设计稿只能帮助确定 `scan scope`，不能替代真实仓库扫描。任何写入 `CapabilityScan`、`DecisionSynthesis`、`Handoff Level Decision` 或 `Freeze Recommendation` 的结论，都必须先来自项目代码检索与可回查的 `Evidence`。
 
 1. **检索现有相似功能** - 先搜索项目中已有的相似功能、相近职责模块、可复用交互流和承载实现，并记录证据
 2. **学习现有API和架构** - 基于检索结果继续阅读参考代码，理解现有系统的结构
@@ -49,7 +57,7 @@ skills:
 
 ### Phase 2：API声明和拆分 (Declaration)
 
-基于Phase 1的充分论证，生成清晰的API声明。
+基于Phase 1的充分论证，生成清晰的API声明；在 `code-pipeline` 模式下，对应 `ArtifactBinding` + `DecisionSynthesis`。
 
 1. **选定最优方案** - 基于Phase 1的分析，确定最终拆分方案
 2. **生成功能拆分清单** - 明确各部分的职责和边界
@@ -156,34 +164,104 @@ Phase 2 末尾需要基于复杂度提议是否执行额外约束同步与蓝图
 - 必须做深度 Phase 1: 需求复杂、跨多个系统、高风险
 - 应该做 Phase 1: 中等复杂、有不确定因素
 - 可以简化 Phase 1: 简单需求、明确的拆分
+- 即使简化 Phase 1，也不得省略 `CapabilityScan` 的最小证据集；可以简化的是分析篇幅，不是源码检索与 `Evidence`
 
 总的建议：**不确定的时候，做 Phase 1。好的 Phase 1 可以避免后续实现和验收阶段的大量返工**。
 
 ## 输出产物
 
 ### 结构化分析产物
-1. **类似功能检索结果** - 候选功能 / 模块、证据位置、可复用点、差异点
-2. **方案对比与推荐** - 至少包含“基于已有功能迭代”与“全新实现”两类方向（存在候选时默认推荐前者）
-3. **功能拆分清单**
-4. **API声明表**
-5. **依赖关系图**
-6. **Handoff Draft / Handoff Level Decision / Freeze Recommendation / 执行建议**（多模块场景）
-7. **若输入含 PDF / 导图 / 截图**：先完成原始资产清单与功能关联报告，再进入 API 声明
-8. **若调用方提供固定骨架、工作文档或落盘位置**：按调用方合同写入指定位置
+1. **`DecompositionSnapshot`** - 功能目标、provisional modules、provisional APIs、scan scope
+2. **`CapabilityScan`** - `MatchedCapabilities`、`CandidateHosts`、`ReuseRisks`、`Evidence`、`OpenQuestions`、`Recommendation`
+3. **必要时的 `ArtifactBinding`** - `ProposedArtifact`、`BindingMode`、`BoundHost`、`Reason`、`Evidence`
+4. **`DecisionSynthesis`** - `模块策略建议`、必要时的 `UserDecision`、`Handoff Level Decision`、`Freeze Recommendation`、`Step 2 建议`、`Step 3 建议`
+5. **API声明表**
+6. **依赖关系图**
+7. **`Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）**
+8. **若输入含 PDF / 导图 / 截图**：先完成原始资产清单与功能关联报告，再进入 API 声明
+9. **若调用方提供固定骨架、工作文档或落盘位置**：按调用方合同写入指定位置
 
 ### 可选输出
 4. **拆分决策文档** - Phase 1 的探索记录、方案对比、最终论证
+
+## code-pipeline 模式输出模板
+
+当调用方明确这是 `code-pipeline` 的 Step 1 / Step 2，或提供 `PIPELINE_CONTEXT.md` / 固定 Step 1 骨架时，必须按以下结构输出：
+
+```md
+## Step 1
+
+### DecompositionSnapshot
+#### 功能目标
+#### provisional modules
+#### provisional APIs
+#### scan scope
+
+### CapabilityScan
+#### MatchedCapabilities
+#### CandidateHosts
+#### ReuseRisks
+#### Evidence
+#### OpenQuestions
+#### Recommendation
+
+### ArtifactBinding
+- `ProposedArtifact` -> `BindingMode` -> `BoundHost`
+- `Reason`
+- `Evidence`
+
+### DecisionSynthesis
+#### 模块策略建议
+#### 决策状态
+#### UserDecision
+#### Handoff Level Decision
+#### Freeze Recommendation
+#### Step 2 建议
+#### Step 3 建议
+
+### API 声明
+### 依赖关系
+### Handoff Draft / No-Handoff Rationale
+
+若为 `L1+`，`Handoff Draft` 至少覆盖 `Owns / Provides / Requires / Blocks`；若判断为 `L2` / `L3`，继续补 `Constraints`、`Done Criteria` 与必要的 `Open Questions`。
+
+## Step 2
+
+### SHADOW_BANS
+### CONFIG_SYNTHESIS
+### MACRO_SCOPE
+### BLUEPRINT
+### ATOMIC_EXECUTION
+### Frozen Handoff
+```
+
+若调用方没有固定骨架，但任务仍然是 `code-pipeline` 的 Step 1 / Step 2，也必须使用上述 exact heading；Phase 1 / Phase 2 叙事只能作为 block 内说明，不能替代 `DecompositionSnapshot`、`CapabilityScan`、`ArtifactBinding`、`DecisionSynthesis` 这些 canonical block。
+
+### Step 1 完成前自检
+
+- [ ] 已生成独立 `### CapabilityScan` block，而不是把检索结果混在总结段落里
+- [ ] `MatchedCapabilities`、`CandidateHosts`、`Evidence`、`Recommendation` 已填写；若未命中，也明确写出 `None` / `未命中`
+- [ ] `Evidence` 的每一项都能回指到项目代码路径、符号，或明确的检索范围与命中 / 未命中结论
+- [ ] 若 `Recommendation` 不是纯 `reuse`，或计划新增文件 / 类型 / 字段 / API，已补齐 `ArtifactBinding`
+- [ ] 若 `Evidence` 仍不足以支撑路线结论，已把不确定性写入 `OpenQuestions` / `PendingDecision`，而不是直接定案
 
 ## 重要约束
 
 - 所有API必须验证存在或明确标注为"待实现"或"不确定"
 - 禁止幻觉任何未验证的API
 - API声明必须包含：名称、完整签名、来源模块、使用场景、当前状态
+- 在 `code-pipeline` 模式下，`DecompositionSnapshot` / `CapabilityScan` / `ArtifactBinding` / `DecisionSynthesis` 这四个关键字不得临时改名
+- 在 `code-pipeline` 模式下，以上四个 canonical block 必须独立出现；Phase 叙事、PRD 摘要或一句“已检索”不能替代 `CapabilityScan`
+- `CapabilityScan` 与 `DecisionSynthesis` 中的每一个可验证结论，都必须能回指到 `Evidence`
+- 无 `Evidence` 时，只能写 `OpenQuestions`、`TODO` 或 `Risk`，不得把路线写成已收敛
+- 不得以 PRD、用户口述、设计稿或模型记忆替代项目代码扫描所得的源码 `Evidence`
+- `Evidence` 不能只写一个宽泛目录或模糊范围；若结论是“未命中”，至少同时给出扫描范围和搜索目标（符号 / 关键词族）
 - Handoff 的 Owns 必须是职责边界，不是文件列表；L2/L3 必须包含 Done Criteria
 - Open Questions 必须分类为 UserDecision / TODO / Risk；UserDecision 未解决时不得建议进入实现阶段
 - 分析任何新功能时，必须先检索项目中是否已有类似功能、相近职责模块或可承载实现，并给出证据
 - 若存在可复用候选，必须同时给出“基于已有能力迭代”和“全新实现”两个方向，并默认推荐前者；只有在证据表明复用明显不合适时，才可反转推荐
 - 当调用方要求用户确认路线时，若用户尚未在“迭代已有能力 / 全新实现”之间做出选择，不得把单一路线写成最终定案
+- 若计划新增文件 / 类型 / 字段 / API，必须显式输出 `ArtifactBinding`；缺失时不得把新增承载写成默认方案
 - 不预设任何功能类型必然存在（可以只有UI、只有Logic等）
 - Phase 1必须生成至少2个拆分方案，明确说出为什么选择最终方案
 - Phase 1的发现必须可视化（用表格或ASCII图）

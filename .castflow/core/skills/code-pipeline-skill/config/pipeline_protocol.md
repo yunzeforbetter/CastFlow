@@ -1,13 +1,46 @@
 # Pipeline Protocol
 
-> `code-pipeline` 组件的执行期控制真源。它只约束进入该复合组件的执行过程，不改写 shared components 的本体规则。Handoff 的模板、Freeze、Closure、Coverage 见 `config/handoff_protocol.md`。
+> `code-pipeline` 组件的执行期控制真源。它只约束进入该复合组件的执行过程，不改写 shared components 的本体规则。Handoff 的状态、Freeze、Closure、Coverage 见 `config/handoff_protocol.md`。
 
-## 组件 own 的运行态文件
+## 组件 own 的运行态分层
 
-- `PIPELINE_CONTEXT.md`：`code-pipeline` 的运行期状态文件
+- `PIPELINE_CONTEXT.md` 顶部固定状态头：本组件唯一 gate 真相，定义见 `config/runtime_state_schema.md`
+- `PIPELINE_CONTEXT.md` 正文：本组件的人类可读投影与归档
 - `temp/pipeline-output/{module_id}.md`：Step 3 模块输出
-- `pipeline_merge.py`：本组件 own 的运行时归并脚本
+- `pipeline_merge.py`：本组件 own 的运行时投影脚本，只负责 Step 3 summary 归并
 - pipeline result signal：本组件 own 的运行时回填信号；默认落点为 `.claude/traces/.pending_pipeline_result.json`
+
+## 最小状态头
+
+`PIPELINE_CONTEXT.md` 顶部固定状态头只承载“能不能继续”的最小事实，不承载完整 Step 文本。
+
+### 最小字段
+
+- `pipeline_run_id`
+- `pipeline_mode`：`standard` / `complex`
+- `pipeline_current_step`
+- `pipeline_lifecycle_state`：`Discovering` / `PendingDecision` / `Frozen` / `Implementing` / `Verifying` / `Finalized` / `Aborted`
+- `pipeline_decision_status`：`none` / `required` / `resolved`
+- `pipeline_decision_basis`：`reuse` / `new` / `unknown`
+- `pipeline_freeze_status`
+- `pipeline_active_modules`
+- `pipeline_last_closure_scope`
+- `pipeline_last_verdict`
+- `pipeline_result_signal_status`
+
+### 真相与投影边界
+
+- `PIPELINE_CONTEXT.md` 顶部状态头决定 gate 是否通过
+- `PIPELINE_CONTEXT.md` 正文只展示 PCB、Step 结论和归档信息
+- dispatch、freeze、verdict 的判断不得仅依赖正文中的字段是否存在
+
+### Step 1 gate 的证据落点
+
+- 顶部状态头只承载 lifecycle / decision / freeze 等最小事实，不承载完整 `CapabilityScan` 文本
+- Step 1 是否完成，必须联合读取顶部状态头与 Step 1 正文中的 canonical block；只看状态头，或只看正文里一句“已检索”，都不合法
+- `已有类似功能检索结果` 在协议上等价于：Step 1 正文中存在独立 `### CapabilityScan` block，且其中的 `MatchedCapabilities`、`CandidateHosts`、`Evidence`、`Recommendation` 已按协议填写
+- `模块策略建议` 在协议上等价于：Step 1 正文中存在独立 `### DecisionSynthesis` block，且路线结论能回指到 `CapabilityScan` 的 `Evidence`
+- PRD、用户口述、设计稿或截图只能定义输入与 `scan scope`，不能单独满足 Step 1 gate 所需的源码证据
 
 ## Step 调度卡
 
@@ -20,14 +53,20 @@ Step 3 / Step 6 中的“模块配对执行单元”指：
 
 | Step | 给 | 读 | 写 | 交 | 不足兜底 |
 |---|---|---|---|---|---|
-| `1/2` `requirement-analysis-agent` | 用户请求、现有代码/文档证据、约束文件；Step 2 再附 Step 1 产物与 L1 参数 | `CLAUDE.md`、`GLOBAL_SKILL_MEMORY.md`、相关 `SKILL_MEMORY.md`；非文本输入先读原始资产 | `PIPELINE_CONTEXT.md` 头部：`pipeline_run_id` + PCB；Step 1 / Step 2 段落 | Step 1：功能拆分 / API 声明 / 依赖关系 / 类似功能检索结果 / 模块策略建议（默认优先依托已有能力迭代） / `UserDecision`（存在可复用候选时必填） / `Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）/ Handoff Level Decision / Freeze Recommendation / Step 2 建议 / Step 3 建议<br>Step 2：`SHADOW_BANS` / `CONFIG_SYNTHESIS` / `MACRO_SCOPE` / `BLUEPRINT` / `ATOMIC_EXECUTION` + `Frozen Handoff`（`L1+`） | 证据不足时，只输出资产清单 / 功能关联 / Open Questions，不得冻结 Handoff 或补造 API；若检索到可复用候选且用户尚未明确选择，则不得提前产出最终骨架或直接进入 Step 2 / Step 3 |
-| `3` 模块配对执行单元 | `module_id`、当前模块声明、`Frozen Handoff`（`L1+`）或 Step 1 的 `L0` 决策记录 / `No-Handoff Rationale`（`L0`）、PCB / Blueprint 切片、相关 skill 约束；复杂系统模式下再附当前 `Wave Dispatch Table` 行与最新 `Checkpoint Record` | `PIPELINE_CONTEXT.md`、当前模块 Handoff（`L1+`）或 Step 1 的 `L0` 记录（`L0`）/ Blueprint / `CONFIG_SYNTHESIS`、必要跨模块 API 声明；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | 模块代码、`temp/pipeline-output/{module_id}.md` | 带固定标记的 `PIPELINE_SUMMARY` / `PIPELINE_DETAIL` / Handoff Update / COMPLIANCE_CHECKLIST | 依赖未就绪时，只能写规范 TODO + Handoff Update，不得编造 API 或跨界补实现；`L0` 场景一旦出现跨模块依赖，必须停止实现并回退升级到 `L1+`；复杂系统模式下若 dispatch 前置条件失效，必须停止实现并回写 checkpoint / recovery note |
-| `4` `integration-matching-agent` | `closure_scope`（`local` / `global`）、Step 1 / Step 2 声明产物、Handoff / Handoff Update、Step 3 模块输出；复杂系统模式下必要时再附当前 wave / 子 pipeline 范围 | `PIPELINE_CONTEXT.md`、`temp/pipeline-output/{module_id}.md`；需要深读时读 `PIPELINE_DETAIL`；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record`，以及相关 `Parent Summary` | `PIPELINE_CONTEXT.md` 的 Step 4 段落 | `Dependency Closure Report`；必须显式标明 `Local Closure` 或 `Global Closure`，并保持分区齐全：`Closed / SignatureMismatch / MissingProvider / BoundaryViolation / CompletableBlocks / BlockingBlocks / ImplicitRequires` | 无法证明闭合时，不得写成 `Closed`，必须保守落入缺口类分区；局部 closure 一旦影响共享 contract，必须升级为全局 Step 4 重跑 |
-| `5` `pipeline-verify-agent` | `verdict_scope`（`local` / `global`）、`Dependency Closure Report`、Done Criteria 输入、必要时附相关模块 `PIPELINE_DETAIL`；复杂系统模式下再附当前局部 verdict / `Checkpoint Record` | `PIPELINE_CONTEXT.md`、Step 4 报告、Done Criteria Coverage 输入；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | `PIPELINE_CONTEXT.md` 的 Step 5 段落；仅当 `verdict_scope = global` 且 verdict 已最终化时才写 pipeline result signal | `Done Criteria Coverage` / `VERIFICATION_REPORT`；局部验证必须显式输出 local verdict，全局最终验证才输出 result signal JSON：`{ pipeline_run_id, result, finalized }` | 证据不足时不得给 `GO`；至少把缺口写入 coverage / verdict reason，必要时回退到 Step 4 / Step 6；局部 verdict 一旦影响共享 contract 或全局 closure，必须升级为全局 Step 5 重跑 |
-| `6` 模块配对执行单元 / `main agent` | Step 5 的 `CompletableBlocks`、受影响 `module_id`、最新 Handoff Update、相关 `PIPELINE_DETAIL`；复杂系统模式下再附当前 `Wave Dispatch Table` 行、最新 `Checkpoint Record` 与待重跑 scope | `PIPELINE_CONTEXT.md`、Step 4 closure、Step 5 coverage / verdict、目标模块最新输出；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | 模块代码、`temp/pipeline-output/{module_id}.md`、必要时追加 checkpoint | 更新后的 `PIPELINE_SUMMARY` / `PIPELINE_DETAIL` / Handoff Update / COMPLIANCE_CHECKLIST / re-closure note / checkpoint update | 只能补 `CompletableBlocks`；若发现新 blocker、dispatch 失效或局部修改已影响共享 contract，必须回写 checkpoint 并升级到对应的局部 / 全局重跑，而不是继续宣布完成 |
-| `7` `debug-skill` | 目标模块 / 子域、边界条件清单、当前 closure / verdict / blocker 信息；复杂系统模式下再附当前 wave / checkpoint / recovery 语境 | `PIPELINE_CONTEXT.md`、Step 4 / Step 5 报告、相关 `PIPELINE_DETAIL`；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | `PIPELINE_CONTEXT.md` 的 Step 7 段落 | 边界条件测试结论、失败路径、修复建议、是否需要回退到 recovery / re-dispatch | 缺少可验证输入时，只能输出风险列表与建议补测项，不得给出“已验证通过”的结论 |
-| `8` `profiler-skill` | 目标模块 / 路径、性能假设、当前实现证据；复杂系统模式下再附当前 wave / checkpoint / shared contract 语境 | `PIPELINE_CONTEXT.md`、相关 `PIPELINE_DETAIL`、必要时读 Step 4 / Step 5 报告；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | `PIPELINE_CONTEXT.md` 的 Step 8 段落 | 性能问题、瓶颈位置、优化建议、是否影响当前 wave / global verdict | 缺少性能证据时，只能输出假设与采样建议，不得把主观推测写成确定性瓶颈 |
-| `9` `main agent` | 最终 global verdict、`execution_steps`、`context_retention`、最新 Step 4 / Step 5 / Step 6 结果；复杂系统模式下再附最新 `Checkpoint Record` 与全局状态 | `PIPELINE_CONTEXT.md`、最新 coverage / verdict、pipeline result signal 状态；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | 清理后的 `PIPELINE_CONTEXT.md`（`Persist` 模式）或删除该文件（`Cleanup` 模式） | 最终清理结果：`Cleanup` / `Persist`、`pipeline_run_id` 终结状态、是否还存在待处理 signal / blocker | 未完成 run_id 清理、仍有未消费 signal、或全局 verdict 仍未收敛时，不得宣布 Step 9 完成 |
+| `1/2` `requirement-analysis-agent` | 用户请求、现有代码/文档证据、约束文件；Step 2 再附 Step 1 产物与 L1 参数 | `CLAUDE.md`、`GLOBAL_SKILL_MEMORY.md`、相关 `SKILL_MEMORY.md`；`PIPELINE_CONTEXT.md` 顶部状态头；非文本输入先读原始资产 | `PIPELINE_CONTEXT.md` 顶部状态头、头部：`pipeline_run_id` + PCB；Step 1 / Step 2 段落 | Step 1：`DecompositionSnapshot` / `CapabilityScan` / 必要时的 `ArtifactBinding` / `DecisionSynthesis`，并在其中覆盖功能拆分、API 声明、依赖关系、类似功能检索结果、模块策略建议、决策状态（必要时含 `UserDecision`）、`Handoff Draft`（`L1+`）或 `No-Handoff Rationale`（`L0`）、Handoff Level Decision、Freeze Recommendation、Step 2 建议、Step 3 建议<br>Step 2：`SHADOW_BANS` / `CONFIG_SYNTHESIS` / `MACRO_SCOPE` / `BLUEPRINT` / `ATOMIC_EXECUTION` + `Frozen Handoff`（`L1+`） | 证据不足时，只输出资产清单 / 功能关联 / Open Questions，不得冻结 Handoff 或补造 API；若检索到可复用候选且用户尚未明确选择，必须把顶部状态头置为 `PendingDecision`，不得直接进入 Step 2 / Step 3；若计划新增产物但 `ArtifactBinding` 缺失，也不得继续推进 |
+| `3` 模块配对执行单元 | `module_id`、当前模块声明、`Frozen Handoff`（`L1+`）或 Step 1 的 `L0` 决策记录 / `No-Handoff Rationale`（`L0`）、PCB / Blueprint 切片、必要时的 `ArtifactBinding`、相关 skill 约束；复杂系统模式下再附当前 `Wave Dispatch Table` 行与最新 `Checkpoint Record` | `PIPELINE_CONTEXT.md` 顶部状态头、`PIPELINE_CONTEXT.md` 正文、当前模块 Handoff（`L1+`）或 Step 1 的 `L0` 记录（`L0`）/ Blueprint / `CONFIG_SYNTHESIS` / 必要时的 `ArtifactBinding`、必要跨模块 API 声明；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | 模块代码、`temp/pipeline-output/{module_id}.md` | 带固定标记的 `PIPELINE_SUMMARY` / `PIPELINE_DETAIL` / Handoff Update / COMPLIANCE_CHECKLIST | 若顶部状态头仍处于 `PendingDecision` 或 freeze 未通过，必须拒绝启动实现；依赖未就绪时，只能写规范 TODO + Handoff Update，不得编造 API 或跨界补实现；若缺少必要的 `ArtifactBinding`，不得新建平行承载；`L0` 场景一旦出现跨模块依赖，必须停止实现并回退升级到 `L1+`；复杂系统模式下若 dispatch 前置条件失效，必须停止实现并回写 checkpoint / recovery note |
+| `4` `integration-matching-agent` | `closure_scope`（`local` / `global`）、Step 1 / Step 2 声明产物、Handoff / Handoff Update、Step 3 模块输出；复杂系统模式下必要时再附当前 wave / 子 pipeline 范围 | `PIPELINE_CONTEXT.md` 顶部状态头、`PIPELINE_CONTEXT.md` 正文、`temp/pipeline-output/{module_id}.md`；需要深读时读 `PIPELINE_DETAIL`；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record`，以及相关 `Parent Summary` | `PIPELINE_CONTEXT.md` 顶部状态头、Step 4 段落 | `Dependency Closure Report`；必须显式标明 `Local Closure` 或 `Global Closure`，并保持分区齐全：`Closed / SignatureMismatch / MissingProvider / BoundaryViolation / CompletableBlocks / BlockingBlocks / ImplicitRequires` | 无法证明闭合时，不得写成 `Closed`，必须保守落入缺口类分区；局部 closure 一旦影响共享 contract，必须升级为全局 Step 4 重跑 |
+| `5` `pipeline-verify-agent` | `verdict_scope`（`local` / `global`）、`Dependency Closure Report`、Done Criteria 输入、必要时附相关模块 `PIPELINE_DETAIL`；复杂系统模式下再附当前局部 verdict / `Checkpoint Record` | `PIPELINE_CONTEXT.md` 顶部状态头、`PIPELINE_CONTEXT.md` 正文、Step 4 报告、Done Criteria Coverage 输入；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | `PIPELINE_CONTEXT.md` 顶部状态头、Step 5 段落；仅当 `verdict_scope = global` 且 verdict 已最终化时才写 pipeline result signal | `Done Criteria Coverage` / `VERIFICATION_REPORT`；局部验证必须显式输出 local verdict，全局最终验证才输出 result signal JSON：`{ pipeline_run_id, result, finalized }` | 证据不足时不得给 `GO`；至少把缺口写入 coverage / verdict reason，必要时回退到 Step 4 / Step 6；局部 verdict 一旦影响共享 contract 或全局 closure，必须升级为全局 Step 5 重跑 |
+| `6` 模块配对执行单元 / `main agent` | Step 5 的 `CompletableBlocks`、受影响 `module_id`、最新 Handoff Update、相关 `PIPELINE_DETAIL`；复杂系统模式下再附当前 `Wave Dispatch Table` 行、最新 `Checkpoint Record` 与待重跑 scope | `PIPELINE_CONTEXT.md` 顶部状态头、`PIPELINE_CONTEXT.md` 正文、Step 4 closure、Step 5 coverage / verdict、目标模块最新输出；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | 模块代码、`temp/pipeline-output/{module_id}.md`、必要时追加 checkpoint | 更新后的 `PIPELINE_SUMMARY` / `PIPELINE_DETAIL` / Handoff Update / COMPLIANCE_CHECKLIST / re-closure note / checkpoint update | 只能补 `CompletableBlocks`；若发现新 blocker、dispatch 失效或局部修改已影响共享 contract，必须回写 checkpoint 并升级到对应的局部 / 全局重跑，而不是继续宣布完成 |
+| `7` `debug-skill` | 目标模块 / 子域、边界条件清单、当前 closure / verdict / blocker 信息；复杂系统模式下再附当前 wave / checkpoint / recovery 语境 | `PIPELINE_CONTEXT.md` 顶部状态头、`PIPELINE_CONTEXT.md` 正文、Step 4 / Step 5 报告、相关 `PIPELINE_DETAIL`；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | `PIPELINE_CONTEXT.md` 的 Step 7 段落 | 边界条件测试结论、失败路径、修复建议、是否需要回退到 recovery / re-dispatch | 缺少可验证输入时，只能输出风险列表与建议补测项，不得给出“已验证通过”的结论 |
+| `8` `profiler-skill` | 目标模块 / 路径、性能假设、当前实现证据；复杂系统模式下再附当前 wave / checkpoint / shared contract 语境 | `PIPELINE_CONTEXT.md` 顶部状态头、`PIPELINE_CONTEXT.md` 正文、相关 `PIPELINE_DETAIL`、必要时读 Step 4 / Step 5 报告；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | `PIPELINE_CONTEXT.md` 的 Step 8 段落 | 性能问题、瓶颈位置、优化建议、是否影响当前 wave / global verdict | 缺少性能证据时，只能输出假设与采样建议，不得把主观推测写成确定性瓶颈 |
+| `9` `main agent` | 最终 global verdict、`execution_steps`、`context_retention`、最新 Step 4 / Step 5 / Step 6 结果；复杂系统模式下再附最新 `Checkpoint Record` 与全局状态 | `PIPELINE_CONTEXT.md` 顶部状态头、`PIPELINE_CONTEXT.md` 正文、最新 coverage / verdict、pipeline result signal 状态；复杂系统模式下必须先读最新 `Artifact State Table` / `Wave Dispatch Table` / `Checkpoint Record` | 清理后的顶部状态头；清理后的 `PIPELINE_CONTEXT.md`（`Persist` 模式）或删除该文件（`Cleanup` 模式） | 最终清理结果：`Cleanup` / `Persist`、`pipeline_run_id` 终结状态、是否还存在待处理 signal / blocker | 未完成 run_id 清理、仍有未消费 signal、或全局 verdict 仍未收敛时，不得宣布 Step 9 完成 |
+
+### Step 1 / Step 2 调度补充
+
+- 当执行单元被明确指定为 `code-pipeline` 的 Step 1 / Step 2 时，输出必须使用 `DecompositionSnapshot`、`CapabilityScan`、`ArtifactBinding`、`DecisionSynthesis` 这些 exact heading；自由叙事只能作为 block 内说明，不能替代 canonical block
+- 若输出中缺少独立 `### CapabilityScan`，或该 block 缺少 `MatchedCapabilities`、`CandidateHosts`、`Evidence`、`Recommendation` 任一项，则读取方必须把 Step 1 视为未完成
+- 若 `Evidence` 不能回指到项目代码路径、符号、或明确的检索范围与命中 / 未命中结论，则 Step 1 gate 不得放行
 
 ## 协议 1：L1 × L2 合成到 PCB
 
@@ -63,29 +102,100 @@ Step 3 / Step 6 中的“模块配对执行单元”指：
 
 ## 协议 2：Step 1 路线决策门禁
 
-Step 1 产物不是提示性说明，而是进入 Step 2 / Step 3 的前置门禁。主 agent 在推进后续步骤前，必须先在 `PIPELINE_CONTEXT.md` 的 Step 1 段落确认以下字段齐备：
+Step 1 的结论不是提示性说明，而是状态迁移条件。主 agent 在推进后续步骤前，必须先确认 `PIPELINE_CONTEXT.md` 顶部状态头已满足以下条件：
 
-1. `类似功能检索结果`
-2. `模块策略建议`
-3. `UserDecision`（存在可复用候选时必填）
+1. 已有 `类似功能检索结果`
+2. 已有 `模块策略建议`
+3. 若计划新增文件 / 类型 / 字段 / API：已有 `ArtifactBinding`
+4. 若存在可复用候选且仍有路线分歧：`pipeline_decision_status = required`，`pipeline_lifecycle_state = PendingDecision`
+5. 若路线已解决：`pipeline_decision_status = resolved`
+
+### Gate 证据来源
+
+- Step 1 gate 由两部分共同决定：Step 1 正文中的 canonical block + 顶部状态头中的 `pipeline_lifecycle_state` / `pipeline_decision_status`
+- `已有类似功能检索结果` 的最小合法形状是：独立 `### CapabilityScan` block，且 `MatchedCapabilities`、`CandidateHosts`、`Evidence`、`Recommendation` 四项均已填写；若未命中候选，也必须显式写 `None` / `未命中`
+- `Evidence` 的每一项至少要给出具体的项目代码路径或符号；若结论是“未命中”，必须同时给出扫描范围和搜索目标（符号 / 关键词族）以及未命中结论。PRD、用户口述、设计稿不能单独满足该条件
+- `模块策略建议` 的最小合法形状是：独立 `### DecisionSynthesis` block，且路线结论能回指到 `CapabilityScan` 的 `Evidence`
+- 主 agent 的正确检查顺序是：先读 Step 1 正文 block，再校验顶部状态头；不得跳过正文直接根据 `pipeline_decision_status` 放行
 
 ### Gate 判定规则
 
 - 若 `类似功能检索结果` 缺失：视为 Step 1 未完成，不得进入 Step 2 / Step 3
+- 若缺少独立 `### CapabilityScan` block，或该 block 缺少 `MatchedCapabilities`、`CandidateHosts`、`Evidence`、`Recommendation` 任一项：视为 Step 1 未完成，不得进入 Step 2 / Step 3
+- 若 `Evidence` 只包含 PRD / 用户描述 / 设计输入，或无法回指到具体项目代码路径 / 符号，或在“未命中”场景下缺少扫描范围 + 搜索目标：视为 Step 1 未完成，不得进入 Step 2 / Step 3
 - 若已识别到可复用候选，但 `模块策略建议` 缺失：视为 Step 1 未完成，不得进入 Step 2 / Step 3
-- 若已识别到可复用候选，且存在“已有能力迭代 / 全新实现”的路线分歧，但 `UserDecision` 缺失或仍未解决：必须先回用户确认，不得进入 Step 2 / Step 3
+- 若 `DecisionSynthesis` 的路线结论无法回指到 `CapabilityScan` 的 `Evidence`：视为 Step 1 未完成，不得进入 Step 2 / Step 3
+- 若计划新增产物，但 `ArtifactBinding` 缺失：视为 Step 1 未完成，不得进入 Step 2 / Step 3
+- 若已识别到可复用候选，且存在“已有能力迭代 / 全新实现”的路线分歧：必须进入 `PendingDecision`，不得进入 Step 2 / Step 3
 - 若 `UserDecision` 明确选择“在已有能力上迭代”：Step 2 / Step 3 的后续拆分、蓝图与实现必须优先基于已有能力展开，不得无理由退回全新实现
-- 只有在 `类似功能检索结果` 明确说明无可复用候选时，才允许无 `UserDecision` 直接继续后续步骤
+- 只有在 `类似功能检索结果` 明确说明无可复用候选时，才允许无 `UserDecision` 直接把 `pipeline_decision_status` 置为 `resolved`
 
 ### 不足兜底
 
 若 Gate 未通过，只能回写以下内容之一：
 
-- 补充 `类似功能检索结果`
-- 补充 `模块策略建议`
+- 补齐独立 `### CapabilityScan` block（含 `MatchedCapabilities`、`CandidateHosts`、`Evidence`、`Recommendation`）
+- 补齐独立 `### DecisionSynthesis` block
+- 补齐 `ArtifactBinding`
 - 输出待用户确认的 `UserDecision`
+- 将 `PIPELINE_CONTEXT.md` 顶部状态头维持在 `PendingDecision`
 
 禁止在 Gate 未通过时冻结 Handoff、生成最终 BLUEPRINT、或进入任何实现步骤。
+
+## 协议 2A：Step 1 内部子阶段与命名
+
+当 Step 1 的认知范围较大时，`requirement-analysis-agent` 可以先产出 `DecompositionSnapshot`，再把 `CapabilityScan` 类任务拆给只读 subagent；主 agent 只消费结构化返回，不把全量探索重新塞回主上下文。
+
+### 固定顺序
+
+`DecompositionSnapshot` -> `CapabilityScan` -> `ArtifactBinding` -> `DecisionSynthesis`
+
+除面向人类阅读的中文说明外，协议关键字统一使用上述 canonical keyword，不在其他文件中临时改写为近义词。
+
+### `DecompositionSnapshot`（拆解快照）最小内容
+
+- 功能目标
+- provisional modules
+- provisional APIs
+- scan scope
+
+### `CapabilityScan`（能力探寻）最小返回
+
+- `MatchedCapabilities`
+- `CandidateHosts`
+- `ReuseRisks`
+- `Evidence`
+- `OpenQuestions`
+- `Recommendation`：`reuse` / `hybrid` / `new`
+
+其中：
+
+- `MatchedCapabilities`：必须列出命中的相似能力；若未命中，显式写 `None` / `未命中`
+- `CandidateHosts`：必须列出候选承载点；若无直接承载点，显式写 `None` / `未命中`
+- `Evidence`：每一项至少包含一个具体的项目代码路径或符号；若结论是“未命中”，必须同时写出扫描范围和搜索目标（符号 / 关键词族）以及未命中结论。PRD、用户口述、设计稿不能单独充当源码 `Evidence`
+- `Recommendation`：只能在 `Evidence` 足以支撑结论时写为 `reuse` / `hybrid` / `new`；证据不足时只能把不确定性写入 `OpenQuestions`
+
+### `ArtifactBinding`（产物绑定）最小结构
+
+- `ProposedArtifact`
+- `BindingMode`：`reuse` / `extend` / `new`
+- `BoundHost`
+- `Reason`
+- `Evidence`
+
+### `DecisionSynthesis`（决策综合）最小职责
+
+- 消费 `CapabilityScan` 与必要的 `ArtifactBinding`
+- 写回 `模块策略建议`
+- 写回 `pipeline_decision_status` / 必要时的 `UserDecision`
+- 写回 `Handoff Level Decision` 与 `Freeze Recommendation`
+
+### 边界
+
+- scan 类 subagent 只读，不写 `PIPELINE_CONTEXT.md` 顶部状态头
+- scan 类 subagent 不直接产出 `pipeline_decision_status`、`Handoff Level Decision`、`Freeze Recommendation`
+- scan 类 subagent 的返回只有在被聚合层写回到 Step 1 的 canonical block 后，才能算完成 `CapabilityScan`
+- 若 scan 证据冲突或不足，主 agent 只能补 `Open Questions`、补 `ArtifactBinding`、缩小范围重发 scan，或停在 `PendingDecision`
 
 ## 协议 3：非文本输入先双阶段解构
 
@@ -96,15 +206,19 @@ Step 1 产物不是提示性说明，而是进入 Step 2 / Step 3 的前置门�
 
 用户确认前，禁止进入 API 声明与代码实现。输出位置在 `PIPELINE_CONTEXT.md` 的 Step 1 段落。
 
-## 协议 4：实现前先读 PCB
+非文本输入的解构只能补充 `scan scope` 与问题空间，不得替代后续针对项目代码仓库的 `CapabilityScan`。
+
+## 协议 4：实现前先读状态头与 PCB
 
 每次进入 Step 3 / Step 6 的原子实现单元前，必须：
 
-1. 读取 `PIPELINE_CONTEXT.md`
-2. 对齐 `PCB.BLUEPRINT`
-3. 对齐 `PCB.CONFIG_SYNTHESIS`
+1. 读取 `PIPELINE_CONTEXT.md` 顶部状态头
+2. 确认 `pipeline_lifecycle_state` 不为 `PendingDecision`
+3. 对齐 `PCB.BLUEPRINT`
+4. 对齐 `PCB.CONFIG_SYNTHESIS`
+5. 若实现涉及新增文件 / 类型 / 字段 / API：对齐 Step 1 中对应的 `ArtifactBinding`
 
-PCB 未记录的逻辑，不得直接实现。
+顶部状态头未放行、PCB 未记录，或 `ArtifactBinding` 缺失的逻辑，不得直接实现。
 
 ## 协议 5：Step 3 模块输出与归并
 
@@ -153,7 +267,7 @@ PCB 未记录的逻辑，不得直接实现。
 
 ### Step 1：写入 run_id
 
-写入 `PIPELINE_CONTEXT.md` 文件头部：
+写入 `PIPELINE_CONTEXT.md` 顶部状态头，并同步投影到正文头部：
 
 ```md
 pipeline_run_id: pipeline_20260420_143055
@@ -200,8 +314,8 @@ pipeline_run_id: pipeline_20260420_143055
 
 ### Step 9：清理 run_id
 
-- `Cleanup`：`PIPELINE_CONTEXT.md` 随整体删除
-- `Persist`：必须删除 `pipeline_run_id:` 行
+- `Cleanup`：`PIPELINE_CONTEXT.md` 随整体删除，顶部状态头一并终结
+- `Persist`：必须删除 `PIPELINE_CONTEXT.md` 中的状态头与 `pipeline_run_id:` 投影
 
 禁止遗留过期 run_id。
 
@@ -215,11 +329,11 @@ pipeline_run_id: pipeline_20260420_143055
 - 需要 Step 4 / Step 5 的结构化 Closure / Coverage
 - 存在 `L2` / `L3` Handoff
 
-`HandoffStatus` 的定义和模板只以 `config/handoff_protocol.md` 为准。
+`HandoffStatus` 的定义和 Freeze Gate 只以 `config/handoff_protocol.md` 为准。
 
 ## 协议 8：复杂系统模式产物
 
-复杂系统模式激活后，`PIPELINE_CONTEXT.md` 除 PCB 与 Step 记录外，还必须维护以下四类产物。
+复杂系统模式激活后，`PIPELINE_CONTEXT.md` 除顶部状态头、PCB 与 Step 记录外，还必须维护以下四类投影；其 gate 真相仍以顶部状态头为准。
 
 ### 术语边界
 
@@ -291,6 +405,7 @@ pipeline_run_id: pipeline_20260420_143055
 2. 最新 `Checkpoint Record`
 3. 当前 `Wave Plan`
 4. 对应模块的 Frozen Handoff
+5. `PIPELINE_CONTEXT.md` 顶部状态头中的当前生命周期状态
 
 若无法说明“为什么现在能放行”，则不得生成新的 dispatch 行。
 
@@ -302,6 +417,7 @@ pipeline_run_id: pipeline_20260420_143055
 - 对应 barrier 已满足
 - `HandoffStatus = Frozen`
 - 最新 `Checkpoint Record` 已说明放行原因
+- `PIPELINE_CONTEXT.md` 顶部状态头不处于 `PendingDecision`
 - 模块不处于 `Blocked / Stalled / NeedsSubpipeline`
 
 显式 `sub-pipeline` 派发：
@@ -316,7 +432,7 @@ pipeline_run_id: pipeline_20260420_143055
 - 模块开始执行：`ArtifactState -> Implementing`
 - 模块完成局部验证：状态更新由 `architecture/verification-architecture.md` 定义
 - 派发失败、fallback 变化、或目标从普通派发改成 `sub-pipeline` / `main agent`：必须新增 `Checkpoint Record`
-- 每一波结束后，至少更新一次 `Artifact State Table`、`Wave Dispatch Table`、`Checkpoint Record`
+- 每一波结束后，至少更新一次 `Artifact State Table`、`Wave Dispatch Table`、`Checkpoint Record`，并同步顶部状态头
 
 ### Heartbeat 与 checkpoint
 

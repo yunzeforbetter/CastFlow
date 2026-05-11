@@ -15,9 +15,9 @@
 
 | Step | 目标 | 主要输入 | 必须输出 | 进入条件 | 下一步出口 |
 |---|---|---|---|---|---|
-| Step 1 | 需求拆分、类似功能检索、路线决策、Handoff 级别判断 | 用户请求、项目代码/文档证据、原始资产 | 功能拆分、API 声明、依赖关系、类似功能检索结果、模块策略建议、`UserDecision`、Handoff Level Decision、Freeze Recommendation、Step 2 / Step 3 建议 | pipeline 启动 | Gate 未过 -> 回用户；需冻结 -> Step 2；可直接实现 -> Step 3；复杂度过高 -> 子 pipeline / 复杂系统模式 |
-| Step 2 | 冻结共享约束与协作边界 | Step 1 产物、L1 参数、约束文件 | PCB、`BLUEPRINT`、`Frozen Handoff`（`L1+`） | Step 1 路线已定，且命中冻结条件 | Freeze 完成 -> Step 3 |
-| Step 3 | 在声明边界内完成模块实现 | Step 1 / Step 2 声明产物、PCB、Handoff、Blueprint 切片 | 代码、`temp/pipeline-output/{module_id}.md`、Handoff Update、COMPLIANCE_CHECKLIST | Step 1 gate 已过；Step 3 Freeze Gate 已过 | 产物可归并 -> Step 4；发现新 blocker -> 回 Step 1 / Step 2 / recovery |
+| Step 1 | 需求拆分、类似功能检索、产物绑定、路线决策、Handoff 级别判断 | 用户请求、项目代码/文档证据、原始资产 | 功能拆分、API 声明、依赖关系、类似功能检索结果、模块策略建议、必要时的 `ArtifactBinding`、决策状态（必要时含 `UserDecision`）、Handoff Level Decision、Freeze Recommendation、Step 2 / Step 3 建议 | pipeline 启动 | 路线未收敛 -> 停在决策态并回用户；需冻结 -> Step 2；可直接实现 -> Step 3；复杂度过高 -> 子 pipeline / 复杂系统模式 |
+| Step 2 | 冻结共享约束与协作边界 | Step 1 产物、L1 参数、约束文件 | PCB、`BLUEPRINT`、`Frozen Handoff`（`L1+`） | Step 1 路线已收敛，且命中冻结条件 | Freeze 完成 -> Step 3 |
+| Step 3 | 在声明边界内完成模块实现 | Step 1 / Step 2 声明产物、结构化 runtime state、PCB、Handoff、Blueprint 切片 | 代码、`temp/pipeline-output/{module_id}.md`、Handoff Update、COMPLIANCE_CHECKLIST | 路线已收敛；Step 3 Freeze Gate 已过 | 产物可归并 -> Step 4；发现新 blocker -> 回 Step 1 / Step 2 / recovery |
 | Step 4 | 验证依赖是否闭合 | Step 1 / Step 2 产物、Step 3 模块输出、Handoff Update | `Dependency Closure Report` | 存在 Step 3 可归并产物 | 闭合充分 -> Step 5；缺口明显 -> Step 6 / recovery |
 | Step 5 | 评估覆盖度并给出 verdict | Step 4 closure、Done Criteria 输入、必要模块细节 | `Done Criteria Coverage`、`VERIFICATION_REPORT`、pipeline result signal | Step 4 已完成 | `GO` -> Step 9；`GO-WITH-CAUTION` -> Step 6；`NO-GO` -> recovery / re-dispatch |
 | Step 6 | 只补可补齐的块 | Step 5 的 `CompletableBlocks`、相关模块最新输出 | 更新后的模块输出、re-closure note、必要 checkpoint | Step 5 = `GO-WITH-CAUTION` | 至少回 Step 4；必要时再回 Step 5 |
@@ -30,6 +30,7 @@
 ### 目标
 - 功能拆分
 - 类似功能检索
+- 拟新增产物的绑定判断
 - 路线推荐与用户决策
 - Handoff 级别判断
 
@@ -41,23 +42,52 @@
 ### 必须输出
 - `类似功能检索结果`
 - `模块策略建议`
-- `UserDecision`（存在可复用候选时）
+- 必要时的 `ArtifactBinding`
+- 决策状态（无候选则标记已收敛；存在路线分歧则进入 `PendingDecision`）
+- 必要时的 `UserDecision`
 - Handoff Level Decision
 - Freeze Recommendation
 - Step 2 / Step 3 建议
 
+以上字段在输出组织上优先归入 `DecompositionSnapshot`、`CapabilityScan`、`ArtifactBinding`、`DecisionSynthesis` 四个 canonical block；其中 `CapabilityScan` 等价承载 `类似功能检索结果`，`DecisionSynthesis` 等价承载 `模块策略建议` 与决策状态。
+
+### Step 1 内部子阶段
+1. `DecompositionSnapshot`（拆解快照）：先生成最小功能目标、 provisional modules、provisional APIs 与 scan scope
+2. `CapabilityScan`（能力探寻）：以 `DecompositionSnapshot` 为边界检索类似功能、候选承载点与复用风险
+3. `ArtifactBinding`（产物绑定）：若计划新增文件 / 类型 / 字段 / API，逐项标记 `reuse / extend / new`
+4. `DecisionSynthesis`（决策综合）：基于 `CapabilityScan` 与 `ArtifactBinding` 结果写 `模块策略建议`、`UserDecision`、Handoff / Freeze 结论
+
+### Step 1 最小可判定标准
+在 `code-pipeline` 模式下，Step 1 只有同时满足以下条件时才算完成：
+
+1. 正文包含独立的 `DecompositionSnapshot`、`CapabilityScan`、必要时的 `ArtifactBinding`、`DecisionSynthesis` 四个 canonical block
+2. `CapabilityScan` 中的 `MatchedCapabilities`、`CandidateHosts`、`Evidence`、`Recommendation` 四项均已填写；若未命中可复用承载，必须显式写 `None` / `未命中`，不能省略
+3. `Evidence` 的每一项至少引用一个具体的项目代码路径或符号；若结论是“未命中”，必须同时给出扫描范围和搜索目标（符号 / 关键词族）以及未命中结论。仅写宽泛目录、模糊范围、PRD、用户口述或设计稿，都不能单独充当源码 `Evidence`
+4. 若计划新增文件 / 类型 / 字段 / API，或 `Recommendation` 不是纯 `reuse`，必须继续给出对应的 `ArtifactBinding`
+5. 若 `CapabilityScan` 的 `Evidence` 不足以支撑路线收敛，`DecisionSynthesis` 只能回写 `OpenQuestions` / `PendingDecision`，不得把路线写成已收敛
+
 ### 强规则
-- 必须先检索类似功能、相近职责实现或可直接承载模块
+- Step 1 内部子阶段顺序固定为：`DecompositionSnapshot` -> `CapabilityScan` -> `ArtifactBinding` -> `DecisionSynthesis`
+- `CapabilityScan` 必须覆盖类似功能、相近职责实现或可直接承载模块
+- `CapabilityScan` 必须以真实仓库证据为基础，不得用 Phase 叙事、PRD 摘要或一句“已检索”替代独立 block
+- 若计划新增文件 / 类型 / 字段 / API，必须先完成 `ArtifactBinding`
 - 若存在可复用候选，默认推荐“在已有能力上迭代”
-- 若存在路线分歧，必须显式收敛为 `UserDecision`
+- `DecisionSynthesis` 的路线结论必须可回指到 `CapabilityScan` 的 `Evidence`
+- 若存在路线分歧，必须显式收敛为决策态，等待 `UserDecision`
 
 ### 禁止
 - 未检索类似功能就直接进入拆分定案
+- 用 PRD、用户口述、设计稿或模糊记忆替代 `CapabilityScan` 的源码 `Evidence`
+- 用 Phase 叙事、总结段落或一句“无可复用候选”吞掉独立 `CapabilityScan` block
+- 未完成 `ArtifactBinding` 就输出新增产物或新增实现建议
 - 有可复用候选却默认走全新实现
 - 在 `UserDecision` 未解决时继续进入 Step 2 / Step 3
 
 ### Fail-closed
-- 缺少 `类似功能检索结果`、`模块策略建议`，或有候选但缺少 `UserDecision` 时，不得进入 Step 2 / Step 3
+- 缺少 `类似功能检索结果`、`模块策略建议`、计划新增产物但缺少 `ArtifactBinding`，或有候选但路线仍未收敛时，不得进入 Step 2 / Step 3
+- 缺少独立 `CapabilityScan` block，或 `MatchedCapabilities` / `CandidateHosts` / `Evidence` / `Recommendation` 任一缺失时，Step 1 视为未完成
+- `Evidence` 未引用具体项目代码路径 / 符号，或在“未命中”场景下缺少扫描范围 + 搜索目标，或仅包含 PRD / 用户描述 / 设计输入时，Step 1 视为未完成
+- `DecisionSynthesis` 无法把结论回指到 `CapabilityScan` 的 `Evidence` 时，不得把路线写成已收敛
 
 ## Step 2：约束冻结
 
@@ -77,15 +107,15 @@
 - `Frozen Handoff`（`L1+`）
 
 ### 强规则
-- 只有命中冻结条件时才进入 Step 2
+- 只有在路线已收敛且命中冻结条件时才进入 Step 2
 - Freeze 细则只以 `handoff_protocol.md` 为准
 
 ### 禁止
-- Step 1 路线未定就进入冻结
+- Step 1 路线未收敛就进入冻结
 - 跳过 PCB 或 Handoff Freeze 直接推进多模块实现
 
 ### Fail-closed
-- Freeze 未完成、PCB 不完整或 Handoff 未冻结时，不得进入 Step 3
+- Freeze 未完成、PCB 不完整、Handoff 未冻结，或决策态仍未解决时，不得进入 Step 3
 
 ## Step 3：模块实现
 
@@ -95,9 +125,11 @@
 
 ### 主要输入
 - Step 1 / Step 2 声明产物
+- 结构化 runtime state
 - PCB
 - Handoff
 - Blueprint 切片
+- 必要时的 `ArtifactBinding`
 
 ### 必须输出
 - 代码
@@ -106,18 +138,20 @@
 - COMPLIANCE_CHECKLIST
 
 ### 强规则
-- Step 1 路线决策门禁必须已通过
+- 路线决策必须已收敛
 - Freeze Gate 必须已通过
 - 只能在声明边界内实现
+- 若实现涉及新增文件 / 类型 / 字段 / API，必须对齐对应的 `ArtifactBinding`
 
 ### 禁止
 - 越界实现
 - 编造未声明 API
 - 跳过 Handoff Update
+- 在决策态仍未解决时启动实现
 - 在 `L0` 场景出现跨模块依赖后继续硬推实现
 
 ### Fail-closed
-- Gate 未过、模块输出不可归并或依赖未就绪时，不得假装完成并推进 Step 4
+- 路线未收敛、Gate 未过、缺少必要的 `ArtifactBinding`、模块输出不可归并或依赖未就绪时，不得假装完成并推进 Step 4
 
 ## Step 4：依赖闭合
 

@@ -1,6 +1,6 @@
 # Handoff Protocol
 
-> `code-pipeline` 内的 Handoff 真源。这里只定义 `HandoffStatus`、模板、Freeze、Closure、Coverage、Re-closure 与 `Parent Summary`。执行期控制见 `config/pipeline_protocol.md`。
+> `code-pipeline` 内的 Handoff 真源。这里只定义 `HandoffStatus`、Freeze、Closure、Coverage、Re-closure 与 `Parent Summary` 的控制语义。执行期控制见 `config/pipeline_protocol.md`。
 
 ## 1. Handoff Level
 
@@ -32,69 +32,13 @@
 
 若 Step 3 中出现跨模块 `Requires / Provides`、新增并行执行需求，或需要 `UserDecision` 才能继续，则必须停止 L0 快速路径，回到 Step 1 / Step 2 升级为 `L1+`。
 
-## 3. Handoff 模板
+## 3. Handoff 结构要求
 
-### `L1`
+`L1` / `L2` / `L3` 仍使用既有结构表达 `Owns / Provides / Requires / Blocks / Constraints / Done Criteria` 等信息，但这些结构主要承担交接内容与人类审阅职责，不单独构成 gate 真相。
 
-```md
-## Handoff: {ModuleName}
-
-### Owns
-- 本模块负责的职责边界
-
-### Provides
-- 本模块对外提供的 API / 数据 / 事件
-
-### Requires
-- 本模块依赖的 API / 数据 / 事件
-
-### Blocks
-- 当前阻塞项；没有则写 `None`
-```
-
-### `L2`
-
-```md
-## Handoff: {ModuleName}
-
-### Goal
-- 本模块目标
-
-### Owns
-- 本模块负责的职责边界
-
-### Provides
-- 本模块对外提供的 API / 数据 / 事件
-
-### Requires
-- 本模块依赖的 API / 数据 / 事件
-
-### Blocks
-- 当前阻塞项；标记 `completable` / `blocking` / `unknown`
-
-### Constraints
-- 必须遵守的 skill / 项目约束
-
-### Done Criteria
-- 本模块完成后必须满足的业务条件
-
-### Open Questions
-- `UserDecision`
-- `TODO`
-- `Risk`
-```
-
-### `L3`
-
-```md
-`L3 = L2 + 以下两段`
-
-### Sub-pipeline Trigger
-- 为什么需要子 pipeline
-
-### Parent Summary
-- 子 pipeline 回传给父 pipeline 的摘要格式
-```
+- gate 判断以 `HandoffStatus`、Freeze Gate 与 runtime state 为准
+- 模板、写法示例与章节布局应下沉到 `EXAMPLES.md` / `examples/*`
+- 本页只保留进入 Step 3 / Step 4 / Step 5 所必需的控制语义
 
 ## 4. Freeze Gate
 
@@ -103,7 +47,8 @@
 - Step 1 已明确 `Handoff Level Decision = L0`
 - `No-Handoff Rationale` 已说明单模块 / 单 agent / 无跨模块依赖
 - Step 1 不得出现跨模块 `Requires / Provides`
-- Step 1 路线决策门禁已通过：`类似功能检索结果`、`模块策略建议` 已齐备；存在可复用候选时 `UserDecision` 已解决
+- 若 Step 1 计划新增文件 / 类型 / 字段 / API：对应 `ArtifactBinding` 已完成
+- Step 1 路线决策已收敛；若曾存在可复用候选与路线分歧，则 `PendingDecision` 已结束且 `UserDecision` 已解决
 - `PCB.SHADOW_BANS` 与 `PCB.CONFIG_SYNTHESIS` 已就绪
 
 `L1` / `L2` / `L3` 进入 Step 3 前，Handoff 必须满足：
@@ -113,8 +58,8 @@
 - `Provides` 明确到 API / 数据 / 事件
 - `Requires` 有候选 Provider，或明确标记 `unknown`
 - `Blocks` 已分类
-- Step 1 路线决策门禁已通过：`类似功能检索结果`、`模块策略建议` 已齐备；存在可复用候选时 `UserDecision` 已解决
-- `UserDecision` 已解决
+- 若 Step 1 计划新增文件 / 类型 / 字段 / API：对应 `ArtifactBinding` 已完成
+- Step 1 路线决策已收敛；若曾存在可复用候选与路线分歧，则 `PendingDecision` 已结束且 `UserDecision` 已解决
 
 `L2` / `L3` 额外要求：
 
@@ -184,7 +129,7 @@ Step 5 的统一输入结构：
 - [ ] 未覆盖的业务条件
 ```
 
-若当前模块只有 `L1` Handoff 且没有显式 `Done Criteria`，则在进入 Step 5 前，主 agent 必须基于 Step 1 的功能拆分、API 声明与 Freeze Recommendation 先合成最小 coverage 输入；禁止让空白 coverage 直接进入 verdict。
+若当前模块只有 `L1` Handoff 且没有显式 `Done Criteria`，则在进入 Step 5 前，主 agent 必须基于 Step 1 的功能拆分、API 声明、必要时的 `ArtifactBinding` 与 Freeze Recommendation 先合成最小 coverage 输入；禁止让空白 coverage 直接进入 verdict。
 
 Step 5 的最小输出结构：
 
