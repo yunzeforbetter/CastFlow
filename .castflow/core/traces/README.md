@@ -7,8 +7,8 @@
 | 配置 | `config/limits.json` | trace-flush 的压缩/通知/过期阈值（运行时可改，无需重启） |
 | 配置 | `config/hooks.config.json` | trace-collector 与 trace-flush 的语言/路径推断配置（适配非 Unity 项目） |
 | 数据 | `trace.md` | hook 自动累积的执行记录，由 origin-evolve 消费 |
-| 数据 | `weights.json` | 五维评分权重的自校准结果（首次使用前不存在，由 origin-evolve Step 6 写入） |
-| 状态 | `.trace_buffer` / `.trace_prev_edits` / `.trace_lock` / `.pending_*.json` / `.trace_error.log` | hook 内部状态文件，不要手动编辑；其中 `.pending_*.json` 既可能是框架共享信号，也可能是某个复合组件 own 的 runtime state |
+| 数据 | `weights.json` | 八维评分权重的自校准结果（首次使用前不存在，由 origin-evolve Step 6 写入） |
+| 状态 | `.trace_buffer` / `.trace_prev_edits` / `.trace_lock` / `.pending_*.json` / `.trace_error.log` | hook 内部状态文件，不要手动编辑 |
 
 修改 `config/limits.json` 或 `config/hooks.config.json` 后立即生效。
 
@@ -16,7 +16,7 @@
 
 ## trace.md 字段契约
 
-每条 TRACE 块由 hook 写入，origin-evolve 读取。两侧共用同一份字段定义。
+每条 TRACE 块由 hook 写入，origin-evolve 读取。
 
 ### 块头
 
@@ -27,130 +27,118 @@
 | 字段 | 取值 | 写入方 |
 |------|------|--------|
 | `status` | `pending` / `processed` / `expired` / `invalid` | hook 写 `pending`，origin-evolve 改其他状态 |
-| `schema` | 整数版本号（当前 1） | hook 写入。origin-evolve Step 1 校验：未知版本则中止并提示升级 |
+| `schema` | 整数版本号（当前 2） | hook 写入。origin-evolve Step 1 校验：未知版本则中止并提示升级 |
 
 ### 块体字段
 
-| 字段 | 类型 | 写入方 | 含义 |
-|------|------|--------|------|
-| `timestamp` | ISO8601 UTC | hook | trace 写入时刻 |
-| `mode` | `standard` / `emergency` / `high-accuracy` / `_` | AI（IDP）/ hook | 执行模式，由 IDP 注入或留空 |
-| `type` | `feature` / `bugfix` / `refactor` / `optimization` / `config` / `_` | AI / hook | 任务类型 |
-| `request` | string | AI（IDP）| 用户请求摘要 |
-| `intent` | string | AI（IDP）| AI 理解的意图 |
-| `correction` | `_` / `auto:minor` / `auto:major` / `minor` / `major` | hook | 自我修正信号，由 collector 自动检测或 AI 标记 |
-| `validated` | `_` / `true` / `false` / `pending-pipeline` / `invalid` | hook | 用户验证信号，从 `.pending_validated.json` 注入；`pending-pipeline` 表示当前 trace 仍在等待 code-pipeline own 的最终结果信号回填 |
-| `pipeline_run_id` | string / `_` | hook | 可选的 code-pipeline 运行标记；仅当当前 trace 来自该复合组件时出现 |
-| `modules` | `[Mod1, Mod2]` | hook | 从文件路径推断（依赖 config/hooks.config.json） |
-| `skills` | `[skill1]` / `[]` | AI（IDP）| 本次涉及的 skill 名称 |
-| `files_modified` | `[path, ...]` | hook | 编辑过的文件（最多前 20 个） |
-| `file_count` | int | hook | 文件总数 |
-| `lines_changed` | int | hook | 累计变更行数（估算） |
-| `edit_count` | int | hook | 编辑事件总次数 |
-| `score` | float | hook | 五维评分结果，>= 阈值才会写入此 trace |
+| 字段 | 写入方 | 含义 |
+|------|--------|------|
+| `timestamp` | hook | trace 写入时刻（ISO8601 UTC） |
+| `mode` | AI（IDP） | 执行模式：`standard` / `emergency` / `high-accuracy` / `rework` / `user-rule` |
+| `type` | AI（IDP） | 任务类型：`feature` / `bugfix` / `refactor` / `optimization` / `config` |
+| `modules` | hook | 从文件路径推断的模块名 |
+| `skills` | AI（IDP） | 本次涉及的 skill 名称 |
+| `score` | hook | 八维评分结果 |
+| `score_breakdown` | hook | 各维度得分明细（如 `F=0.33 K=0.9 R=2.5`） |
+| `correction` | hook | 自我修正信号：`_` / `auto:minor` / `auto:major` |
+| `validated` | hook | 用户验证信号：`_` / `true` / `false` / `pending-pipeline` / `invalid` |
+| `pipeline_run_id` | hook | code-pipeline 运行标记（可选） |
+| `error_cause` | AI（IDP） | 错误根因（rework/user-rule/correction 场景） |
+| `fix_approach` | AI（IDP） | 最终修复方案 |
+| `user_feedback` | AI（IDP） | 用户关键反馈原话 |
+| `lesson` | AI（IDP） | 可复用的经验总结 |
 
-**真理来源**：字段格式由 `trace-flush.py` 的 `format_trace()` 函数生成。修改字段时同步更新 `schema` 版本号，origin-evolve 会拒绝读取未知版本，避免静默漂移。
+### 示例
+
+```
+<!-- TRACE status:pending schema:2 -->
+timestamp: 2026-05-12T12:58:55Z
+mode: rework
+type: bugfix
+modules: [Building]
+skills: [programmer-ui-skill]
+score: 4.84
+score_breakdown: F=0.33 D=0.25 S=0.08 E=0.48 C=1.2 R=2.5
+correction: auto:minor
+validated: _
+pipeline_run_id: _
+error_cause: ObservableList.Add always appends, used it for ordered insert
+fix_approach: Changed to Insert(index, item) with bounds check
+user_feedback: 不行，列表顺序不对，必须插入到指定位置
+lesson: ObservableList ordered insert must use Insert(index) not Add()
+<!-- /TRACE -->
+```
+
+---
+
+## 八维评分模型（v3）
+
+```
+score = F·1.0 + D·0.5 + K·1.5 + S·0.5 + E·0.8 + C·2.0 + R·2.5 + U·2.0
+```
+
+| 维度 | 含义 | 计算 | 权重 |
+|------|------|------|------|
+| F | 文件数 | `min(files/3, 1.0)` | 1.0 |
+| D | 模块分散度 | `min(modules/2, 1.0)` | 0.5 |
+| K | 关键路径 | Interface=1.0 / Impl=0.6 / Base=0.3 | 1.5 |
+| S | 改动规模 | `min(lines/50, 1.0)` | 0.5 |
+| E | 编辑密度 | `min(edits/5, 1.0)` | 0.8 |
+| C | 自我修正 | revert≥3→1.0, ≥1→0.6 | 2.0 |
+| R | 用户返工 | mode=rework→1.0, flag→0.8 | 2.5 |
+| U | 用户规则 | mode=user-rule→1.0, flag→0.8 | 2.0 |
+
+
+---
 
 ## 复合组件 own 的 pending state
 
-- `trace` / `validated` 机制本身属于框架共享 runtime 机制。
-- 某些复合组件会通过 `.pending_*.json` 向 shared hook 提交结果信号。
-- 例如：`.pending_pipeline_result.json` 属于 `code-pipeline` own 的 runtime state，由 shared `trace-flush.py` 消费并回填 `validated`；当 `result=GO-WITH-CAUTION` 且 `finalized=false` 时，hook 会保留 `pending-pipeline`，直到最终 verdict 到达。
-- 这些 pending 文件是 runtime 投影结果，不反向充当 source 真源。
+- `.pending_pipeline_result.json` 属于 `code-pipeline` own 的 runtime state
+- 由 `trace-flush.py` 消费并回填 `validated` 字段
+- `result=GO-WITH-CAUTION` + `finalized=false` → 保留 `pending-pipeline` 直到最终 verdict
 
 ---
 
 ## limits.json 字段说明
 
-控制 trace-flush 的压缩行为、过期策略和通知阈值。位于 `config/limits.json`。
-
-### 压缩触发条件
-
 | 字段 | 默认值 | 作用 |
 |------|--------|------|
-| `compact_max_entries` | 80 | trace.md 中 TRACE 块总数超过此值时触发压缩。每次 AI 停止响应都会检查 |
-| `compact_max_size_kb` | 100 | trace.md 文件大小（KB）超过此值时触发压缩。与 compact_max_entries 任一满足即触发 |
-
-### Level 2 压缩（按龄淘汰低分条目）
-
-Level 2 在 Level 1（清理 expired/invalid）之后执行，删除较老且分数较低的条目。
-
-| 字段 | 默认值 | 作用 |
-|------|--------|------|
-| `level2_age_days` | 14 | 条目 timestamp 距今超过此天数，才有资格被 Level 2 淘汰 |
-| `level2_score_threshold` | 1.0 | 条目 score 低于此值才有资格被 Level 2 淘汰 |
-
-两个条件**同时满足**（age > 14 天 AND score < 1.0）才删除。
-
-### Level 3 压缩（超量时强制削减）
-
-Level 2 后若条目数仍超过 compact_max_entries，Level 3 从最老、最低分的条目中强制削减至上限。
-
-| 字段 | 默认值 | 作用 |
-|------|--------|------|
-| `level3_age_days` | 7 | Level 3 候选条目的最低龄要求（天）。7 天内的新条目不参与强制削减 |
-| `level3_score_threshold` | 0.5 | Level 3 候选条目的最高分限制 |
-
-### 模块保留策略
-
-| 字段 | 默认值 | 作用 |
-|------|--------|------|
-| `keep_top_n_per_module` | 3 | Level 3 压缩时，每个模块至少保留 N 条最高分条目 |
-
-### 被动触发通知
-
-origin-evolve 的被动触发机制：当积累足够多的**可分析 pending trace** 时，在 trace.md 中写入 NOTIFY 块提醒用户执行分析。`validated:pending-pipeline` 仍属运行中条目，不计入被动触发阈值。
-
-| 字段 | 默认值 | 作用 |
-|------|--------|------|
-| `passive_trigger_threshold` | 10 | 可分析 pending 条目总数（不含 `validated:pending-pipeline`）达到此值时，允许发送通知 |
-| `passive_trigger_min_new` | 5 | 距上次通知后新增的可分析 pending 条目数必须达到此值才再次通知 |
-
-示例：上次通知时有 10 条 pending，现在有 14 条，new=4 < min_new(5)，不通知。等到 15 条时 new=5，触发通知。
-
-### 过期策略
-
-| 字段 | 默认值 | 作用 |
-|------|--------|------|
-| `pipeline_pending_expire_days` | 7 | pipeline 执行中途放弃时，`validated:pending-pipeline` 条目超过此天数被标记 `invalid` |
-| `validated_uncertain_expire_days` | 14 | `validated:_` 且 `status:pending` 的条目超过此天数被标记 `expired` |
-| `processed_expire_days` | 30 | 已处理（PROCESSED 审计行）的条目此天数后可被 Level 1 清理 |
-
-### 调参建议
-
-- **项目活跃度高**（每天多次 AI 操作）：适当降低 `compact_max_entries`（如 60）和 `level2_age_days`（如 10），保持 trace.md 精简
-- **项目活跃度低**（偶尔使用）：适当提高 `validated_uncertain_expire_days`（如 30），给用户更多时间反馈
-- **pipeline 流程长**：适当提高 `pipeline_pending_expire_days`（如 14），防止长流程 trace 被过早标记为 invalid
-- **不希望被频繁提醒**：提高 `passive_trigger_threshold`（如 20）和 `passive_trigger_min_new`（如 10）
+| `compact_max_entries` | 80 | trace 块总数超过此值触发压缩 |
+| `compact_max_size_kb` | 100 | 文件大小超过此值触发压缩 |
+| `level2_age_days` | 14 | Level 2 淘汰的最低龄 |
+| `level2_score_threshold` | 1.0 | Level 2 淘汰的最高分 |
+| `level3_age_days` | 7 | Level 3 候选的最低龄 |
+| `level3_score_threshold` | 0.5 | Level 3 候选的最高分 |
+| `keep_top_n_per_module` | 3 | Level 3 每模块至少保留 N 条 |
+| `passive_trigger_threshold` | 10 | pending 条目达到此值允许通知 |
+| `passive_trigger_min_new` | 5 | 距上次通知后新增数达到此值才通知 |
+| `pipeline_pending_expire_days` | 7 | pending-pipeline 超时标记 invalid |
+| `validated_uncertain_expire_days` | 14 | validated:_ 超时标记 expired |
+| `processed_expire_days` | 30 | PROCESSED 审计行过期清理 |
 
 ---
 
 ## hooks.config.json 字段说明
 
-控制 hook 脚本对**项目语言/路径结构**的适配。位于 `config/hooks.config.json`，文件本身有 inline `_comment_*` 注释，下表是补充说明。
+| 字段 | 作用 | 何时修改 |
+|------|------|---------|
+| `tracked_extensions` | collector 关注的源代码扩展名 | 项目使用清单外的语言 |
+| `excluded_extensions` | 强制排除的扩展名 | 有特殊二进制文件被误判 |
+| `generic_dir_segments` | 推断模块时跳过的通用目录名 | 顶层目录与默认值不同 |
+| `module_dir_pattern` | 提取模块名的正则（group 1） | 模块组织约定不同 |
 
-| 字段 | 作用 | 何时需要修改 |
-|------|------|------------|
-| `tracked_extensions` | trace-collector 关注的源代码扩展名 | 项目使用清单外的语言时（如 Elixir `.ex`） |
-| `excluded_extensions` | 即使匹配 tracked 也强制排除的扩展名 | 项目有特殊的二进制/资产文件被误判 |
-| `generic_dir_segments` | 推断模块时跳过的"通用容器"目录名 | 项目顶层目录与默认值不同（如 Go 项目用 `pkg`/`internal`） |
-| `module_dir_pattern` | 提取模块名的正则（group 1 = 模块名） | 项目模块组织约定不同（如 `features/<name>` 或 `packages/<name>/src`） |
+**适配示例**：
 
-**典型适配示例**：
-
-Go monorepo 项目：
-
+Go monorepo：
 ```json
 {
   "tracked_extensions": [".go"],
-  "excluded_extensions": [],
   "generic_dir_segments": ["cmd", "pkg", "internal", "vendor"],
   "module_dir_pattern": "(?:internal|pkg)/([^/]+)"
 }
 ```
 
-React/TypeScript 项目：
-
+React/TypeScript：
 ```json
 {
   "tracked_extensions": [".ts", ".tsx", ".js", ".jsx"],
@@ -159,5 +147,3 @@ React/TypeScript 项目：
   "module_dir_pattern": "features/([^/]+)"
 }
 ```
-
-任何字段缺失时，hook 自动回退到 Python 代码中的默认值（保证可降级运行）。

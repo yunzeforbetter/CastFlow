@@ -32,7 +32,7 @@ AI 助手进入大型项目常见的四种失控：
 | 架构遗忘 | 生成的代码风格不一致、越过分层、绕过 Manager | `architect-skill` 从真实代码提取分层规则，T1-PREPARE 时点强制加载 |
 | API 幻觉 | 调用了不存在的方法、方法签名错乱、编译不通过 | P0 规则：EXAMPLES.md → 用户指导 → Grep 至少两次真实使用，均未命中则 TODO |
 | 知识碎片化 | 规则散落在口头约定、PR 评论、隐藏文档里，跨会话无法共享 | 四件套 Skill（SKILL/EXAMPLES/SKILL_MEMORY/ITERATION_GUIDE），文件即知识 |
-| 经验不积累 | 上一次犯过的错，下一次照犯不误 | Hook 零 token 采集编辑 trace → 五维评分筛选 → `origin-evolve-skill` 生成规则提议 → 用户审批写入 Skill |
+| 经验不积累 | 上一次犯过的错，下一次照犯不误 | Hook 零 token 采集编辑 trace → 八维评分筛选（含修正/返工/用户规则高权重维度）→ `origin-evolve-skill` 生成规则提议 → 用户审批写入 Skill |
 
 它是一套 **把项目知识变成可执行、可验证、可迭代的代码资产** 的AI工程框架。
 
@@ -58,11 +58,21 @@ Skill 内容不会在每次调用时全量入上下文。按 **T1-PREPARE / T2-E
 
 `code_pipeline 实现 X` 触发 **9 步**标准流水：**Step 1** 需求拆分与 API 声明（`requirement-analysis-agent`）→ **Step 2** 约束同步与 Handoff 冻结（同 agent，按需）→ **Step 3** 各模块实现（**模块配对执行单元**：`programmer-<module>-agent` + 同模块 skill）→ **Step 4** 依赖闭合（`integration-matching-agent`）→ **Step 5** 覆盖验收与 verdict（`pipeline-verify-agent`）→ **Step 6** 补全 `CompletableBlocks`（按需）→ **Step 7/8** 调试与性能（可选）→ **Step 9** 收尾与 `pipeline_run_id` 清理。编排合同与 Step 调度卡见装架产物 `skills/code-pipeline-skill/config/pipeline_protocol.md`；AI 入口见同目录 `SKILL.md`。
 
-### 4. 自我进化：零 token 采集 + 五维评分 + 人在回路
+### 4. 自我进化：零 token 采集 + 八维评分 + 经验记录 + 人在回路
 
-Hook 每次编辑时自动记录 `path|lines|edits|flags`（修正检测用 `SequenceMatcher.ratio()` 对比前后编辑，相似度 > 60% 打 R 标）。会话结束跑五维评分 `score = F·1.0 + D·0.5 + K·1.5 + S·0.5 + E·0.8`，超过阈值的会话进入 `trace.md`。`origin-evolve-skill` 读 trace、识别六类模式、生成 Append/Merge/Retire 提议，**用户审批后才写入** Skill。评分权重还会根据有效/无效 trace 的维度分布做自校准（`traces/weights.json`）。
+Hook 每次编辑时自动记录 `path|lines|edits|flags`（修正检测用 `SequenceMatcher.ratio()` 对比前后编辑，相似度 > 60% 打 R 标）。会话结束跑八维评分：
 
-整个闭环对用户仅两步：**批准提议** + **运行 `origin evolve`**。
+```
+score = F·1.0 + D·0.5 + K·1.5 + S·0.5 + E·0.8 + C·2.0 + R·2.5 + U·2.0
+```
+
+前 5 维（F/D/K/S/E）**衡量改动规模**
+后 3 维（C/R/U）衡量**学习价值**：
+
+
+**高价值绕过**：C/R/U 任一非零时，无论总分是否达标都写入 trace——因为"小改动但犯了错"往往比"大改动一帆风顺"更值得记录。
+
+Trace 输出聚焦经验信息：模块、评分、错误原因、修复方案、用户反馈、经验总结。`origin-evolve-skill` 读 trace、识别模式、生成 Append/Merge/Retire 提议，**用户审批后才写入** Skill。
 
 ---
 
@@ -305,7 +315,7 @@ cd CastFlow && git pull
 | `agents/integration-matching-agent.md` | Pipeline **Step 4**：依赖闭合验证（Dependency Closure Report） |
 | `agents/pipeline-verify-agent.md` | Pipeline **Step 5**：Done Criteria 与 Module/Global Verdict、result signal |
 | `hooks/trace-collector.py` | 每次文件编辑被调用。记录路径/行数/编辑次数；保存 `new_string` 快照（LRU 50）；用 `SequenceMatcher.ratio()` 检测 AI 自我修正标记 `R`；`tracked_extensions` / `excluded_extensions` 从 `traces/config/hooks.config.json` 加载 |
-| `hooks/trace-flush.py` | 会话结束被调用。读 buffer → 五维评分 F/D/K/S/E → 达标写入 `trace.md`（`schema:N` 版本头）→ 四级 compaction（Level 0 清审计行 / L1 过期低分 / L2 中期低分 / L3 每模块保留 top N）→ validated 条目受保护；消费 pipeline 的 `.pending_pipeline_result.json` 时校验 `pipeline_run_id` / `result` / `finalized`，非法信号不删文件。含 `--selftest` 子命令 |
+| `hooks/trace-flush.py` | 会话结束被调用。读 buffer → 八维评分 F/D/K/S/E/C/R/U → 达标或高价值绕过写入 `trace.md`（含经验字段：error_cause/fix_approach/user_feedback/lesson）→ 四级 compaction → validated 条目受保护。含 `--selftest` 子命令 |
 | `templates/AUTHORING_GUIDE.md` | Skill 创作元规范（四份域 README 的共享上游）。包含项目勘察清单、反风格检查、Rubric |
 | `templates/agents/programmer.template.md` | 为功能模块生成专属 programmer agent 时的 prompt 模板 |
 | `templates/skills/programmer.template/` | 模块 skill 四件套模板 + 域 README（最常用，会被分发到 `.claude/templates/`） |
@@ -347,12 +357,12 @@ cd CastFlow && git pull
 
 ## 自我进化详解
 
-### 两层数据采集（Hook 零 token + AI 微量补充）
+### 两层数据采集（Hook 零 token + AI 经验填充）
 
 ```
 编辑文件 → trace-collector 记录 path|lines|edits|flags → buffer
-会话结束 → trace-flush 读 buffer → 五维评分 → 达标写 trace.md (pending)
-任务结束 → AI 仅替换 type / skills 占位符
+会话结束 → trace-flush 读 buffer → 八维评分 → 达标或高价值绕过写 trace.md
+AI (IDP) → 填充经验字段：error_cause / fix_approach / user_feedback / lesson
 ```
 
 | 平台 | 配置文件 | 编辑事件 | 结束事件 |
@@ -360,44 +370,49 @@ cd CastFlow && git pull
 | Cursor | `.cursor/hooks.json` | `afterFileEdit` | `stop` |
 | Claude Code | `.claude/settings.json` | `PostToolUse(Write)` | `Stop` |
 
-### 五维评分模型
+### 八维评分模型
 
 ```
-score = F·1.0 + D·0.5 + K·1.5 + S·0.5 + E·0.8    准入 score ≥ 1.5
+score = F·1.0 + D·0.5 + K·1.5 + S·0.5 + E·0.8 + C·2.0 + R·2.5 + U·2.0    准入 score ≥ 1.5 或 C/R/U 非零
 ```
 
-| 维度 | 含义 | 计算 | 价值 |
-|------|------|------|------|
-| F — File Count | 修改文件数 | `min(files/3, 1.0)` | 多文件 = 更值得记录 |
-| D — Module Spread | 模块分散度 | `min(modules/2, 1.0)` | 跨模块 = 架构决策 |
-| K — Critical Path | 关键路径等级 | 接口 1.0 / 实现 0.6 / 基础 0.3 | 架构影响力梯度 |
-| S — Change Scale | 改动规模 | `min(lines/50, 1.0)` | 大改更可能有价值 |
-| E — Edit Intensity | 编辑密度 | `min(edits/5, 1.0)` | 反复修改 = 困难迭代，最值得记录 |
+| 维度 | 含义 | 计算 | 权重 | 价值 |
+|------|------|------|------|------|
+| F — File Count | 修改文件数 | `min(files/3, 1.0)` | 1.0 | 多文件 = 更值得记录 |
+| D — Module Spread | 模块分散度 | `min(modules/2, 1.0)` | 0.5 | 跨模块 = 架构决策 |
+| K — Critical Path | 关键路径等级 | 接口 1.0 / 实现 0.6 / 基础 0.3 | 1.5 | 架构影响力梯度 |
+| S — Change Scale | 改动规模 | `min(lines/50, 1.0)` | 0.5 | 大改更可能有价值 |
+| E — Edit Intensity | 编辑密度 | `min(edits/5, 1.0)` | 0.8 | 反复修改 = 困难迭代 |
+| C — Correction | 自我修正 | revert≥3→1.0, ≥1→0.6 | 2.0 | 模型犯错并改正 = 高学习价值 |
+| R — Rework | 用户返工 | mode=rework→1.0 | 2.5 | 用户拒绝 = 最高学习价值 |
+| U — User-Rule | 用户规则 | mode=user-rule→1.0 | 2.0 | 强制约束 = 必须记住 |
 
-**各维度独立饱和**：1 个文件改 15 次（E 高）≠ 15 个文件各改 1 次（F 高）。防止批量操作假装高价值。
+**高价值绕过**：C/R/U 任一非零直接写入 trace，不受阈值限制。确保"小改动大教训"不被丢弃。
 
-### Trace 条目与状态机
+### Trace 条目结构
 
 ```
-<!-- TRACE status:pending schema:1 -->
-timestamp: 2026-04-13T10:00:00Z
-type: _                  ← AI 补充
-correction: auto:minor   ← Hook 自动检测（SequenceMatcher.ratio > 0.6）
-validated: _             ← flush 注入 / pipeline 驱动
+<!-- TRACE status:pending schema:2 -->
+timestamp: 2026-05-12T12:58:55Z
+mode: rework
+type: bugfix
+modules: [Building]
+skills: [programmer-ui-skill]
+score: 4.84
+score_breakdown: F=0.33 D=0.25 S=0.08 E=0.48 C=1.2 R=2.5
+correction: auto:minor
+validated: _
 pipeline_run_id: _
-modules: [Building, Queue]
-skills: []               ← AI 补充
-files_modified: [...]
-file_count: 3
-lines_changed: 80
-edit_count: 12
-score: 3.50
+error_cause: ObservableList.Add always appends, used it for ordered insert
+fix_approach: Changed to Insert(index, item) with bounds check
+user_feedback: 不行，列表顺序不对，必须插入到指定位置
+lesson: ObservableList ordered insert must use Insert(index) not Add()
 <!-- /TRACE -->
 ```
 
 `status`：`pending` → `processed` / `expired` / `invalid`
 `validated`：`_` / `true` / `false`（P0） / `pending-pipeline` / `invalid`
-`correction`：`_` / `auto:minor` / `auto:major` / `minor` / `major`
+`correction`：`_` / `auto:minor` / `auto:major`
 
 ### 四级 Compaction
 
@@ -429,9 +444,9 @@ Step 6 Calibrate（可选，单维度 5-10% 微调 weights.json）
 ### 自校准闭环
 
 ```
-编辑 → 采集 → 评分 → trace (pending)
+编辑 → 采集 → 八维评分 → trace (pending, 含经验字段)
        ↓
-提醒 → origin evolve → 模式 → 提议 → 审批 → 写入 Skill
+提醒 → origin evolve → 模式识别 → 提议 → 审批 → 写入 Skill
                                          ↓
                                    校准 weights.json（可选）
                                          ↓

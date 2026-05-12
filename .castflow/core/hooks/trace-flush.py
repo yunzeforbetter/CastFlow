@@ -11,15 +11,20 @@ Responsibilities (in order):
   5. check_and_compact       - compress trace.md if over threshold (skipped when locked)
   6. check_notify            - passive trigger notification via NOTIFY block in trace.md
 
-Scoring model (v2):
+Scoring model (v3 - 8 dimensions):
   F (file count)        min(file_count / 3, 1.0)
   D (module spread)     min(module_count / 2, 1.0)
   K (critical path)     tiered: Interface=1.0, Impl=0.6, Base=0.3, other=0.0
   S (change scale)      min(total_lines / 50, 1.0)
   E (edit intensity)    min(total_edits / 5, 1.0)
+  C (correction)        revert_count>=3 -> 1.0, >=1 -> 0.6, else 0.0
+  R (rework)            IDP mode=="rework" -> 1.0, rework flag -> 0.8, else 0.0
+  U (user-rule)         IDP mode=="user-rule" -> 1.0, user_rule flag -> 0.8, else 0.0
 
-  score = F*w_F + D*w_D + K*w_K + S*w_S + E*w_E
+  score = F*w_F + D*w_D + K*w_K + S*w_S + E*w_E + C*w_C + R*w_R + U*w_U
   Weights and threshold loaded from weights.json (fallback to defaults).
+
+  High-value bypass: if C, R, or U > 0, trace is written regardless of threshold.
 
 Zero external dependencies. Python 3.6+.
 """
@@ -42,7 +47,7 @@ PENDING_PIPELINE_FILE = os.path.join(TRACE_DIR, ".pending_pipeline_result.json")
 NOTIFY_STATE_FILE = os.path.join(TRACE_DIR, ".notify_state.json")
 TRACE_LOCK_FILE = os.path.join(TRACE_DIR, ".trace_lock")
 
-TRACE_SCHEMA_VERSION = 1
+TRACE_SCHEMA_VERSION = 2
 
 DEFAULT_WEIGHTS = {
     "F": 1.0,
@@ -50,6 +55,9 @@ DEFAULT_WEIGHTS = {
     "K": 1.5,
     "S": 0.5,
     "E": 0.8,
+    "C": 2.0,
+    "R": 2.5,
+    "U": 2.0,
 }
 DEFAULT_THRESHOLD = 1.5
 
@@ -285,8 +293,9 @@ def compute_critical_tier(file_paths):
 # Scoring
 # ============================================================
 
-def compute_score(file_paths, modules, total_lines, total_edits, weights):
-    """Compute multi-dimensional significance score (v2).
+def compute_score(file_paths, modules, total_lines, total_edits, weights,
+                  revert_count=0, idp=None):
+    """Compute multi-dimensional significance score (v3 - 8 dimensions).
 
     Returns (score, breakdown_dict).
     """
@@ -299,12 +308,39 @@ def compute_score(file_paths, modules, total_lines, total_edits, weights):
     s_raw = min(total_lines / 50.0, 1.0)
     e_raw = min(total_edits / 5.0, 1.0)
 
+    # C: Correction (model self-fix via revert detection)
+    if revert_count >= 3:
+        c_raw = 1.0
+    elif revert_count >= 1:
+        c_raw = 0.6
+    else:
+        c_raw = 0.0
+
+    # R: Rework (user demanded redo / rejection)
+    r_raw = 0.0
+    if idp and isinstance(idp, dict):
+        if idp.get("mode") == "rework":
+            r_raw = 1.0
+        elif idp.get("rework"):
+            r_raw = 0.8
+
+    # U: User-Rule (user forced a hard constraint)
+    u_raw = 0.0
+    if idp and isinstance(idp, dict):
+        if idp.get("mode") == "user-rule":
+            u_raw = 1.0
+        elif idp.get("user_rule"):
+            u_raw = 0.8
+
     score = (
         f_raw * weights["F"]
         + d_raw * weights["D"]
         + k_raw * weights["K"]
         + s_raw * weights["S"]
         + e_raw * weights["E"]
+        + c_raw * weights.get("C", 2.0)
+        + r_raw * weights.get("R", 2.5)
+        + u_raw * weights.get("U", 2.0)
     )
 
     breakdown = {
@@ -313,6 +349,9 @@ def compute_score(file_paths, modules, total_lines, total_edits, weights):
         "K": round(k_raw * weights["K"], 2),
         "S": round(s_raw * weights["S"], 2),
         "E": round(e_raw * weights["E"], 2),
+        "C": round(c_raw * weights.get("C", 2.0), 2),
+        "R": round(r_raw * weights.get("R", 2.5), 2),
+        "U": round(u_raw * weights.get("U", 2.0), 2),
     }
 
     return round(score, 2), breakdown
@@ -718,56 +757,65 @@ def apply_trace_expiration():
 # ============================================================
 
 def format_trace(file_paths, modules, score, total_lines, total_edits,
-                 correction, idp=None, pipeline_run_id=None):
-    """Format a trace entry with v3 metadata (IDP + validated fields)."""
+                 correction, idp=None, pipeline_run_id=None, breakdown=None):
+    """Format a trace entry focused on learning value for origin-evolve."""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    files_str = ", ".join(file_paths[:20])
-    if len(file_paths) > 20:
-        files_str += ", ... +{} more".format(len(file_paths) - 20)
     modules_str = ", ".join(modules)
 
     mode = "_"
-    request = "_"
-    intent = "_"
     entry_type = "_"
     skills = "[]"
+    error_cause = "_"
+    fix_approach = "_"
+    user_feedback = "_"
+    lesson = "_"
 
     if idp and isinstance(idp, dict):
         mode = str(idp.get("mode") or "_")
-        request = str(idp.get("request") or "_")
-        intent = str(idp.get("intent") or "_")
         entry_type = str(idp.get("type") or "_")
         raw_skills = idp.get("skills", [])
         if isinstance(raw_skills, list) and raw_skills:
             skills = "[{}]".format(", ".join(str(s) for s in raw_skills))
+        error_cause = str(idp.get("error_cause") or "_")
+        fix_approach = str(idp.get("fix_approach") or "_")
+        user_feedback = str(idp.get("user_feedback") or "_")
+        lesson = str(idp.get("lesson") or "_")
 
     validated = "pending-pipeline" if pipeline_run_id else "_"
     run_id_value = pipeline_run_id if pipeline_run_id else "_"
+
+    breakdown_str = "_"
+    if breakdown and isinstance(breakdown, dict):
+        parts = []
+        for dim in ("F", "D", "K", "S", "E", "C", "R", "U"):
+            val = breakdown.get(dim, 0)
+            if val > 0:
+                parts.append("{}={}".format(dim, val))
+        breakdown_str = " ".join(parts) if parts else "_"
 
     return (
         "<!-- TRACE status:pending schema:{} -->\n"
         "timestamp: {}\n"
         "mode: {}\n"
         "type: {}\n"
-        "request: {}\n"
-        "intent: {}\n"
+        "modules: [{}]\n"
+        "skills: {}\n"
+        "score: {}\n"
+        "score_breakdown: {}\n"
         "correction: {}\n"
         "validated: {}\n"
         "pipeline_run_id: {}\n"
-        "modules: [{}]\n"
-        "skills: {}\n"
-        "files_modified: [{}]\n"
-        "file_count: {}\n"
-        "lines_changed: {}\n"
-        "edit_count: {}\n"
-        "score: {}\n"
+        "error_cause: {}\n"
+        "fix_approach: {}\n"
+        "user_feedback: {}\n"
+        "lesson: {}\n"
         "<!-- /TRACE -->\n"
     ).format(
         TRACE_SCHEMA_VERSION,
-        timestamp, mode, entry_type, request, intent,
+        timestamp, mode, entry_type,
+        modules_str, skills, score, breakdown_str,
         correction, validated, run_id_value,
-        modules_str, skills, files_str,
-        len(file_paths), total_lines, total_edits, score,
+        error_cause, fix_approach, user_feedback, lesson,
     )
 
 
@@ -798,14 +846,24 @@ def flush_new_trace(idp):
 
     weights, threshold = load_weights()
     modules = infer_modules(file_paths)
-    score, _ = compute_score(file_paths, modules, total_lines, total_edits, weights)
+    score, breakdown = compute_score(
+        file_paths, modules, total_lines, total_edits, weights,
+        revert_count=revert_count, idp=idp,
+    )
 
-    if score >= threshold:
+    high_value = (
+        breakdown.get("C", 0) > 0
+        or breakdown.get("R", 0) > 0
+        or breakdown.get("U", 0) > 0
+    )
+
+    if score >= threshold or high_value:
         correction = infer_correction(revert_count)
         pipeline_run_id = detect_pipeline_context()
         entry = format_trace(
             file_paths, modules, score, total_lines, total_edits,
             correction, idp=idp, pipeline_run_id=pipeline_run_id,
+            breakdown=breakdown,
         )
         append_trace(entry)
 
@@ -1195,13 +1253,31 @@ def selftest():
         print("FAIL: {}".format(e))
         ok = False
 
+    print("[4b] Score with C/R/U... ", end="")
+    try:
+        score_cru, bd_cru = compute_score(
+            ["test.cs"], ["TestModule"], 10, 3, weights,
+            revert_count=2, idp={"mode": "rework"},
+        )
+        assert bd_cru["C"] > 0, "C dimension should be non-zero with revert"
+        assert bd_cru["R"] > 0, "R dimension should be non-zero with rework mode"
+        print("OK -> {:.2f} (C={}, R={}, U={})".format(
+            score_cru, bd_cru["C"], bd_cru["R"], bd_cru["U"]))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
     print("[5] Format trace... ", end="")
     try:
         entry = format_trace(
             ["test.cs"], ["TestModule"], 5.0, 10, 3, "_",
+            idp={"mode": "rework", "error_cause": "wrong API", "lesson": "use X instead"},
+            breakdown={"F": 0.33, "R": 2.5},
         )
         assert "<!-- TRACE" in entry
         assert "<!-- /TRACE -->" in entry
+        assert "error_cause: wrong API" in entry
+        assert "lesson: use X instead" in entry
         print("OK ({} chars)".format(len(entry)))
     except Exception as e:
         print("FAIL: {}".format(e))
