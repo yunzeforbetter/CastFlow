@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### 路径调整
+- **feat**: `core/scripts/pipeline_merge.py`迁移到`code-pipeline-skill/scripts/pipeline_merge.py`
+
 ### code-pipeline-skill 与执行层（真源 `.castflow/core/`）
 
 - **why（改造原因）**: **功能与模块拆成多波次并行时**，旧编排缺少逐步「给—读—写—交」的合同化收口，易出现 **互相等待、依赖未显式闭合的编排死锁**；通过 Step 调度卡、Handoff / merge / result signal 的明确契约与脚本侧 fail-closed，每步有唯一产物与前进条件，避免无限挂起。

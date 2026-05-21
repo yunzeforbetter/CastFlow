@@ -16,8 +16,8 @@ It is not a generic framework merge primitive.
 Zero external dependencies. Python 3.6+.
 
 Usage:
-    python .claude/scripts/pipeline_merge.py
-    python .claude/scripts/pipeline_merge.py --dry-run
+    python .claude/skills/code-pipeline-skill/scripts/pipeline_merge.py
+    python .claude/skills/code-pipeline-skill/scripts/pipeline_merge.py --dry-run
 """
 
 import argparse
@@ -123,20 +123,31 @@ def split_context_header(content):
     return "".join(header_lines), "".join(lines[body_start:])
 
 
+def find_pipeline_root(start_dir):
+    current = os.path.abspath(start_dir)
+    while True:
+        if os.path.isfile(os.path.join(current, "PIPELINE_CONTEXT.md")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+
+
 def find_project_root():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    candidate = os.path.dirname(os.path.dirname(script_dir))
-
-    if os.path.isfile(os.path.join(candidate, "PIPELINE_CONTEXT.md")):
+    candidate = find_pipeline_root(script_dir)
+    if candidate:
         return candidate
 
     cwd = os.getcwd()
-    if os.path.isfile(os.path.join(cwd, "PIPELINE_CONTEXT.md")):
-        return cwd
+    candidate = find_pipeline_root(cwd)
+    if candidate:
+        return candidate
 
     print("Error: PIPELINE_CONTEXT.md not found.")
-    print("  Searched: {}".format(candidate))
-    print("  Searched: {}".format(cwd))
+    print("  Searched upward from script dir: {}".format(script_dir))
+    print("  Searched upward from cwd: {}".format(os.path.abspath(cwd)))
     sys.exit(1)
 
 

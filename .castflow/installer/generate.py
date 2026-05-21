@@ -33,7 +33,6 @@ CORE_DIR_COPIES = [
     ("core/skills/skill-creator", "skills/skill-creator"),
     ("core/skills/origin-evolve-skill", "skills/origin-evolve-skill"),
     ("core/hooks", "hooks"),
-    ("core/scripts", "scripts"),
 ]
 
 AGENT_TEMPLATE = "core/templates/agents/programmer.template.md"

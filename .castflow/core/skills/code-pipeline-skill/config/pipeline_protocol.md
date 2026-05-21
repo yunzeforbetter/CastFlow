@@ -247,7 +247,7 @@ Step 1 的结论不是提示性说明，而是状态迁移条件。主 agent 在
 
 ### 归并规则
 
-- 默认运行时命令为 `python .claude/scripts/pipeline_merge.py`，它只提取 `PIPELINE_SUMMARY`
+- 默认运行时命令为 `python .claude/skills/code-pipeline-skill/scripts/pipeline_merge.py`；脚本本体位于当前 skill 的 `scripts/pipeline_merge.py`，它只提取 `PIPELINE_SUMMARY`
 - 提取结果回写到 `PIPELINE_CONTEXT.md` 的受控 Step 3 归并块；重复执行时必须替换旧块而不是继续追加
 - Step 4 / Step 5 深读模块实现时，读取 `PIPELINE_DETAIL`
 - 若 Step 3 没有任何可归并产物，则 Step 4 / Step 5 不得继续推进

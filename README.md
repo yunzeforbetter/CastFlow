@@ -115,6 +115,8 @@ CastFlow/
 │   │   │   └── validated-protocol.md      #   接受/拒绝信号判定（T3）
 │   │   ├── skills/                        # 3 个核心 skill（随装架拷贝到 .claude/skills/）
 │   │   │   ├── code-pipeline-skill/       #   多模块协作 9 步工序 + pipeline_protocol
+│   │   │   │   └── scripts/
+│   │   │   │       └── pipeline_merge.py  #     pipeline Step 3 并行输出聚合
 │   │   │   ├── origin-evolve-skill/       #   读 trace、识别模式、生成 Append/Merge/Retire 提议
 │   │   │   └── skill-creator/             #   Skill 生成/迭代/eval/benchmark 全套工具链
 │   │   ├── agents/                        # code-pipeline 调用的 3 个分析型 agent prompt
@@ -128,8 +130,6 @@ CastFlow/
 │   │   │   ├── AUTHORING_GUIDE.md         #   Skill 创作元规范（四份域 README 的共享上游）
 │   │   │   ├── agents/programmer.template.md
 │   │   │   └── skills/programmer.template/   # 模块 skill 四件套模板 + 域 README
-│   │   ├── scripts/
-│   │   │   └── pipeline_merge.py          #   pipeline Step 3 并行输出聚合
 │   │   └── traces/                        # 默认阈值与字段契约（分发到 .claude/traces/）
 │   │       ├── config/
 │   │       │   ├── limits.json            #   compaction 阈值 / 过期天数 / 保护参数
@@ -308,7 +308,7 @@ cd CastFlow && git pull
 | `SKILL_ITERATION.md` | Skill 四文件元规范：各文件职责隔离、Anchors/Related 格式、容量治理阈值、硬性约束清单 |
 | `protocols/idp-protocol.md` | Intent Declaration Protocol 写入规则（T2-EXECUTE 按需） |
 | `protocols/validated-protocol.md` | 用户接受/拒绝信号判定与写入规则（T3-FEEDBACK） |
-| `skills/code-pipeline-skill/` | 多模块协作 9 步工序（复合组件）。含 `SKILL.md`（工作流总览）、`config/pipeline_protocol.md`（含 Step 调度卡）、`config/handoff_protocol.md`、`architecture/*.md`（复杂系统）、`EXAMPLES.md` + `examples/*`、`config/defaults.json` + `config/params.schema.json` |
+| `skills/code-pipeline-skill/` | 多模块协作 9 步工序（复合组件）。含 `SKILL.md`（工作流总览）、`config/pipeline_protocol.md`（含 Step 调度卡）、`config/handoff_protocol.md`、`architecture/*.md`（复杂系统）、`EXAMPLES.md` + `examples/*`、`scripts/pipeline_merge.py`、`config/defaults.json` + `config/params.schema.json` |
 | `skills/origin-evolve-skill/` | 自我进化引擎。读 trace、识别六类模式、生成 Append/Merge/Retire 提议，走用户审批 |
 | `skills/skill-creator/` | Skill 生成与迭代工具链。含 `agents/{analyzer,comparator,grader}.md`、`scripts/` 7 个工具（eval 运行、benchmark 聚合、打包、描述优化等）、`eval-viewer/`、`references/schemas.md` |
 | `agents/requirement-analysis-agent.md` | Pipeline **Step 1 / Step 2**：需求拆分、API 声明、（可选）约束同步与蓝图冻结 |
@@ -319,7 +319,7 @@ cd CastFlow && git pull
 | `templates/AUTHORING_GUIDE.md` | Skill 创作元规范（四份域 README 的共享上游）。包含项目勘察清单、反风格检查、Rubric |
 | `templates/agents/programmer.template.md` | 为功能模块生成专属 programmer agent 时的 prompt 模板 |
 | `templates/skills/programmer.template/` | 模块 skill 四件套模板 + 域 README（最常用，会被分发到 `.claude/templates/`） |
-| `scripts/pipeline_merge.py` | code-pipeline **Step 3** 调用：从各模块 `temp/pipeline-output/*.md` 提取 `PIPELINE_SUMMARY`，写入 `PIPELINE_CONTEXT.md` 内受控归并块（幂等替换）；缺标记或混入 `Parent Summary` 时 fail-closed |
+| `skills/code-pipeline-skill/scripts/pipeline_merge.py` | code-pipeline **Step 3** 调用：从各模块 `temp/pipeline-output/*.md` 提取 `PIPELINE_SUMMARY`，写入 `PIPELINE_CONTEXT.md` 内受控归并块（幂等替换）；缺标记或混入 `Parent Summary` 时 fail-closed |
 | `traces/config/limits.json` | compaction 阈值、过期天数、保护参数的运行时默认值 |
 | `traces/config/hooks.config.json` | Hook 外部化配置：`tracked_extensions`（18 种主流语言）、`excluded_extensions`、`generic_dir_segments`、`module_dir_pattern`。**修改此文件即可适配非 Unity/C# 项目，无需改 Python** |
 | `traces/README.md` | trace 字段契约 + `schema:N` 版本规则 + limits/hooks.config 全字段说明 + Go/React 适配示例 |
