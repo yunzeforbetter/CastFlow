@@ -184,8 +184,8 @@ description: T4-MAINTAIN meta-spec four files SKILL EXAMPLES SKILL_MEMORY ITERAT
 
 ### 检查2：必需的元数据
 
-**仅 SKILL.md 必须有 YAML 元数据**（name + description），其他 3 个文件为 SKILL.md 服务，元数据可选
-
+**仅 SKILL.md 必须有 YAML 元数据**（name + description），其他 3 个文件为 SKILL.md 服务，不需要元数据
+**元数据规则** description描述必须足够精简明确，根据对应skill的作用来编写，占据token维持在300Token以下
 **适用范围说明**：此规则仅约束 Skill 四文件体系。Agent 文件（`.claude/agents/*.md`）、规范文件（SKILL_ITERATION.md 等）、模板文件各有自己的元数据需求，不受此条限制
 
 ### 检查3：禁止内容扫描
