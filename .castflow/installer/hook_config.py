@@ -6,8 +6,8 @@ import os
 TRACE_HOOK_MARKERS = (".claude/hooks/trace-", "run-python.sh trace-")
 
 _PYTHON = "py" if os.name == "nt" else "python3"
-_TRACE_COLLECTOR_COMMAND = "{} .claude/hooks/trace-collector.py".format(_PYTHON)
-_TRACE_FLUSH_COMMAND = "{} .claude/hooks/trace-flush.py".format(_PYTHON)
+_TRACE_COLLECTOR_COMMAND = '{} "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/trace-collector.py"'.format(_PYTHON)
+_TRACE_FLUSH_COMMAND = '{} "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/trace-flush.py"'.format(_PYTHON)
 
 CURSOR_HOOK_ENTRIES = {
     "afterFileEdit": {"command": _TRACE_COLLECTOR_COMMAND},
@@ -16,7 +16,7 @@ CURSOR_HOOK_ENTRIES = {
 
 CLAUDE_HOOK_ENTRIES = {
     "PostToolUse": {
-        "matcher": "Write",
+        "matcher": "Edit|MultiEdit|Write",
         "hooks": [{"type": "command", "command": _TRACE_COLLECTOR_COMMAND}],
     },
     "Stop": {

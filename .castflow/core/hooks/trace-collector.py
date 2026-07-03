@@ -97,6 +97,18 @@ def estimate_lines_changed(event_data):
         if old or new:
             return max(old.count("\n"), new.count("\n"), 1)
 
+        edits = root.get("edits")
+        if isinstance(edits, list) and edits:
+            total = 0
+            for e in edits:
+                if not isinstance(e, dict):
+                    continue
+                e_old = e.get("oldString") or e.get("old_string") or e.get("old_str") or ""
+                e_new = e.get("newString") or e.get("new_string") or e.get("new_str") or ""
+                total += max(e_old.count("\n"), e_new.count("\n"), 1)
+            if total:
+                return total
+
         contents = root.get("contents") or root.get("content") or ""
         if contents and isinstance(contents, str):
             return min(contents.count("\n"), 500)
@@ -115,6 +127,18 @@ def extract_edit_strings(event_data):
         new = root.get("newString") or root.get("new_string") or root.get("new_str") or ""
         if old or new:
             return old, new
+
+        edits = root.get("edits")
+        if isinstance(edits, list) and edits:
+            olds, news = [], []
+            for e in edits:
+                if not isinstance(e, dict):
+                    continue
+                olds.append(e.get("oldString") or e.get("old_string") or e.get("old_str") or "")
+                news.append(e.get("newString") or e.get("new_string") or e.get("new_str") or "")
+            joined_old, joined_new = "\n".join(olds), "\n".join(news)
+            if joined_old or joined_new:
+                return joined_old, joined_new
 
     return "", ""
 

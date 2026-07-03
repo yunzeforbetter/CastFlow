@@ -393,6 +393,49 @@ def read_pending_idp():
     return None
 
 
+def _infer_type_from_structure(file_paths, revert_count):
+    """Structurally infer a task type when the AI supplied no IDP.
+
+    Heuristics (no semantics — never fabricates experience fields):
+      - any revert detected            -> bugfix
+      - every edited file is a test    -> test
+      - otherwise                      -> feature
+    """
+    if revert_count >= 1:
+        return "bugfix"
+
+    if file_paths:
+        test_markers = ("test", "spec", "__tests__", ".test.", ".spec.")
+        all_tests = True
+        for p in file_paths:
+            low = p.lower()
+            if not any(mk in low for mk in test_markers):
+                all_tests = False
+                break
+        if all_tests:
+            return "test"
+
+    return "feature"
+
+
+def apply_idp_fallback(idp, file_paths, revert_count):
+    """Fill a minimal IDP skeleton when the AI declared none.
+
+    Returns the AI-supplied IDP unchanged when present. Otherwise returns a
+    synthetic dict with mode="auto" (distinct from the AI-declared "standard")
+    and a structurally inferred type. Experience fields (error_cause /
+    fix_approach / user_feedback / lesson) are deliberately left absent —
+    only the AI can supply those, and a fallback must never invent them.
+    """
+    if idp and isinstance(idp, dict):
+        return idp
+
+    return {
+        "mode": "auto",
+        "type": _infer_type_from_structure(file_paths, revert_count),
+    }
+
+
 def cleanup_pending_files():
     """Unconditionally delete .pending_idp.json.
 
@@ -846,6 +889,8 @@ def flush_new_trace(idp):
 
     weights, threshold = load_weights()
     modules = infer_modules(file_paths)
+    # Score uses the raw IDP: R/U bonuses must reflect the AI's actual
+    # declaration, never the synthetic fallback (which is mode="auto").
     score, breakdown = compute_score(
         file_paths, modules, total_lines, total_edits, weights,
         revert_count=revert_count, idp=idp,
@@ -860,9 +905,11 @@ def flush_new_trace(idp):
     if score >= threshold or high_value:
         correction = infer_correction(revert_count)
         pipeline_run_id = detect_pipeline_context()
+        # Fallback only affects formatting (mode/type), not the score.
+        idp_for_format = apply_idp_fallback(idp, file_paths, revert_count)
         entry = format_trace(
             file_paths, modules, score, total_lines, total_edits,
-            correction, idp=idp, pipeline_run_id=pipeline_run_id,
+            correction, idp=idp_for_format, pipeline_run_id=pipeline_run_id,
             breakdown=breakdown,
         )
         append_trace(entry)
@@ -1263,6 +1310,25 @@ def selftest():
         assert bd_cru["R"] > 0, "R dimension should be non-zero with rework mode"
         print("OK -> {:.2f} (C={}, R={}, U={})".format(
             score_cru, bd_cru["C"], bd_cru["R"], bd_cru["U"]))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[4c] IDP fallback... ", end="")
+    try:
+        # No AI IDP -> synthetic skeleton, experience fields absent
+        fb = apply_idp_fallback(None, ["Assets/Foo/BarManager.cs"], 0)
+        assert fb["mode"] == "auto", "fallback mode must be 'auto'"
+        assert fb["type"] == "feature", "non-test non-revert -> feature"
+        assert "lesson" not in fb, "fallback must not invent experience fields"
+        fb_bug = apply_idp_fallback(None, ["a.cs"], 2)
+        assert fb_bug["type"] == "bugfix", "revert -> bugfix"
+        fb_test = apply_idp_fallback(None, ["Tests/FooTest.cs"], 0)
+        assert fb_test["type"] == "test", "all-test files -> test"
+        # AI IDP present -> returned unchanged
+        ai = {"mode": "rework", "lesson": "x"}
+        assert apply_idp_fallback(ai, ["a.cs"], 0) is ai, "AI IDP must pass through"
+        print("OK")
     except Exception as e:
         print("FAIL: {}".format(e))
         ok = False

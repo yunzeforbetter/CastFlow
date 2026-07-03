@@ -10,7 +10,7 @@ Every proposal cites 2+ trace entries (by timestamp) sharing one root cause. Sin
 
 Self-check: would the proposal still hold if you removed the cited evidence? If yes, the evidence is incidental and the proposal is unfounded — drop it.
 
-`validated:false` traces are P0 evidence regardless of correction signal. When 3+ such traces share one module with `correction:_`, compare `request` vs `intent` to identify systematic AI misunderstanding.
+`validated:false` traces are P0 evidence regardless of correction signal. When 3+ such traces share one module with `correction:_`, read `error_cause` / `user_feedback` / `lesson` to identify systematic AI misunderstanding.
 
 ---
 
@@ -52,7 +52,7 @@ Retired entries: prepend `[RETIRED]` to the heading. Never delete content; AI co
 
 No proposal may be written without explicit user approval. This includes Append, Merge, Retire, and weight calibration.
 
-Hook-generated trace fields (`timestamp`, `modules`, `files_modified`, `file_count`, `lines_changed`, `edit_count`, `score`, `correction`) are read-only; never modify them when supplementing trace entries (`type`, `skills`, `mode`, `request`, `intent` only).
+Hook-generated trace fields (`timestamp`, `modules`, `score`, `score_breakdown`, `correction`, `pipeline_run_id`) are read-only; never modify them. AI-supplemented fields are written pre-edit via IDP (`.pending_idp.json`): `mode`, `type`, `skills`, `error_cause`, `fix_approach`, `user_feedback`, `lesson`.
 
 CLAUDE.md changes are always proposed as suggestions to the user; never write directly.
 
