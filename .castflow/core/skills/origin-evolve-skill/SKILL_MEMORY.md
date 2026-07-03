@@ -50,9 +50,9 @@ Retired entries: prepend `[RETIRED]` to the heading. Never delete content; AI co
 
 ### Rule 4: User Approval Required for Every Write
 
-No proposal may be written without explicit user approval. This includes Append, Merge, Retire, and weight calibration.
+No proposal may be written without explicit user approval. This includes Append, Merge, and Retire.
 
-Hook-generated trace fields (`timestamp`, `modules`, `score`, `score_breakdown`, `correction`, `pipeline_run_id`) are read-only; never modify them. AI-supplemented fields are written pre-edit via IDP (`.pending_idp.json`): `mode`, `type`, `skills`, `error_cause`, `fix_approach`, `user_feedback`, `lesson`.
+Trace entries (schema:4) are entirely hook-generated and read-only: `timestamp`, `type`, `validated`, `pipeline_run_id`, `memory_snapshots`, plus embedded `<!-- MEMORY -->` subblocks. There are no AI-supplemented fields — the scoring/IDP subsystem was retired. The learning material is the verbatim memory snapshot content; distill rules from it, never fabricate or modify trace fields. (Legacy schema:1-3 entries may still carry retired fields like `score`/`modules`/`correction`/`lesson`; read them if present but do not depend on them.)
 
 CLAUDE.md changes are always proposed as suggestions to the user; never write directly.
 

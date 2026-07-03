@@ -4,7 +4,6 @@
 > **加载时点**：本文档协议 1/2 在 **T1-PREPARE** 加载，协议 3 在 **T2-EXECUTE** 加载。完整时点定义见项目根 `CLAUDE.md`「使用Skill的分层加载」段（唯一权威源）。
 > **关联文档**：
 > - 创建和迭代规范见 [SKILL_ITERATION.md](./SKILL_ITERATION.md)（仅 T4-MAINTAIN 加载）
-> - IDP 写入规则见 [protocols/idp-protocol.md](../protocols/idp-protocol.md)（T2-EXECUTE 按需）
 > - validated 信号规则见 [protocols/validated-protocol.md](../protocols/validated-protocol.md)（仅 T3-FEEDBACK）
 > - pipeline 扩展协议见 [code-pipeline-skill/config/pipeline_protocol.md](./code-pipeline-skill/config/pipeline_protocol.md)（pipeline 期间附加生效）
 
@@ -45,22 +44,22 @@
 
 ## 协议 3：执行模式检测 - P0（T2-EXECUTE）
 
-**定义**：每次代码生成前判断执行模式，决定 IDP 写入时机和探索深度。
+**定义**：每次代码生成前判断执行模式，决定探索深度与是否需要用户确认。
 
 | 模式 | 触发条件 | 行为 |
 |------|---------|------|
-| 信息不足 | 需求模糊、影响范围不明 | 先收集信息，不写 IDP，不写代码 |
-| 紧急 | 用户要求立刻修复、时间紧迫 | 先写代码，完成后补写回溯 IDP（`retrospective: true`） |
-| 高精度 | 要求一次性正确、跨多模块、高风险 | 深度探索 + 风险声明 + 用户确认后再写 IDP 和代码 |
-| 标准 | 其他情况 | 写 IDP -> 写代码 |
+| 信息不足 | 需求模糊、影响范围不明 | 先收集信息，不写代码 |
+| 紧急 | 用户要求立刻修复、时间紧迫 | 先写代码，事后简述 |
+| 高精度 | 要求一次性正确、跨多模块、高风险 | 深度探索 + 风险声明 + 用户确认后再写代码 |
+| 标准 | 其他情况 | 探索 -> 写代码 |
 
 **检查清单**：
 - [ ] 是否判断了模式？
 - [ ] 信息不足时是否先收集而非直接写代码？
 - [ ] 高精度模式是否等待用户确认？
 
-模式判定后，按 IDP 写入时机加载 [idp-protocol.md](../protocols/idp-protocol.md) 完成 `.pending_idp.json` 写入。
+> 经验采集不再靠手写 IDP：命中返工/纠正/定规矩场景时正常写 auto-memory（`feedback` 类型），hook 自动快照进 trace。IDP（`.pending_idp.json`）与评分机制已退役。
 
 ---
 
-*GLOBAL_SKILL_MEMORY | 核心运行时协议 1-3 | IDP/validated 协议按需加载*
+*GLOBAL_SKILL_MEMORY | 核心运行时协议 1-3 | validated 协议按需加载*
