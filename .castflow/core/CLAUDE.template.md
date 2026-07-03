@@ -72,7 +72,7 @@ title: Project Rules
 ### T2-EXECUTE 行为清单
 
 - [ ] 按 `GLOBAL_SKILL_MEMORY.md` 协议 3 判定执行模式（信息不足/紧急/高精度/标准）
-- [ ] 若需写 IDP，Read `protocols/idp-protocol.md` 并按格式写入 `.pending_idp.json`
+- [ ] 命中「IDP 经验采集」触发条件时，本回合结束前必须写 `.pending_idp.json`（见下节硬规则）；标准开发无需写，hook 自动兜底 mode/type
 
 ### T3-FEEDBACK 行为清单
 
@@ -82,6 +82,24 @@ title: Project Rules
 
 - [ ] Read `SKILL_ITERATION.md`（Skill 文件元规范）
 - [ ] Read 目标 Skill 的 `ITERATION_GUIDE.md`
+
+---
+
+## IDP 经验采集（P1）— 返工/拒绝/纠正时必写
+
+**问题背景**：trace 富字段（`error_cause`/`fix_approach`/`lesson`/`user_feedback`）只有 AI 知道，hook 推不出。漏写则自进化只剩空骨架。标准开发的 `mode`/`type` 由 hook 兜底，无需 AI 干预。
+
+**触发条件**（命中任一，本回合结束前必须已写 `.claude/traces/.pending_idp.json`）：
+- 用户否定上次结果并要求重做（"不行"/"重写"/"错了"/"再来"）
+- 用户下达硬性约束（"必须用 X"/"禁止 Y"/"以后都这样"）
+- 你自我推翻了刚写错的代码（revert）
+
+**必填字段**：`mode`（`rework` 或 `user-rule`）+ `error_cause` + `fix_approach` + `lesson`；有用户原话则 `user_feedback` 摘录关键部分。格式与取值见 `protocols/idp-protocol.md`。
+
+**检查清单**：
+- [ ] 命中触发却没写 IDP = 漏采，视为本回合未完成
+- [ ] `lesson` 是否具体可复用（不是"注意检查"而是"X 场景下必须用 Y"）？
+- [ ] 只写触发场景；纯问答、只读、标准开发不写
 
 ---
 
