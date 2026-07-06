@@ -19,7 +19,7 @@ description: T4-MAINTAIN meta-spec four files SKILL EXAMPLES SKILL_MEMORY ITERAT
 **何时不需要阅读**（常见误用，对照其他时点）：
 - 日常调用某个 Skill 处理代码任务 → 目标 Skill 的 `SKILL.md` 由宿主自动注入，不需主动读本文档
 - 准备生成代码（T1-PREPARE）→ 读 `GLOBAL_SKILL_MEMORY.md` 协议 1/2 + 该 Skill 的 SKILL_MEMORY.md
-- 代码生成中决策 IDP 写入（T2-EXECUTE）→ 读 `GLOBAL_SKILL_MEMORY.md` 协议 3 + 按需 `protocols/idp-protocol.md`
+- 代码生成中决策执行模式（T2-EXECUTE）→ 读 `GLOBAL_SKILL_MEMORY.md` 协议 3
 - 拆解需求或编排工序 → 读 `code-pipeline-skill`
 - 用户反馈接受/拒绝（T3-FEEDBACK）→ 读 `protocols/validated-protocol.md`
 
@@ -30,7 +30,6 @@ description: T4-MAINTAIN meta-spec four files SKILL EXAMPLES SKILL_MEMORY ITERAT
 | 本文档（SKILL_ITERATION.md）| Skill 自身的"长什么样" | 元规范，T4-MAINTAIN 加载 |
 | 项目 CLAUDE.md | 项目级规则 + 时点定义（唯一权威源） | 规定本文档的加载时点 = T4-MAINTAIN |
 | GLOBAL_SKILL_MEMORY.md | Skill 调用时的运行时协议（API 验证、约束对齐、执行模式） | 互不重叠 |
-| protocols/idp-protocol.md | IDP 写入规则 | 互不重叠 |
 | protocols/validated-protocol.md | 用户反馈信号写入规则 | 互不重叠 |
 | 各 Skill 的 SKILL_MEMORY.md | 该 Skill 业务领域的硬性规则 | 本文档规定其格式，CLAUDE.md 规定其加载时点 |
 | 各 Skill 的 ITERATION_GUIDE.md | 该 Skill 自身的演进规则 | 本文档规定其格式，CLAUDE.md 规定其加载时点（T4-MAINTAIN） |
@@ -67,11 +66,11 @@ description: T4-MAINTAIN meta-spec four files SKILL EXAMPLES SKILL_MEMORY ITERAT
 
 ### 必读资料栈（创建与冷启动统一）
 
-**适用**：凡在 **`.claude/skills/<name>/`** 下**新建**或**按域模板定稿** Skill 的正文，包括但不限于——CastFlow **冷启动 Phase 5**、**日常**「为某模块/职责新建 skill」、**skill-creator** 驱动下的创作与迭代。**同一套阅读要求**，不重复写在 bootstrap-skill 等编排文档中。
+**适用**：凡在 **`.skillmanager/.skills/<name>/`** 下**新建**或**按域模板定稿** Skill 的正文，包括但不限于——CastFlow **冷启动 Phase 5**、**日常**「为某模块/职责新建 skill」、**skill-creator** 驱动下的创作与迭代。**禁止**在 `.claude/skills/`、`.cursor/skills/`、`.agents/skills/` 等镜像目录写入源文件。**同一套阅读要求**，不重复写在 bootstrap-skill 等编排文档中。
 
 | 资料 | 作用 | 路径约定 |
 |------|------|----------|
-| **本文件** | 四文件制、字数、禁止项、职责边界 | `.claude/skills/SKILL_ITERATION.md` |
+| **本文件** | 四文件制、字数、禁止项、职责边界 | `.claude/standard/SKILL_ITERATION.md` |
 | **`AUTHORING_GUIDE.md`** | 写作元规范、与四文件如何配合 | `.claude/templates/AUTHORING_GUIDE.md` |
 | **域 README** | 该域（架构/调试/模块等）的约定与禁区 | 与所用模板**同目录**的 `README.md`。**禁止**把**项目根** `README.md` 当作「域 README」 |
 | **`.template.md` 结构** | 定稿时对照骨架与占位（若该域提供模板） | 同目录下 `SKILL.template.md` 等；定稿文件名为**去掉** `.template` 后的 `SKILL.md` 等，具体以[下文文件结构标准](#skill文件结构标准)为准 |
@@ -184,8 +183,8 @@ description: T4-MAINTAIN meta-spec four files SKILL EXAMPLES SKILL_MEMORY ITERAT
 
 ### 检查2：必需的元数据
 
-**仅 SKILL.md 必须有 YAML 元数据**（name + description），其他 3 个文件为 SKILL.md 服务，不需要元数据
-**元数据规则** description描述必须足够精简明确，根据对应skill的作用来编写，占据token维持在300Token以下
+**仅 SKILL.md 必须有 YAML 元数据**（name + description），其他 3 个文件为 SKILL.md 服务，元数据可选
+
 **适用范围说明**：此规则仅约束 Skill 四文件体系。Agent 文件（`.claude/agents/*.md`）、规范文件（SKILL_ITERATION.md 等）、模板文件各有自己的元数据需求，不受此条限制
 
 ### 检查3：禁止内容扫描

@@ -32,7 +32,7 @@ AI 助手进入大型项目常见的四种失控：
 | 架构遗忘 | 生成的代码风格不一致、越过分层、绕过 Manager | `architect-skill` 从真实代码提取分层规则，T1-PREPARE 时点强制加载 |
 | API 幻觉 | 调用了不存在的方法、方法签名错乱、编译不通过 | P0 规则：EXAMPLES.md → 用户指导 → Grep 至少两次真实使用，均未命中则 TODO |
 | 知识碎片化 | 规则散落在口头约定、PR 评论、隐藏文档里，跨会话无法共享 | 四件套 Skill（SKILL/EXAMPLES/SKILL_MEMORY/ITERATION_GUIDE），文件即知识 |
-| 经验不积累 | 上一次犯过的错，下一次照犯不误 | Hook 零 token 采集编辑 trace → 八维评分筛选（含修正/返工/用户规则高权重维度）→ `origin-evolve-skill` 生成规则提议 → 用户审批写入 Skill |
+| 经验不积累 | 上一次犯过的错，下一次照犯不误 | Hook 零 token 快照你写的 auto-memory（`feedback`/`project`/`reference`）→ trace 成为 memory 账本 → `origin-evolve-skill` 蒸馏为规则提议 → 用户审批写入 Skill |
 
 它是一套 **把项目知识变成可执行、可验证、可迭代的代码资产** 的AI工程框架。
 
@@ -58,21 +58,15 @@ Skill 内容不会在每次调用时全量入上下文。按 **T1-PREPARE / T2-E
 
 `code_pipeline 实现 X` 触发 **9 步**标准流水：**Step 1** 需求拆分与 API 声明（`requirement-analysis-agent`）→ **Step 2** 约束同步与 Handoff 冻结（同 agent，按需）→ **Step 3** 各模块实现（**模块配对执行单元**：`programmer-<module>-agent` + 同模块 skill）→ **Step 4** 依赖闭合（`integration-matching-agent`）→ **Step 5** 覆盖验收与 verdict（`pipeline-verify-agent`）→ **Step 6** 补全 `CompletableBlocks`（按需）→ **Step 7/8** 调试与性能（可选）→ **Step 9** 收尾与 `pipeline_run_id` 清理。编排合同与 Step 调度卡见装架产物 `skills/code-pipeline-skill/config/pipeline_protocol.md`；AI 入口见同目录 `SKILL.md`。
 
-### 4. 自我进化：零 token 采集 + 八维评分 + 经验记录 + 人在回路
+### 4. 自我进化：零 token 采集 + memory 快照账本 + 人在回路
 
-Hook 每次编辑时自动记录 `path|lines|edits|flags`（修正检测用 `SequenceMatcher.ratio()` 对比前后编辑，相似度 > 60% 打 R 标）。会话结束跑八维评分：
+经验原料的**唯一**捕获路径是 **auto-memory 快照**（schema:4）。你在返工、被纠正、被下硬约束时本来就会写 auto-memory —— trace-collector 的 Hook 在你写入 `~/.claude/projects/<slug>/memory/` 时自动把这些 memory 全文快照进 `trace.md`。评分、buffer、IDP 三套子系统已**全部退役**：Hook 不再解析代码编辑、不再打分、不再要求 AI 手填经验字段。
 
-```
-score = F·1.0 + D·0.5 + K·1.5 + S·0.5 + E·0.8 + C·2.0 + R·2.5 + U·2.0
-```
+- `feedback` / `project` / `reference` 三类 memory 被快照；`user` 类型（个人画像）被过滤，不进 git
+- 纯代码会话（没写任何 memory）不产生任何 trace 条目——账本只记"学到了什么"，不记"改了多少行"
+- 蒸馏推迟到 `origin evolve` 统一做：`origin-evolve-skill` 读 trace 里的 `<!-- MEMORY -->` 快照、识别模式、生成 Append/Merge/Retire 提议，**用户审批后才写入** Skill
 
-前 5 维（F/D/K/S/E）**衡量改动规模**
-后 3 维（C/R/U）衡量**学习价值**：
-
-
-**高价值绕过**：C/R/U 任一非零时，无论总分是否达标都写入 trace——因为"小改动但犯了错"往往比"大改动一帆风顺"更值得记录。
-
-Trace 输出聚焦经验信息：模块、评分、错误原因、修复方案、用户反馈、经验总结。`origin-evolve-skill` 读 trace、识别模式、生成 Append/Merge/Retire 提议，**用户审批后才写入** Skill。
+一次真实纠正 → 一条 `feedback` memory → 一次快照 → 一条规则提议，全程 AI 零额外动作。
 
 ---
 
@@ -111,7 +105,6 @@ CastFlow/
 │   │   ├── GLOBAL_SKILL_MEMORY.md         #   跨 skill 运行时协议 1/2/3
 │   │   ├── SKILL_ITERATION.md             #   Skill 四文件元规范 + Anchors 格式 + 容量治理
 │   │   ├── protocols/
-│   │   │   ├── idp-protocol.md            #   Intent Declaration Protocol（T2 按需）
 │   │   │   └── validated-protocol.md      #   接受/拒绝信号判定（T3）
 │   │   ├── skills/                        # 3 个核心 skill（随装架拷贝到 .claude/skills/）
 │   │   │   ├── code-pipeline-skill/       #   多模块协作 9 步工序 + pipeline_protocol
@@ -124,8 +117,8 @@ CastFlow/
 │   │   │   ├── integration-matching-agent.md
 │   │   │   └── pipeline-verify-agent.md
 │   │   ├── hooks/                         # 生产 Hook 脚本（跨平台）
-│   │   │   ├── trace-collector.py         #   编辑事件采集 + 自我修正检测（LRU 50 文件快照）
-│   │   │   └── trace-flush.py             #   会话结束 → 五维评分 → trace.md + 四级 compaction
+│   │   │   ├── trace-collector.py         #   auto-memory 写入采集（命中 memory 目录即全文快照，user 类型过滤）
+│   │   │   └── trace-flush.py             #   会话结束 → 有快照才写 trace.md + 三级龄期 compaction
 │   │   ├── templates/                     # 装架后供 skill-creator 使用的创作资产
 │   │   │   ├── AUTHORING_GUIDE.md         #   Skill 创作元规范（四份域 README 的共享上游）
 │   │   │   ├── agents/programmer.template.md
@@ -133,8 +126,8 @@ CastFlow/
 │   │   └── traces/                        # 默认阈值与字段契约（分发到 .claude/traces/）
 │   │       ├── config/
 │   │       │   ├── limits.json            #   compaction 阈值 / 过期天数 / 保护参数
-│   │       │   └── hooks.config.json      #   追踪扩展名 / 通用目录段 / 模块推断正则（跨语言适配入口）
-│   │       └── README.md                  #   trace 字段契约 + limits / hooks.config 说明
+│   │       │   └── hooks.config.json      #   memory 目录匹配正则（适配 autoMemoryDirectory 重定向）
+│   │       └── README.md                  #   schema:4 字段契约 + limits / hooks.config 说明
 │   │
 │   └── bootstrap-assets/                  # 仅在冷启动期间使用的资产（不进 .claude/）
 │       └── skill-templates/               #   architect / debug / profiler 的四件套模板 + 域 README
@@ -142,8 +135,8 @@ CastFlow/
 │           ├── debug.template/
 │           └── profiler.template/
 │
-└── test/                                  # 框架自身回归测试（不被 bootstrap 分发，176+ tests）
-    ├── hooks/                             # 134 tests：评分、compaction、100 天 / 365 天模拟
+└── test/                                  # 框架自身回归测试（不被 bootstrap 分发，149 tests）
+    ├── hooks/                             # 107 tests：memory 快照采集、compaction、365 天生产模拟（共享 _trace_harness）
     ├── bootstrap/                         # 42 tests：installer 包单元测试
     └── origin-evolve/                     # ~7000 次断言：origin-evolve 规范暴力验证
 ```
@@ -164,11 +157,11 @@ CastFlow/
 │   │   ├── debug-skill/                   # 【可选，Phase 2 勾选才生成】
 │   │   ├── profiler-skill/                # 【可选，Phase 2 勾选才生成】
 │   │   └── programmer-<模块>-skill/       # 【按需生成】
-│   ├── protocols/                         # idp / validated 两份按需协议
+│   ├── protocols/                         # validated 单份 T3 协议
 │   ├── agents/                            # code-pipeline 调用的 3 个分析 agent
 │   ├── hooks/                             # trace-collector.py + trace-flush.py
 │   ├── templates/                         # AUTHORING_GUIDE + programmer.template + agent 模板
-│   ├── traces/                            # trace.md / weights.json / config/limits.json / config/hooks.config.json
+│   ├── traces/                            # trace.md（memory 账本）/ config/limits.json / config/hooks.config.json
 │   ├── rules/                             # origin-evolve 生成的跨模块规则
 │   └── settings.json                      # Claude Code hook 配置（增量合并）
 ├── .cursor/
@@ -238,25 +231,24 @@ code_pipeline 实现用户交易系统
 
 ### 步骤 5 — 自主进化（零干预采集，人在回路审批）
 
-一周后，`trace.md` 累积了 30 多条 pending 条目，其中 5 条含 `correction:auto:major` 标记（Hook 自动检测到的 AI 反复修正）。新会话打开时，`evolve-reminder` 规则静默检查并提示：
+一周里你被纠正过几次，每次都顺手写了一条 `feedback` auto-memory。Hook 已把它们快照进 `trace.md`。新会话打开时，`evolve-reminder` 规则静默检查并提示：
 
 ```
-检测到 5 条 pending 条目含修正信号，建议运行: origin evolve
+检测到 8 条 pending 条目（其中 5 条含 feedback 快照），建议运行: origin evolve
 ```
 
 用户输入 `origin evolve`：
 
-1. 读 trace，`validated:false` P0、修正条目 P1/P2 排序
-2. 识别六类模式（修正聚簇 / 模块热点 / 复杂度集中 / 跨 skill 锚点重叠 / 知识缺口 / IDP 缺失）
-3. 生成提议：
+1. 读 trace，只保留 `pending`，排除尚未定案的 `validated:pending-pipeline` 候选
+2. 识别模式：`feedback` 快照本身就是用户给的显式规则（单条即足以成案），同一 skill/主题的多条快照合并为一条连贯规则
+3. 生成提议（写入前 grep 校验快照声明是否仍与当前代码一致）：
    - **Append** 一条 `programmer-xxx-skill/SKILL_MEMORY.md` 规则：*批量升级必须复用 `xxxx`，禁止直接调 `xx`*，Anchors = `[class:xx, method:xxx]`
    - **Retire** 一条旧规则（grep 验证其 Anchors 在代码中已不存在）
    - **Merge** 两条锚点 Jaccard ≥ 0.5 的重复规则
 4. 用户逐个审批（可拒绝，拒绝会记录 `EVOLVE_REJECTION` 避免重复提议）
-5. 写入，原 trace 条目替换为一行 `<!-- PROCESSED ts:... entries:N proposals:M -->`
-6. 可选：对比有效/无效 trace 的 F/D/K/S/E 分布，单维度权重微调 5-10% 写入 `weights.json`
+5. 写入 `.skillmanager/.skills/`，原 trace 条目替换为一行 `<!-- PROCESSED ts:... entries:N proposals:M -->`
 
-下次会话：新规则 + 校准后的评分模型同时生效。AI 不再重复犯这一类错。
+下次会话：新规则生效，AI 不再重复犯这一类错。
 
 ### 步骤 6 — 框架升级
 
@@ -306,23 +298,22 @@ cd CastFlow && git pull
 | `CLAUDE.template.md` | 项目根 `CLAUDE.md` 的框架段模板。**时点定义（T1-T4）的唯一权威源** |
 | `GLOBAL_SKILL_MEMORY.md` | 跨 skill 运行时协议：协议 1（API 物理验证）、协议 2（学习后约束对齐）、协议 3（执行模式检测） |
 | `SKILL_ITERATION.md` | Skill 四文件元规范：各文件职责隔离、Anchors/Related 格式、容量治理阈值、硬性约束清单 |
-| `protocols/idp-protocol.md` | Intent Declaration Protocol 写入规则（T2-EXECUTE 按需） |
 | `protocols/validated-protocol.md` | 用户接受/拒绝信号判定与写入规则（T3-FEEDBACK） |
 | `skills/code-pipeline-skill/` | 多模块协作 9 步工序（复合组件）。含 `SKILL.md`（工作流总览）、`config/pipeline_protocol.md`（含 Step 调度卡）、`config/handoff_protocol.md`、`architecture/*.md`（复杂系统）、`EXAMPLES.md` + `examples/*`、`scripts/pipeline_merge.py`、`config/defaults.json` + `config/params.schema.json` |
-| `skills/origin-evolve-skill/` | 自我进化引擎。读 trace、识别六类模式、生成 Append/Merge/Retire 提议，走用户审批 |
+| `skills/origin-evolve-skill/` | 自我进化引擎。读 trace 里的 memory 快照、蒸馏为规则、生成 Append/Merge/Retire 提议，走用户审批 |
 | `skills/skill-creator/` | Skill 生成与迭代工具链。含 `agents/{analyzer,comparator,grader}.md`、`scripts/` 7 个工具（eval 运行、benchmark 聚合、打包、描述优化等）、`eval-viewer/`、`references/schemas.md` |
 | `agents/requirement-analysis-agent.md` | Pipeline **Step 1 / Step 2**：需求拆分、API 声明、（可选）约束同步与蓝图冻结 |
 | `agents/integration-matching-agent.md` | Pipeline **Step 4**：依赖闭合验证（Dependency Closure Report） |
 | `agents/pipeline-verify-agent.md` | Pipeline **Step 5**：Done Criteria 与 Module/Global Verdict、result signal |
-| `hooks/trace-collector.py` | 每次文件编辑被调用。记录路径/行数/编辑次数；保存 `new_string` 快照（LRU 50）；用 `SequenceMatcher.ratio()` 检测 AI 自我修正标记 `R`；`tracked_extensions` / `excluded_extensions` 从 `traces/config/hooks.config.json` 加载 |
-| `hooks/trace-flush.py` | 会话结束被调用。读 buffer → 八维评分 F/D/K/S/E/C/R/U → 达标或高价值绕过写入 `trace.md`（含经验字段：error_cause/fix_approach/user_feedback/lesson）→ 四级 compaction → validated 条目受保护。含 `--selftest` 子命令 |
+| `hooks/trace-collector.py` | PostToolUse(Write/Edit) 被调用。只采集 auto-memory 写入：命中 `~/.claude/projects/<slug>/memory/` 时读全文、过滤 `user` 类型、按 slug 存入 `.trace_memory_snapshots`（LRU 上限）；`memory_dir_pattern` 从 `traces/config/hooks.config.json` 加载 |
+| `hooks/trace-flush.py` | 会话结束被调用。读 `.trace_memory_snapshots` → 有快照才写入 `trace.md`（`<!-- MEMORY -->` 子块嵌入，schema:4）→ 三级龄期 compaction → 经验资产受保护。含 `--selftest` 子命令 |
 | `templates/AUTHORING_GUIDE.md` | Skill 创作元规范（四份域 README 的共享上游）。包含项目勘察清单、反风格检查、Rubric |
 | `templates/agents/programmer.template.md` | 为功能模块生成专属 programmer agent 时的 prompt 模板 |
 | `templates/skills/programmer.template/` | 模块 skill 四件套模板 + 域 README（最常用，会被分发到 `.claude/templates/`） |
 | `skills/code-pipeline-skill/scripts/pipeline_merge.py` | code-pipeline **Step 3** 调用：从各模块 `temp/pipeline-output/*.md` 提取 `PIPELINE_SUMMARY`，写入 `PIPELINE_CONTEXT.md` 内受控归并块（幂等替换）；缺标记或混入 `Parent Summary` 时 fail-closed |
 | `traces/config/limits.json` | compaction 阈值、过期天数、保护参数的运行时默认值 |
-| `traces/config/hooks.config.json` | Hook 外部化配置：`tracked_extensions`（18 种主流语言）、`excluded_extensions`、`generic_dir_segments`、`module_dir_pattern`。**修改此文件即可适配非 Unity/C# 项目，无需改 Python** |
-| `traces/README.md` | trace 字段契约 + `schema:N` 版本规则 + limits/hooks.config 全字段说明 + Go/React 适配示例 |
+| `traces/config/hooks.config.json` | Hook 外部化配置：`memory_dir_pattern`（识别 auto-memory 目录的正则）。**仅在 `autoMemoryDirectory` 被重定向到非标准路径时才需修改** |
+| `traces/README.md` | schema:4 字段契约 + `<!-- MEMORY -->` 子块格式 + limits/hooks.config 全字段说明 |
 
 ### `.castflow/bootstrap-assets/` — 仅冷启动使用
 
@@ -332,9 +323,9 @@ cd CastFlow && git pull
 
 | 文件 | 覆盖 | 规模 |
 |------|------|------|
+| `hooks/_trace_harness.py` | 共享测试基座：`make_trace_block` / `TraceTestBase` / hyphen-module 导入（被下列 hook 测试复用） | — |
 | `hooks/test_evolution.py` | collector 采集、buffer 格式、flush 评分、compaction 四级、validated 保护、审计行过期、空行清理 | 84 tests |
-| `hooks/test_100day_simulation.py` | 100 天持续 append+compact 有界性、模块多样性 | 27 tests |
-| `hooks/test_365day_simulation.py` | 365 天生产模拟：工作日/周末、季度漂移、混合会话、知识库生命周期 | 23 tests |
+| `hooks/test_365day_simulation.py` | 365 天生产模拟：工作日/周末、季度漂移、混合会话、知识库生命周期、有界压缩、模块多样性 | 23 tests |
 | `bootstrap/test_bootstrap.py` | installer 包：占位符替换、strict 模式、CLAUDE.md 三策略、hook config 幂等合并、BackupSession、LRU 轮换 | 42 tests |
 | `origin-evolve/verify_redesign.py` | origin-evolve 规范确定性部分暴力验证：诊断计数、归因树、Append/Merge/Retire、Jaccard 边界、容量策略 | ~7000 次断言 |
 
@@ -347,7 +338,7 @@ cd CastFlow && git pull
 | 时点 | 触发 | AI 主动读什么 |
 |------|------|--------------|
 | **T1-PREPARE** | 写代码前 | `GLOBAL_SKILL_MEMORY.md` 协议 1/2 + 目标 skill 的 `SKILL_MEMORY.md` + 按需 `EXAMPLES.md` 章节 |
-| **T2-EXECUTE** | 代码生成中 | `GLOBAL_SKILL_MEMORY.md` 协议 3 + 按需 `protocols/idp-protocol.md` |
+| **T2-EXECUTE** | 代码生成中 | `GLOBAL_SKILL_MEMORY.md` 协议 3（探索深度判定） |
 | **T3-FEEDBACK** | 用户反馈 | `protocols/validated-protocol.md` |
 | **T4-MAINTAIN** | 创建/修改 skill 结构 | `SKILL_ITERATION.md` + 目标 skill 的 `ITERATION_GUIDE.md` |
 
@@ -357,100 +348,92 @@ cd CastFlow && git pull
 
 ## 自我进化详解
 
-### 两层数据采集（Hook 零 token + AI 经验填充）
+### 数据采集（Hook 零 token，只快照 auto-memory）
 
 ```
-编辑文件 → trace-collector 记录 path|lines|edits|flags → buffer
-会话结束 → trace-flush 读 buffer → 八维评分 → 达标或高价值绕过写 trace.md
-AI (IDP) → 填充经验字段：error_cause / fix_approach / user_feedback / lesson
+模型写 auto-memory (~/.claude/projects/<slug>/memory/*.md)
+   │  PostToolUse: Write/Edit/MultiEdit
+   ▼
+trace-collector：命中 memory 目录 → 读全文 → type==user 过滤 → 按 slug 存入 .trace_memory_snapshots
+   │  Stop
+   ▼
+trace-flush：本会话有快照才写 trace.md（纯代码会话不产生条目）；每份快照嵌为 <!-- MEMORY --> 子块
 ```
 
-| 平台 | 配置文件 | 编辑事件 | 结束事件 |
+**代码编辑不再采集、不再打分。** 采集的唯一对象是 auto-memory 写入，`user` 类型（个人画像）被过滤不进 git。
+
+| 平台 | 配置文件 | 采集事件 | 结束事件 |
 |------|---------|---------|---------|
 | Cursor | `.cursor/hooks.json` | `afterFileEdit` | `stop` |
-| Claude Code | `.claude/settings.json` | `PostToolUse(Write)` | `Stop` |
+| Claude Code | `.claude/settings.json` | `PostToolUse(Write/Edit/MultiEdit)` | `Stop` |
 
-### 八维评分模型
-
-```
-score = F·1.0 + D·0.5 + K·1.5 + S·0.5 + E·0.8 + C·2.0 + R·2.5 + U·2.0    准入 score ≥ 1.5 或 C/R/U 非零
-```
-
-| 维度 | 含义 | 计算 | 权重 | 价值 |
-|------|------|------|------|------|
-| F — File Count | 修改文件数 | `min(files/3, 1.0)` | 1.0 | 多文件 = 更值得记录 |
-| D — Module Spread | 模块分散度 | `min(modules/2, 1.0)` | 0.5 | 跨模块 = 架构决策 |
-| K — Critical Path | 关键路径等级 | 接口 1.0 / 实现 0.6 / 基础 0.3 | 1.5 | 架构影响力梯度 |
-| S — Change Scale | 改动规模 | `min(lines/50, 1.0)` | 0.5 | 大改更可能有价值 |
-| E — Edit Intensity | 编辑密度 | `min(edits/5, 1.0)` | 0.8 | 反复修改 = 困难迭代 |
-| C — Correction | 自我修正 | revert≥3→1.0, ≥1→0.6 | 2.0 | 模型犯错并改正 = 高学习价值 |
-| R — Rework | 用户返工 | mode=rework→1.0 | 2.5 | 用户拒绝 = 最高学习价值 |
-| U — User-Rule | 用户规则 | mode=user-rule→1.0 | 2.0 | 强制约束 = 必须记住 |
-
-**高价值绕过**：C/R/U 任一非零直接写入 trace，不受阈值限制。确保"小改动大教训"不被丢弃。
-
-### Trace 条目结构
+### Trace 条目结构（schema:4）
 
 ```
-<!-- TRACE status:pending schema:2 -->
-timestamp: 2026-05-12T12:58:55Z
-mode: rework
-type: bugfix
-modules: [Building]
-skills: [programmer-ui-skill]
-score: 4.84
-score_breakdown: F=0.33 D=0.25 S=0.08 E=0.48 C=1.2 R=2.5
-correction: auto:minor
+<!-- TRACE status:pending schema:4 -->
+timestamp: 2026-07-03T13:00:00Z
+type: feedback
 validated: _
 pipeline_run_id: _
-error_cause: ObservableList.Add always appends, used it for ordered insert
-fix_approach: Changed to Insert(index, item) with bounds check
-user_feedback: 不行，列表顺序不对，必须插入到指定位置
-lesson: ObservableList ordered insert must use Insert(index) not Add()
+memory_snapshots: 1
+<!-- MEMORY slug:observablelist-ordered-insert type:feedback -->
+description: ObservableList 有序插入必须用 Insert 不能用 Add
+---
+ObservableList 有序插入必须用 Insert(index) 不能用 Add()。
+Why: Add 永远追加到末尾，列表顺序会错。
+How to apply: 需要按指定位置插入时用 Insert(index, item) 并做边界检查。
+<!-- /MEMORY -->
 <!-- /TRACE -->
 ```
 
-`status`：`pending` → `processed` / `expired` / `invalid`
-`validated`：`_` / `true` / `false`（P0） / `pending-pipeline` / `invalid`
-`correction`：`_` / `auto:minor` / `auto:major`
+| 字段 | 写入方 | 含义 |
+|------|--------|------|
+| `status` | hook 写 `pending`，evolve 改其他 | `pending` → `processed` / `expired` / `invalid` |
+| `type` | hook | 快照主导类型（`feedback` > `project` > `reference`） |
+| `validated` | hook | `_` / `true` / `false` / `pending-pipeline` / `invalid` |
+| `pipeline_run_id` | hook | code-pipeline 运行标记（可选） |
+| `memory_snapshots` | hook | 嵌入的 MEMORY 子块数量 |
 
-### 四级 Compaction
+每个 MEMORY 子块是 memory 文件的逐字副本（超 8KB 截断，标 `truncated:1`）。旧 schema:1-3 条目可能仍带已退役字段（`score`/`modules`/`correction`/`lesson` 等），origin-evolve 读到不报错但不依赖，随 compaction 龄期自然淘汰。
+
+### 三级龄期 Compaction
+
+评分退役后，压缩改为纯龄期驱动。带 memory 快照或 `validated:true` 的**经验资产条目永不自动删除**，只有纯骨架条目会被淘汰。
 
 | 级 | 触发 | 策略 | 保护 |
 |----|------|------|------|
-| L0 | 每次 flush | 清理过期 PROCESSED/COMPACTED 审计行 | — |
-| L1 | entries > `compact_max_entries` | 移除超过 `entry_expire_days` 的低分 | `validated` 条目 |
-| L2 | L1 后仍超标 | 移除 `age > level2_age_days` 且 `score < level2_score_threshold` | `validated` 条目 |
-| L3 | L2 后仍超标 | 移除 `score < level3_score_threshold` | 每模块保留 top N（`keep_top_n_per_module`） |
+| L0 | 每次 flush | 清理过期 PROCESSED 审计行 | — |
+| L1 | — | 移除 `validated:invalid` 骨架条目 | 经验资产 |
+| L2 | entries/size 超阈值 | 移除 `age > level2_age_days` 的非资产骨架 | 经验资产 + in-flight pipeline |
+| L3 | L2 后仍超标 | 移除 `age > level3_age_days` 的溢出条目 | 始终保留最近 `keep_recent_n`（默认 20）条 |
 
-`validated` 条目（`true` / `false` / `pending-pipeline`）携带用户反馈信号，**L1-L3 全部受保护**。
+阈值见 `traces/config/limits.json`：`compact_max_entries`(80) / `compact_max_size_kb`(100) / `level2_age_days`(14) / `level3_age_days`(7) / `keep_recent_n`(20)。
 
 ### origin-evolve 执行流
 
-evolve-reminder 规则检测到 `pending ≥ 5` 或含修正信号的条目 `≥ 3` 时提醒用户。`origin-evolve-skill` 永远不会自动执行。
+evolve-reminder 规则检测到 `pending ≥ passive_trigger_threshold`（默认 10）时提醒用户。`origin-evolve-skill` 永远不会自动执行。
 
 ```
-Step 1 Read & Triage（schema 门控 + 诊断计数 + P0-P4 排序 + `.trace_lock`）
-Step 2 Identify Patterns（六类模式，要求 3+ 证据）
+Step 1 Read & Triage（schema 门控：接受 1-4 / 保留 pending / 排除 pending-pipeline / `.trace_lock`）
+Step 2 Identify Patterns（feedback 快照即用户显式规则，单条足以成案；同主题多条合并）
 Step 3 Generate Proposals（归属决策树 + Append/Merge/Retire + 容量检查 + Anchors grep 验证）
 Step 4 User Approval（逐个，可拒绝并记录 EVOLVE_REJECTION）
-Step 5 Write & Mark Processed（原子写 + 审计行替换）
-Step 6 Calibrate（可选，单维度 5-10% 微调 weights.json）
+Step 5 Write & Mark Processed（写入 .skillmanager/.skills/ + 审计行替换）
 ```
+
+评分权重自校准（原 Step 6）已随评分子系统退役——schema:4 无维度可调。若快照本身失焦（如大量低价值 `project` 快照），属 hook/config 问题（`memory_dir_pattern`），交用户处理而非在此校准。
 
 **Anchors 精确格式**：`[kind:path-hint:symbol]`，`kind ∈ {class, method, field, api, pattern}`。
 示例：`[class:Building/BuildingManager, method:Building/BuildingFunc:OnUpgrade, pattern:EventArgs.Create]`。旧格式 `[BuildingManager, OnUpgrade]` 仍向后兼容。
 
-### 自校准闭环
+### 闭环
 
 ```
-编辑 → 采集 → 八维评分 → trace (pending, 含经验字段)
+返工/纠正/下硬约束 → 你写 feedback auto-memory → Hook 快照进 trace (pending)
        ↓
-提醒 → origin evolve → 模式识别 → 提议 → 审批 → 写入 Skill
+提醒 → origin evolve → 蒸馏快照 → 提议 → 审批 → 写入 Skill
                                          ↓
-                                   校准 weights.json（可选）
-                                         ↓
-                                   下次会话：新知识 + 优化模型
+                                   下次会话：新知识生效，不再重复犯错
 ```
 
 ---
@@ -535,11 +518,10 @@ cd CastFlow && git pull
 所有测试集中在 `CastFlow/test/`（与 `.castflow/` 同级，**不被 bootstrap 分发**），零外部依赖（仅 `unittest`）。每次运行在临时目录创建隔离环境，不影响项目数据。
 
 ```bash
-# Hook 流水线（134 tests）
+# Hook 流水线（107 tests）
 cd CastFlow/test/hooks
 py test_evolution.py
 py test_evolution.py --keep-data          # 保留到 test-output/evolution/
-py test_100day_simulation.py --keep-data
 py test_365day_simulation.py --keep-data
 py -m unittest discover -s . -p "test_*.py"
 
@@ -547,7 +529,7 @@ py -m unittest discover -s . -p "test_*.py"
 cd CastFlow/test/bootstrap
 py test_bootstrap.py
 
-# 全量（176 tests）
+# 全量（149 tests）
 cd CastFlow
 py -m unittest discover -s test -p "test_*.py"
 

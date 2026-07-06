@@ -19,155 +19,19 @@ import tempfile
 import unittest
 from datetime import datetime, timezone, timedelta
 
-# --keep-data: preserve each test case's trace files for inspection
-KEEP_DATA = "--keep-data" in sys.argv
-if KEEP_DATA:
-    sys.argv.remove("--keep-data")
+from _trace_harness import (
+    KEEP_DATA, collector, flush, make_trace_block, build_trace_file,
+    make_output_base, TraceTestBase,
+)
 
-_script_dir_top = os.path.dirname(os.path.abspath(__file__))
-_HOOKS_DIR = os.path.normpath(os.path.join(
-    _script_dir_top, "..", "..", ".castflow", "core", "hooks"
-))
-_OUTPUT_BASE = os.path.join(_script_dir_top, "test-output", "evolution")
-
-if KEEP_DATA:
-    if os.path.isdir(_OUTPUT_BASE):
-        shutil.rmtree(_OUTPUT_BASE)
-    os.makedirs(_OUTPUT_BASE, exist_ok=True)
-    print("[keep-data] Output directory: {}".format(_OUTPUT_BASE))
-
-# Import modules with hyphens in filenames via importlib
-import importlib.util
-
-def _import_hyphen_module(name, filename):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(_HOOKS_DIR, filename))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-collector = _import_hyphen_module("collector", "trace-collector.py")
-flush = _import_hyphen_module("flush", "trace-flush.py")
+_OUTPUT_BASE = make_output_base("evolution")
 
 
-def make_trace_block(timestamp, modules, score, validated="_", correction="_",
-                     status="pending", pipeline_run_id="_", edit_count=1,
-                     file_count=1, lines_changed=10):
-    """Helper to generate a trace block string."""
-    ts_str = timestamp.strftime("%Y-%m-%dT%H:%M:%SZ") if isinstance(timestamp, datetime) else timestamp
-    mods = ", ".join(modules) if isinstance(modules, list) else modules
-    return (
-        "<!-- TRACE status:{status} -->\n"
-        "timestamp: {ts}\n"
-        "mode: _\n"
-        "type: _\n"
-        "request: _\n"
-        "intent: _\n"
-        "correction: {correction}\n"
-        "validated: {validated}\n"
-        "pipeline_run_id: {run_id}\n"
-        "modules: [{modules}]\n"
-        "skills: []\n"
-        "files_modified: [test.cs]\n"
-        "file_count: {fc}\n"
-        "lines_changed: {lc}\n"
-        "edit_count: {ec}\n"
-        "score: {score}\n"
-        "<!-- /TRACE -->\n"
-    ).format(
-        status=status, ts=ts_str, correction=correction,
-        validated=validated, run_id=pipeline_run_id,
-        modules=mods, fc=file_count, lc=lines_changed,
-        ec=edit_count, score=score,
-    )
-
-
-def build_trace_file(blocks, header=True):
-    """Build a full trace.md content string from a list of block strings."""
-    parts = []
-    if header:
-        parts.append("# Execution Traces\n\n---\n\n")
-    for b in blocks:
-        parts.append(b)
-        parts.append("\n")
-    return "".join(parts)
-
-
-class TestSetup(unittest.TestCase):
+class TestSetup(TraceTestBase):
     """Base class that redirects all file paths to a temp directory."""
 
-    def setUp(self):
-        self.test_dir = tempfile.mkdtemp(prefix="castflow_")
-        self.traces_dir = os.path.join(self.test_dir, "traces")
-        os.makedirs(self.traces_dir, exist_ok=True)
-        self.config_dir = os.path.join(self.traces_dir, "config")
-        os.makedirs(self.config_dir, exist_ok=True)
-
-        self._orig_trace_dir = flush.TRACE_DIR
-        self._orig_buffer = flush.BUFFER_FILE
-        self._orig_trace = flush.TRACE_FILE
-        self._orig_weights = flush.WEIGHTS_FILE
-        self._orig_limits = flush.LIMITS_FILE
-        self._orig_idp = flush.PENDING_IDP_FILE
-        self._orig_validated = flush.PENDING_VALIDATED_FILE
-        self._orig_pipeline = flush.PENDING_PIPELINE_FILE
-        self._orig_notify = flush.NOTIFY_STATE_FILE
-        self._orig_lock = flush.TRACE_LOCK_FILE
-
-        flush.TRACE_DIR = self.traces_dir
-        flush.BUFFER_FILE = os.path.join(self.traces_dir, ".trace_buffer")
-        flush.TRACE_FILE = os.path.join(self.traces_dir, "trace.md")
-        flush.WEIGHTS_FILE = os.path.join(self.traces_dir, "weights.json")
-        flush.LIMITS_FILE = os.path.join(self.config_dir, "limits.json")
-        flush.PENDING_IDP_FILE = os.path.join(self.traces_dir, ".pending_idp.json")
-        flush.PENDING_VALIDATED_FILE = os.path.join(self.traces_dir, ".pending_validated.json")
-        flush.PENDING_PIPELINE_FILE = os.path.join(self.traces_dir, ".pending_pipeline_result.json")
-        flush.NOTIFY_STATE_FILE = os.path.join(self.traces_dir, ".notify_state.json")
-        flush.TRACE_LOCK_FILE = os.path.join(self.traces_dir, ".trace_lock")
-
-        self._orig_coll_buffer = collector.BUFFER_FILE
-        self._orig_coll_prev = collector.PREV_EDITS_FILE
-        collector.BUFFER_FILE = os.path.join(self.traces_dir, ".trace_buffer")
-        collector.PREV_EDITS_FILE = os.path.join(self.traces_dir, ".trace_prev_edits")
-
-    def tearDown(self):
-        flush.TRACE_DIR = self._orig_trace_dir
-        flush.BUFFER_FILE = self._orig_buffer
-        flush.TRACE_FILE = self._orig_trace
-        flush.WEIGHTS_FILE = self._orig_weights
-        flush.LIMITS_FILE = self._orig_limits
-        flush.PENDING_IDP_FILE = self._orig_idp
-        flush.PENDING_VALIDATED_FILE = self._orig_validated
-        flush.PENDING_PIPELINE_FILE = self._orig_pipeline
-        flush.NOTIFY_STATE_FILE = self._orig_notify
-        flush.TRACE_LOCK_FILE = self._orig_lock
-
-        collector.BUFFER_FILE = self._orig_coll_buffer
-        collector.PREV_EDITS_FILE = self._orig_coll_prev
-
-        if KEEP_DATA:
-            dest = os.path.join(_OUTPUT_BASE,
-                                "{}__{}" .format(type(self).__name__, self._testMethodName))
-            shutil.copytree(self.test_dir, dest, ignore_dangling_symlinks=True)
-        shutil.rmtree(self.test_dir, ignore_errors=True)
-
-    def write_trace(self, content):
-        with open(flush.TRACE_FILE, "w", encoding="utf-8", newline="\n") as f:
-            f.write(content)
-
-    def read_trace(self):
-        with open(flush.TRACE_FILE, "r", encoding="utf-8") as f:
-            return f.read()
-
-    def write_buffer(self, lines):
-        with open(flush.BUFFER_FILE, "w", encoding="utf-8", newline="\n") as f:
-            for line in lines:
-                f.write(line + "\n")
-
-    def write_limits(self, overrides):
-        data = dict(flush.DEFAULT_LIMITS)
-        data.update(overrides)
-        with open(flush.LIMITS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f)
+    TMP_PREFIX = "castflow_"
+    OUTPUT_BASE = _OUTPUT_BASE
 
 
 # ============================================================

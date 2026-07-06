@@ -19,7 +19,6 @@ from .hook_config import merge_cursor_hooks, merge_claude_settings
 CORE_FILE_COPIES = [
     ("core/skills/SKILL_ITERATION.md", "skills/SKILL_ITERATION.md"),
     ("core/skills/GLOBAL_SKILL_MEMORY.md", "skills/GLOBAL_SKILL_MEMORY.md"),
-    ("core/protocols/idp-protocol.md", "protocols/idp-protocol.md"),
     ("core/protocols/validated-protocol.md", "protocols/validated-protocol.md"),
     ("core/agents/requirement-analysis-agent.md", "agents/requirement-analysis-agent.md"),
     ("core/agents/integration-matching-agent.md", "agents/integration-matching-agent.md"),

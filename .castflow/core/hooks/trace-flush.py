@@ -6,25 +6,16 @@ Triggered when the agent stops (Claude Code: Stop).
 Responsibilities (in order):
   1. apply_validated_update  - update validated field for most-recent pending entry
   2. apply_pipeline_result   - consume code-pipeline's component-owned result signal
-  3. flush_new_trace         - read buffer, score, write new trace entry (with IDP)
+  3. flush_new_trace         - write a new trace entry IF memory snapshots were captured
   4. apply_trace_expiration  - expire stale pending-pipeline / uncertain trace entries
   5. check_and_compact       - compress trace.md if over threshold (skipped when locked)
   6. check_notify            - passive trigger notification via NOTIFY block in trace.md
 
-Scoring model (v3 - 8 dimensions):
-  F (file count)        min(file_count / 3, 1.0)
-  D (module spread)     min(module_count / 2, 1.0)
-  K (critical path)     tiered: Interface=1.0, Impl=0.6, Base=0.3, other=0.0
-  S (change scale)      min(total_lines / 50, 1.0)
-  E (edit intensity)    min(total_edits / 5, 1.0)
-  C (correction)        revert_count>=3 -> 1.0, >=1 -> 0.6, else 0.0
-  R (rework)            IDP mode=="rework" -> 1.0, rework flag -> 0.8, else 0.0
-  U (user-rule)         IDP mode=="user-rule" -> 1.0, user_rule flag -> 0.8, else 0.0
-
-  score = F*w_F + D*w_D + K*w_K + S*w_S + E*w_E + C*w_C + R*w_R + U*w_U
-  Weights and threshold loaded from weights.json (fallback to defaults).
-
-  High-value bypass: if C, R, or U > 0, trace is written regardless of threshold.
+Learning model (schema:4 - memory snapshots only):
+  The scoring/buffer subsystem was retired. A trace entry is written ONLY when
+  the model wrote auto-memory during the session (captured by trace-collector
+  into .trace_memory_snapshots). The memory content is the learning material;
+  origin-evolve distills it. Pure code sessions produce no trace entry.
 
 Zero external dependencies. Python 3.6+.
 """
@@ -36,39 +27,24 @@ import sys
 from datetime import datetime, timezone
 
 TRACE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "traces")
-BUFFER_FILE = os.path.join(TRACE_DIR, ".trace_buffer")
 TRACE_FILE = os.path.join(TRACE_DIR, "trace.md")
-WEIGHTS_FILE = os.path.join(TRACE_DIR, "weights.json")
 LIMITS_FILE = os.path.join(TRACE_DIR, "config", "limits.json")
-PENDING_IDP_FILE = os.path.join(TRACE_DIR, ".pending_idp.json")
 PENDING_VALIDATED_FILE = os.path.join(TRACE_DIR, ".pending_validated.json")
 # code-pipeline own runtime signal; consumed by the shared trace hook.
 PENDING_PIPELINE_FILE = os.path.join(TRACE_DIR, ".pending_pipeline_result.json")
 NOTIFY_STATE_FILE = os.path.join(TRACE_DIR, ".notify_state.json")
 TRACE_LOCK_FILE = os.path.join(TRACE_DIR, ".trace_lock")
+# Memory snapshots captured by trace-collector; flushed into trace.md here.
+MEMORY_SNAPSHOTS_FILE = os.path.join(TRACE_DIR, ".trace_memory_snapshots")
 
-TRACE_SCHEMA_VERSION = 2
-
-DEFAULT_WEIGHTS = {
-    "F": 1.0,
-    "D": 0.5,
-    "K": 1.5,
-    "S": 0.5,
-    "E": 0.8,
-    "C": 2.0,
-    "R": 2.5,
-    "U": 2.0,
-}
-DEFAULT_THRESHOLD = 1.5
+TRACE_SCHEMA_VERSION = 4
 
 DEFAULT_LIMITS = {
     "compact_max_entries": 80,
     "compact_max_size_kb": 100,
     "level2_age_days": 14,
-    "level2_score_threshold": 1.0,
     "level3_age_days": 7,
-    "level3_score_threshold": 0.5,
-    "keep_top_n_per_module": 3,
+    "keep_recent_n": 20,
     "passive_trigger_threshold": 10,
     "passive_trigger_min_new": 5,
     "pipeline_pending_expire_days": 7,
@@ -76,80 +52,9 @@ DEFAULT_LIMITS = {
     "processed_expire_days": 30,
 }
 
-CRITICAL_TIERS = [
-    (re.compile(r"^I[A-Z]\w+Manager\.cs$"), 1.0),
-    (re.compile(r"^I[A-Z]\w+Service\.cs$"), 1.0),
-    (re.compile(r"^I[A-Z]\w+System\.cs$"), 1.0),
-    (re.compile(r"Manager\.cs$", re.IGNORECASE), 0.6),
-    (re.compile(r"Handler\.cs$", re.IGNORECASE), 0.6),
-    (re.compile(r"Controller\.cs$", re.IGNORECASE), 0.6),
-    (re.compile(r"System\.cs$", re.IGNORECASE), 0.6),
-    (re.compile(r"Service\.cs$", re.IGNORECASE), 0.6),
-    (re.compile(r"Factory\.cs$", re.IGNORECASE), 0.6),
-    (re.compile(r"Base\.cs$", re.IGNORECASE), 0.3),
-]
-
-_HOOKS_CONFIG_PATH = os.path.join(TRACE_DIR, "config", "hooks.config.json")
-
-_DEFAULT_GENERIC_SEGMENTS = frozenset([
-    "Scripts", "Assets", "GameLogic", "Logic", "Render",
-    "Common", "Core", "UI", "src", "lib", "utils", "helpers",
-])
-_DEFAULT_MODULE_PATTERN = r"[Mm]odules/([^/]+)"
-
-
-def _load_module_config():
-    """Load module inference config from hooks.config.json, fall back to defaults."""
-    segments = _DEFAULT_GENERIC_SEGMENTS
-    pattern = _DEFAULT_MODULE_PATTERN
-    if os.path.isfile(_HOOKS_CONFIG_PATH):
-        try:
-            with open(_HOOKS_CONFIG_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data.get("generic_dir_segments"), list):
-                segments = frozenset(data["generic_dir_segments"])
-            if isinstance(data.get("module_dir_pattern"), str):
-                pattern = data["module_dir_pattern"]
-        except (json.JSONDecodeError, OSError):
-            pass
-    return segments, re.compile(pattern)
-
-
-GENERIC_DIR_SEGMENTS, MODULE_DIR_PATTERN = _load_module_config()
-
-
-# ============================================================
-# Config loading
-# ============================================================
-
-def load_weights():
-    """Load weights and threshold from weights.json, fallback to defaults."""
-    weights = dict(DEFAULT_WEIGHTS)
-    threshold = DEFAULT_THRESHOLD
-
-    if not os.path.isfile(WEIGHTS_FILE):
-        return weights, threshold
-
-    try:
-        with open(WEIGHTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        if isinstance(data.get("weights"), dict):
-            for key in DEFAULT_WEIGHTS:
-                if key in data["weights"]:
-                    val = data["weights"][key]
-                    if isinstance(val, (int, float)) and 0 <= val <= 10:
-                        weights[key] = float(val)
-
-        if isinstance(data.get("threshold"), (int, float)):
-            val = data["threshold"]
-            if 0.5 <= val <= 5.0:
-                threshold = float(val)
-
-    except (json.JSONDecodeError, OSError, KeyError):
-        pass
-
-    return weights, threshold
+# Memory snapshot type precedence when an entry carries multiple snapshots:
+# feedback (explicit user rule) > project (context) > reference (pointer).
+_TYPE_PRECEDENCE = ("feedback", "project", "reference")
 
 
 def load_limits():
@@ -174,279 +79,49 @@ def load_limits():
 
 
 # ============================================================
-# Buffer reading
+# Memory snapshots (the only learning source)
 # ============================================================
 
-def read_buffer():
-    """Read buffer entries into (file_paths, total_lines, total_edits, revert_count).
+def read_memory_snapshots():
+    """Read pending memory snapshots into a list of snapshot dicts.
 
-    Supports v2 (path|lines|edits|flags), v1 (path|lines), and legacy (path) formats.
+    Returns [] when the store is absent or malformed. Ordering is by the
+    store's insertion order (dict preserves it), which reflects capture order.
     """
-    if not os.path.isfile(BUFFER_FILE):
-        return [], 0, 0, 0
-
-    seen = {}
-    total_lines = 0
-    total_edits = 0
-    revert_count = 0
-
-    with open(BUFFER_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-
-            parts = line.split("|")
-            if len(parts) >= 4:
-                path = parts[0]
-                try:
-                    lines = int(parts[1])
-                except ValueError:
-                    lines = 0
-                try:
-                    edits = int(parts[2])
-                except ValueError:
-                    edits = 1
-                flags = set(parts[3].split(",")) if parts[3] else set()
-                flags.discard("")
-            elif len(parts) == 2:
-                path = parts[0]
-                try:
-                    lines = int(parts[1])
-                except ValueError:
-                    lines = 0
-                edits = 1
-                flags = set()
-            else:
-                path = parts[0]
-                lines = 0
-                edits = 1
-                flags = set()
-
-            if path not in seen:
-                seen[path] = True
-                total_lines += lines
-                total_edits += edits
-                if "R" in flags:
-                    revert_count += 1
-
-    file_paths = list(seen.keys())
-    return file_paths, total_lines, total_edits, revert_count
-
-
-def clear_buffer():
-    """Remove the trace buffer file and prev-edits store."""
-    for f in (BUFFER_FILE, os.path.join(TRACE_DIR, ".trace_prev_edits")):
-        try:
-            if os.path.isfile(f):
-                os.remove(f)
-        except OSError:
-            pass
-
-
-# ============================================================
-# Module inference
-# ============================================================
-
-def infer_modules(file_paths):
-    """Infer module names from file paths."""
-    modules = set()
-
-    for p in file_paths:
-        normalized = p.replace("\\", "/")
-        match = MODULE_DIR_PATTERN.search(normalized)
-        if match:
-            modules.add(match.group(1))
-        else:
-            parts = normalized.split("/")
-            for segment in reversed(parts[:-1]):
-                if segment and segment not in GENERIC_DIR_SEGMENTS:
-                    modules.add(segment)
-                    break
-
-    return sorted(modules) if modules else ["Unknown"]
-
-
-# ============================================================
-# Critical path (tiered)
-# ============================================================
-
-def compute_critical_tier(file_paths):
-    """Compute the highest critical tier value across all files.
-
-    Returns a float: 1.0 (interface), 0.6 (implementation), 0.3 (base), 0.0 (none).
-    """
-    max_tier = 0.0
-    for p in file_paths:
-        filename = p.replace("\\", "/").split("/")[-1] if "/" in p or "\\" in p else p
-        for pattern, tier_value in CRITICAL_TIERS:
-            if pattern.search(filename):
-                if tier_value > max_tier:
-                    max_tier = tier_value
-                break
-        if max_tier >= 1.0:
-            break
-    return max_tier
-
-
-# ============================================================
-# Scoring
-# ============================================================
-
-def compute_score(file_paths, modules, total_lines, total_edits, weights,
-                  revert_count=0, idp=None):
-    """Compute multi-dimensional significance score (v3 - 8 dimensions).
-
-    Returns (score, breakdown_dict).
-    """
-    file_count = len(file_paths)
-    module_count = len(modules) if modules and modules != ["Unknown"] else 0
-
-    f_raw = min(file_count / 3.0, 1.0)
-    d_raw = min(module_count / 2.0, 1.0)
-    k_raw = compute_critical_tier(file_paths)
-    s_raw = min(total_lines / 50.0, 1.0)
-    e_raw = min(total_edits / 5.0, 1.0)
-
-    # C: Correction (model self-fix via revert detection)
-    if revert_count >= 3:
-        c_raw = 1.0
-    elif revert_count >= 1:
-        c_raw = 0.6
-    else:
-        c_raw = 0.0
-
-    # R: Rework (user demanded redo / rejection)
-    r_raw = 0.0
-    if idp and isinstance(idp, dict):
-        if idp.get("mode") == "rework":
-            r_raw = 1.0
-        elif idp.get("rework"):
-            r_raw = 0.8
-
-    # U: User-Rule (user forced a hard constraint)
-    u_raw = 0.0
-    if idp and isinstance(idp, dict):
-        if idp.get("mode") == "user-rule":
-            u_raw = 1.0
-        elif idp.get("user_rule"):
-            u_raw = 0.8
-
-    score = (
-        f_raw * weights["F"]
-        + d_raw * weights["D"]
-        + k_raw * weights["K"]
-        + s_raw * weights["S"]
-        + e_raw * weights["E"]
-        + c_raw * weights.get("C", 2.0)
-        + r_raw * weights.get("R", 2.5)
-        + u_raw * weights.get("U", 2.0)
-    )
-
-    breakdown = {
-        "F": round(f_raw * weights["F"], 2),
-        "D": round(d_raw * weights["D"], 2),
-        "K": round(k_raw * weights["K"], 2),
-        "S": round(s_raw * weights["S"], 2),
-        "E": round(e_raw * weights["E"], 2),
-        "C": round(c_raw * weights.get("C", 2.0), 2),
-        "R": round(r_raw * weights.get("R", 2.5), 2),
-        "U": round(u_raw * weights.get("U", 2.0), 2),
-    }
-
-    return round(score, 2), breakdown
-
-
-# ============================================================
-# Correction inference
-# ============================================================
-
-def infer_correction(revert_count):
-    """Infer correction level from revert count."""
-    if revert_count >= 3:
-        return "auto:major"
-    if revert_count >= 1:
-        return "auto:minor"
-    return "_"
-
-
-# ============================================================
-# Pending file readers
-# ============================================================
-
-def read_pending_idp():
-    """Read .pending_idp.json and return its data dict or None.
-
-    The file is deleted unconditionally in cleanup_pending_files() (finally block).
-    """
-    if not os.path.isfile(PENDING_IDP_FILE):
-        return None
-
+    if not os.path.isfile(MEMORY_SNAPSHOTS_FILE):
+        return []
     try:
-        with open(PENDING_IDP_FILE, "r", encoding="utf-8") as f:
+        with open(MEMORY_SNAPSHOTS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        if isinstance(data, dict):
-            return data
-    except (json.JSONDecodeError, OSError):
-        pass
-
-    return None
+        snapshots = data.get("snapshots", {}) if isinstance(data, dict) else {}
+        return [snapshots[k] for k in snapshots if isinstance(snapshots[k], dict)]
+    except (json.JSONDecodeError, OSError, AttributeError):
+        return []
 
 
-def _infer_type_from_structure(file_paths, revert_count):
-    """Structurally infer a task type when the AI supplied no IDP.
-
-    Heuristics (no semantics — never fabricates experience fields):
-      - any revert detected            -> bugfix
-      - every edited file is a test    -> test
-      - otherwise                      -> feature
-    """
-    if revert_count >= 1:
-        return "bugfix"
-
-    if file_paths:
-        test_markers = ("test", "spec", "__tests__", ".test.", ".spec.")
-        all_tests = True
-        for p in file_paths:
-            low = p.lower()
-            if not any(mk in low for mk in test_markers):
-                all_tests = False
-                break
-        if all_tests:
-            return "test"
-
-    return "feature"
-
-
-def apply_idp_fallback(idp, file_paths, revert_count):
-    """Fill a minimal IDP skeleton when the AI declared none.
-
-    Returns the AI-supplied IDP unchanged when present. Otherwise returns a
-    synthetic dict with mode="auto" (distinct from the AI-declared "standard")
-    and a structurally inferred type. Experience fields (error_cause /
-    fix_approach / user_feedback / lesson) are deliberately left absent —
-    only the AI can supply those, and a fallback must never invent them.
-    """
-    if idp and isinstance(idp, dict):
-        return idp
-
-    return {
-        "mode": "auto",
-        "type": _infer_type_from_structure(file_paths, revert_count),
-    }
-
-
-def cleanup_pending_files():
-    """Unconditionally delete .pending_idp.json.
-
-    Called in the finally block of main() to prevent stale IDP from
-    contaminating the next Stop Hook invocation.
-    """
+def clear_memory_snapshots():
+    """Remove the memory snapshots store after flushing."""
     try:
-        if os.path.isfile(PENDING_IDP_FILE):
-            os.remove(PENDING_IDP_FILE)
+        if os.path.isfile(MEMORY_SNAPSHOTS_FILE):
+            os.remove(MEMORY_SNAPSHOTS_FILE)
     except OSError:
         pass
+
+
+def _dominant_type(memory_snapshots):
+    """Pick the entry type from captured snapshots by precedence.
+
+    feedback (explicit user rule) > project > reference > whatever's present.
+    """
+    types = {str(s.get("type") or "").strip() for s in memory_snapshots
+             if isinstance(s, dict)}
+    for t in _TYPE_PRECEDENCE:
+        if t in types:
+            return t
+    for t in types:
+        if t and t != "_":
+            return t
+    return "_"
 
 
 # ============================================================
@@ -799,66 +474,69 @@ def apply_trace_expiration():
 # Trace formatting and appending
 # ============================================================
 
-def format_trace(file_paths, modules, score, total_lines, total_edits,
-                 correction, idp=None, pipeline_run_id=None, breakdown=None):
-    """Format a trace entry focused on learning value for origin-evolve."""
+def _sanitize_snapshot_content(text):
+    """Neutralize HTML-comment tokens so snapshot content cannot break the
+    outer TRACE/MEMORY block regexes (which match `<!-- ... -->` spans).
+
+    Memory markdown may legitimately contain `<!--`/`-->` (e.g. a doc about
+    the trace format itself); we defang the tokens rather than drop content.
+    """
+    return text.replace("<!--", "<! --").replace("-->", "-- >")
+
+
+def _format_memory_blocks(memory_snapshots):
+    """Render captured memory snapshots as MEMORY subblocks (raw material)."""
+    if not memory_snapshots:
+        return ""
+    blocks = []
+    for snap in memory_snapshots:
+        if not isinstance(snap, dict):
+            continue
+        slug = str(snap.get("name") or "_")
+        mtype = str(snap.get("type") or "_")
+        description = str(snap.get("description") or "")
+        content = _sanitize_snapshot_content(str(snap.get("content") or ""))
+        trunc = " truncated:1" if snap.get("truncated") else ""
+        blocks.append(
+            "<!-- MEMORY slug:{} type:{}{} -->\n"
+            "description: {}\n"
+            "---\n"
+            "{}\n"
+            "<!-- /MEMORY -->\n".format(
+                slug, mtype, trunc, description, content.rstrip("\n")
+            )
+        )
+    return "".join(blocks)
+
+
+def format_trace(entry_type, pipeline_run_id, memory_snapshots):
+    """Format a schema:4 trace entry — a memory-snapshot ledger record.
+
+    Only lifecycle + snapshot fields remain; the memory content itself is the
+    learning material for origin-evolve to distill.
+    """
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    modules_str = ", ".join(modules)
-
-    mode = "_"
-    entry_type = "_"
-    skills = "[]"
-    error_cause = "_"
-    fix_approach = "_"
-    user_feedback = "_"
-    lesson = "_"
-
-    if idp and isinstance(idp, dict):
-        mode = str(idp.get("mode") or "_")
-        entry_type = str(idp.get("type") or "_")
-        raw_skills = idp.get("skills", [])
-        if isinstance(raw_skills, list) and raw_skills:
-            skills = "[{}]".format(", ".join(str(s) for s in raw_skills))
-        error_cause = str(idp.get("error_cause") or "_")
-        fix_approach = str(idp.get("fix_approach") or "_")
-        user_feedback = str(idp.get("user_feedback") or "_")
-        lesson = str(idp.get("lesson") or "_")
 
     validated = "pending-pipeline" if pipeline_run_id else "_"
     run_id_value = pipeline_run_id if pipeline_run_id else "_"
 
-    breakdown_str = "_"
-    if breakdown and isinstance(breakdown, dict):
-        parts = []
-        for dim in ("F", "D", "K", "S", "E", "C", "R", "U"):
-            val = breakdown.get(dim, 0)
-            if val > 0:
-                parts.append("{}={}".format(dim, val))
-        breakdown_str = " ".join(parts) if parts else "_"
+    memory_blocks = _format_memory_blocks(memory_snapshots)
+    memory_count = len(memory_snapshots) if memory_snapshots else 0
 
     return (
         "<!-- TRACE status:pending schema:{} -->\n"
         "timestamp: {}\n"
-        "mode: {}\n"
         "type: {}\n"
-        "modules: [{}]\n"
-        "skills: {}\n"
-        "score: {}\n"
-        "score_breakdown: {}\n"
-        "correction: {}\n"
         "validated: {}\n"
         "pipeline_run_id: {}\n"
-        "error_cause: {}\n"
-        "fix_approach: {}\n"
-        "user_feedback: {}\n"
-        "lesson: {}\n"
+        "memory_snapshots: {}\n"
+        "{}"
         "<!-- /TRACE -->\n"
     ).format(
         TRACE_SCHEMA_VERSION,
-        timestamp, mode, entry_type,
-        modules_str, skills, score, breakdown_str,
-        correction, validated, run_id_value,
-        error_cause, fix_approach, user_feedback, lesson,
+        timestamp, entry_type or "_",
+        validated, run_id_value,
+        memory_count, memory_blocks,
     )
 
 
@@ -880,41 +558,23 @@ def append_trace(entry):
 # New trace flush
 # ============================================================
 
-def flush_new_trace(idp):
-    """Read buffer, score, and write a new trace entry if score meets threshold."""
-    file_paths, total_lines, total_edits, revert_count = read_buffer()
-    if not file_paths:
-        clear_buffer()
+def flush_new_trace():
+    """Write a trace entry IF the model captured memory this session.
+
+    Memory snapshots are the only learning source now — a pure code session
+    (no auto-memory written) produces no trace entry.
+    """
+    memory_snapshots = read_memory_snapshots()
+    if not memory_snapshots:
+        clear_memory_snapshots()
         return
 
-    weights, threshold = load_weights()
-    modules = infer_modules(file_paths)
-    # Score uses the raw IDP: R/U bonuses must reflect the AI's actual
-    # declaration, never the synthetic fallback (which is mode="auto").
-    score, breakdown = compute_score(
-        file_paths, modules, total_lines, total_edits, weights,
-        revert_count=revert_count, idp=idp,
-    )
+    entry_type = _dominant_type(memory_snapshots)
+    pipeline_run_id = detect_pipeline_context()
+    entry = format_trace(entry_type, pipeline_run_id, memory_snapshots)
+    append_trace(entry)
 
-    high_value = (
-        breakdown.get("C", 0) > 0
-        or breakdown.get("R", 0) > 0
-        or breakdown.get("U", 0) > 0
-    )
-
-    if score >= threshold or high_value:
-        correction = infer_correction(revert_count)
-        pipeline_run_id = detect_pipeline_context()
-        # Fallback only affects formatting (mode/type), not the score.
-        idp_for_format = apply_idp_fallback(idp, file_paths, revert_count)
-        entry = format_trace(
-            file_paths, modules, score, total_lines, total_edits,
-            correction, idp=idp_for_format, pipeline_run_id=pipeline_run_id,
-            breakdown=breakdown,
-        )
-        append_trace(entry)
-
-    clear_buffer()
+    clear_memory_snapshots()
 
 
 # ============================================================
@@ -990,12 +650,20 @@ def _get_block_age_days(block, now):
         return 0
 
 
-def _get_block_score(block):
-    s = _get_block_field(block, "score")
+def _is_experience_asset(block):
+    """True if the block carries durable learning value and must not be
+    auto-removed by age-based compaction: a validated:true entry, or one
+    carrying at least one embedded memory snapshot.
+    """
+    if _get_block_field(block, "validated") == "true":
+        return True
+    count_str = _get_block_field(block, "memory_snapshots")
     try:
-        return float(s)
-    except ValueError:
-        return 0.0
+        if int(count_str) > 0:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return "<!-- MEMORY " in block
 
 
 def _compact_level0_audit(content, limits, now):
@@ -1033,71 +701,61 @@ def _compact_level1_invalid(blocks):
     return to_remove
 
 
-def _compact_level2_old_low(blocks, already_removed, limits, now):
-    """Level 2: Remove old low-score entries past age threshold."""
+def _compact_level2_old_age(blocks, already_removed, limits, now):
+    """Level 2: Remove old non-asset skeleton entries past the age threshold.
+
+    Experience assets (validated:true or carrying memory snapshots) and
+    in-flight pipeline entries are never age-removed.
+    """
     to_remove = set()
     level2_age = int(limits["level2_age_days"])
-    level2_score = float(limits["level2_score_threshold"])
     for i, m in enumerate(blocks):
         if i in already_removed:
             continue
         block = m.group(0)
         validated = _get_block_field(block, "validated")
-        if validated in ("pending-pipeline", "true", "false"):
+        if validated in ("pending-pipeline", "false"):
             continue
-        age = _get_block_age_days(block, now)
-        score = _get_block_score(block)
-        if age > level2_age and score < level2_score:
+        if _is_experience_asset(block):
+            continue
+        if _get_block_age_days(block, now) > level2_age:
             to_remove.add(i)
     return to_remove
 
 
 def _compact_level3_overflow(blocks, already_removed, limits, now):
-    """Level 3: If still over limit, remove oldest low-score entries
-    while preserving keep_top_n_per_module coverage."""
+    """Level 3: If still over the entry cap, drop the oldest non-asset entries,
+    always keeping the most recent keep_recent_n entries as a floor."""
     remaining = len(blocks) - len(already_removed)
     max_entries = int(limits["compact_max_entries"])
     if remaining <= max_entries:
         return set()
 
     level3_age = int(limits["level3_age_days"])
-    level3_score = float(limits["level3_score_threshold"])
-    keep_top_n = int(limits.get("keep_top_n_per_module", 3))
+    keep_recent_n = int(limits.get("keep_recent_n", 20))
+
+    # Protect the newest keep_recent_n block indices from overflow removal.
+    protected = set(range(max(0, len(blocks) - keep_recent_n), len(blocks)))
 
     candidates = []
-    module_keep_count = {}
-
     for i, m in enumerate(blocks):
-        if i in already_removed:
+        if i in already_removed or i in protected:
             continue
         block = m.group(0)
         validated = _get_block_field(block, "validated")
-        modules_str = _get_block_field(block, "modules")
-
-        for mod in re.findall(r"[A-Za-z_]\w*", modules_str):
-            module_keep_count[mod] = module_keep_count.get(mod, 0) + 1
-
         if validated in ("pending-pipeline", "false"):
             continue
+        if _is_experience_asset(block):
+            continue
         age = _get_block_age_days(block, now)
-        score = _get_block_score(block)
-        if age > level3_age and score < level3_score:
-            candidates.append((age, score, i))
+        if age > level3_age:
+            candidates.append((age, i))
 
-    candidates.sort(key=lambda x: (-x[0], x[1]))
+    candidates.sort(key=lambda x: -x[0])
     overflow = remaining - max_entries
     to_remove = set()
-
-    for _, _, idx in candidates[:overflow]:
-        block = blocks[idx].group(0)
-        modules_str = _get_block_field(block, "modules")
-        mods = re.findall(r"[A-Za-z_]\w*", modules_str)
-        if any(module_keep_count.get(mod, 0) <= keep_top_n for mod in mods):
-            continue
+    for _, idx in candidates[:overflow]:
         to_remove.add(idx)
-        for mod in mods:
-            if mod in module_keep_count:
-                module_keep_count[mod] -= 1
 
     return to_remove
 
@@ -1137,7 +795,7 @@ def compact_trace(content, limits):
     blocks = list(trace_block_pattern.finditer(content))
 
     blocks_to_remove = _compact_level1_invalid(blocks)
-    blocks_to_remove |= _compact_level2_old_low(blocks, blocks_to_remove, limits, now)
+    blocks_to_remove |= _compact_level2_old_age(blocks, blocks_to_remove, limits, now)
     blocks_to_remove |= _compact_level3_overflow(blocks, blocks_to_remove, limits, now)
 
     if not blocks_to_remove:
@@ -1256,103 +914,96 @@ def _log_error(exc):
 # ============================================================
 
 def selftest():
-    """Verify the trace-flush pipeline can execute end-to-end.
+    """Verify the trace-flush pipeline (schema:4, memory-only) end-to-end.
 
-    Checks: weights loading, buffer parsing, module inference, scoring,
-    formatting. Prints results to stdout. Returns True on success.
+    Checks: limits loading, dominant-type, format_trace schema:4 shape,
+    snapshot defang, experience-asset detection, config, error log.
+    Prints results to stdout. Returns True on success.
     """
     print("trace-flush self-test")
     print("=" * 40)
     ok = True
 
-    print("[1] Load weights... ", end="")
+    print("[1] Load limits... ", end="")
     try:
-        weights, threshold = load_weights()
-        print("OK (threshold={})".format(threshold))
+        limits = load_limits()
+        assert "keep_recent_n" in limits
+        assert "level2_score_threshold" not in limits, "score keys must be gone"
+        print("OK (keep_recent_n={})".format(limits["keep_recent_n"]))
     except Exception as e:
         print("FAIL: {}".format(e))
         ok = False
 
-    print("[2] Parse buffer line... ", end="")
+    print("[2] Dominant type precedence... ", end="")
     try:
-        parts = "Assets/Scripts/Modules/Building/Test.cs|10|3|".split("|")
-        assert len(parts) >= 2
+        t = _dominant_type([{"type": "project"}, {"type": "feedback"}])
+        assert t == "feedback", "feedback must win over project"
+        assert _dominant_type([{"type": "reference"}]) == "reference"
+        assert _dominant_type([{"type": "_"}]) == "_"
         print("OK")
     except Exception as e:
         print("FAIL: {}".format(e))
         ok = False
 
-    print("[3] Infer module... ", end="")
+    print("[3] Format trace schema:4... ", end="")
     try:
-        modules = infer_modules(["Assets/Scripts/Modules/Building/Test.cs"])
-        print("OK -> {}".format(modules))
-    except Exception as e:
-        print("FAIL: {}".format(e))
-        ok = False
-
-    print("[4] Compute score... ", end="")
-    try:
-        score, breakdown = compute_score(
-            ["test.cs"], ["TestModule"], 10, 3, weights,
-        )
-        print("OK -> {:.2f}".format(score))
-    except Exception as e:
-        print("FAIL: {}".format(e))
-        ok = False
-
-    print("[4b] Score with C/R/U... ", end="")
-    try:
-        score_cru, bd_cru = compute_score(
-            ["test.cs"], ["TestModule"], 10, 3, weights,
-            revert_count=2, idp={"mode": "rework"},
-        )
-        assert bd_cru["C"] > 0, "C dimension should be non-zero with revert"
-        assert bd_cru["R"] > 0, "R dimension should be non-zero with rework mode"
-        print("OK -> {:.2f} (C={}, R={}, U={})".format(
-            score_cru, bd_cru["C"], bd_cru["R"], bd_cru["U"]))
-    except Exception as e:
-        print("FAIL: {}".format(e))
-        ok = False
-
-    print("[4c] IDP fallback... ", end="")
-    try:
-        # No AI IDP -> synthetic skeleton, experience fields absent
-        fb = apply_idp_fallback(None, ["Assets/Foo/BarManager.cs"], 0)
-        assert fb["mode"] == "auto", "fallback mode must be 'auto'"
-        assert fb["type"] == "feature", "non-test non-revert -> feature"
-        assert "lesson" not in fb, "fallback must not invent experience fields"
-        fb_bug = apply_idp_fallback(None, ["a.cs"], 2)
-        assert fb_bug["type"] == "bugfix", "revert -> bugfix"
-        fb_test = apply_idp_fallback(None, ["Tests/FooTest.cs"], 0)
-        assert fb_test["type"] == "test", "all-test files -> test"
-        # AI IDP present -> returned unchanged
-        ai = {"mode": "rework", "lesson": "x"}
-        assert apply_idp_fallback(ai, ["a.cs"], 0) is ai, "AI IDP must pass through"
-        print("OK")
-    except Exception as e:
-        print("FAIL: {}".format(e))
-        ok = False
-
-    print("[5] Format trace... ", end="")
-    try:
-        entry = format_trace(
-            ["test.cs"], ["TestModule"], 5.0, 10, 3, "_",
-            idp={"mode": "rework", "error_cause": "wrong API", "lesson": "use X instead"},
-            breakdown={"F": 0.33, "R": 2.5},
-        )
-        assert "<!-- TRACE" in entry
-        assert "<!-- /TRACE -->" in entry
-        assert "error_cause: wrong API" in entry
-        assert "lesson: use X instead" in entry
+        snaps = [{
+            "type": "feedback", "name": "use-x-not-y",
+            "description": "prefer X over Y",
+            "content": "---\nname: use-x-not-y\n---\n\nAlways use X. Reason: Y leaks.",
+            "path": ".claude/projects/p/memory/use-x-not-y.md", "truncated": False,
+        }]
+        entry = format_trace("feedback", None, snaps)
+        assert "schema:4" in entry, "schema must be 4"
+        assert "type: feedback" in entry
+        assert "memory_snapshots: 1" in entry
+        assert "<!-- MEMORY slug:use-x-not-y type:feedback -->" in entry
+        assert "Always use X" in entry
+        # retired fields must be gone
+        for gone in ("score:", "score_breakdown:", "modules:", "mode:", "lesson:"):
+            assert gone not in entry, "retired field {} must be absent".format(gone)
+        assert _get_block_field(entry, "validated") == "_"
         print("OK ({} chars)".format(len(entry)))
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[4] Snapshot comment-token defang... ", end="")
+    try:
+        evil = [{
+            "type": "project", "name": "doc", "description": "d",
+            "content": "explains <!-- TRACE --> and closing --> markers",
+            "path": "x", "truncated": False,
+        }]
+        entry = format_trace("project", None, evil)
+        assert entry.count("<!-- /TRACE -->") == 1, "content must not inject a TRACE close"
+        assert "<! --" in entry, "content <!-- should be defanged"
+        print("OK")
+    except Exception as e:
+        print("FAIL: {}".format(e))
+        ok = False
+
+    print("[5] Experience-asset detection... ", end="")
+    try:
+        asset = format_trace("feedback", None, [{
+            "type": "feedback", "name": "r", "description": "",
+            "content": "x", "path": "p", "truncated": False}])
+        assert _is_experience_asset(asset), "memory-carrying block is an asset"
+        skeleton = (
+            "<!-- TRACE status:pending schema:4 -->\n"
+            "timestamp: 2020-01-01T00:00:00Z\ntype: _\nvalidated: _\n"
+            "pipeline_run_id: _\nmemory_snapshots: 0\n<!-- /TRACE -->\n"
+        )
+        assert not _is_experience_asset(skeleton), "empty skeleton is not an asset"
+        print("OK")
     except Exception as e:
         print("FAIL: {}".format(e))
         ok = False
 
     print("[6] Config loading... ", end="")
     try:
-        segs, pat = _load_module_config()
-        print("OK ({} segments, pattern={})".format(len(segs), pat.pattern))
+        lim = load_limits()
+        print("OK ({} keys)".format(len(lim)))
     except Exception as e:
         print("FAIL: {}".format(e))
         ok = False
@@ -1379,7 +1030,6 @@ def main():
         success = selftest()
         sys.exit(0 if success else 1)
 
-    idp = None
     try:
         try:
             sys.stdin.read()
@@ -1388,16 +1038,13 @@ def main():
 
         apply_validated_update()
         apply_pipeline_result()
-        idp = read_pending_idp()
-        flush_new_trace(idp)
+        flush_new_trace()
         apply_trace_expiration()
         check_and_compact()
         check_notify()
 
     except Exception as exc:
         _log_error(exc)
-    finally:
-        cleanup_pending_files()
 
 
 if __name__ == "__main__":

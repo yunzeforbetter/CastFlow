@@ -44,7 +44,7 @@ title: Project Rules
 | 时点 | 触发行为 | AI 主动 Read 哪些文件 |
 |------|---------|-------------------|
 | **T1-PREPARE** | 准备生成或修改代码（写代码前） | `GLOBAL_SKILL_MEMORY.md` 协议 1/2 + 该 Skill 的 `SKILL_MEMORY.md`（如存在）+ 按需 `EXAMPLES.md` 相关章节 |
-| **T2-EXECUTE** | 代码生成过程中决策 IDP 写入 | `GLOBAL_SKILL_MEMORY.md` 协议 3 + 按需 `protocols/idp-protocol.md` |
+| **T2-EXECUTE** | 代码生成过程中决策执行模式 | `GLOBAL_SKILL_MEMORY.md` 协议 3（信息不足/紧急/高精度/标准的探索深度判定） |
 | **T3-FEEDBACK** | 用户给出明确接受/拒绝反馈 | `protocols/validated-protocol.md` |
 | **T4-MAINTAIN** | 创建新 Skill 或修改既有 Skill 自身结构 | `SKILL_ITERATION.md` + 该 Skill 的 `ITERATION_GUIDE.md` |
 
@@ -72,7 +72,7 @@ title: Project Rules
 ### T2-EXECUTE 行为清单
 
 - [ ] 按 `GLOBAL_SKILL_MEMORY.md` 协议 3 判定执行模式（信息不足/紧急/高精度/标准）
-- [ ] 命中「IDP 经验采集」触发条件时，本回合结束前必须写 `.pending_idp.json`（见下节硬规则）；标准开发无需写，hook 自动兜底 mode/type
+- [ ] 返工/纠正/定规矩场景，正常写 auto-memory（`feedback` 类型），hook 自动快照进 trace（见下节「经验采集」）；IDP/评分已退役，无需也不要写 `.pending_idp.json`
 
 ### T3-FEEDBACK 行为清单
 
@@ -85,21 +85,16 @@ title: Project Rules
 
 ---
 
-## IDP 经验采集（P1）— 返工/拒绝/纠正时必写
+## 经验采集（schema:4）— 只靠 auto-memory
 
-**问题背景**：trace 富字段（`error_cause`/`fix_approach`/`lesson`/`user_feedback`）只有 AI 知道，hook 推不出。漏写则自进化只剩空骨架。标准开发的 `mode`/`type` 由 hook 兜底，无需 AI 干预。
+**机制**：经验原料的**唯一**捕获路径是 **auto-memory 快照**。你在返工/纠正/定规矩时本来就会写 auto-memory（`feedback`/`project`/`reference` 类型），trace-collector 的 hook 自动把这些 memory 全文快照进 trace.md（`user` 类型的个人画像被过滤，不进 git）。蒸馏推迟到 `origin evolve` 统一做。**IDP（`.pending_idp.json`）与评分机制已完全退役——不再读取、不要写。**
 
-**触发条件**（命中任一，本回合结束前必须已写 `.claude/traces/.pending_idp.json`）：
-- 用户否定上次结果并要求重做（"不行"/"重写"/"错了"/"再来"）
-- 用户下达硬性约束（"必须用 X"/"禁止 Y"/"以后都这样"）
-- 你自我推翻了刚写错的代码（revert）
-
-**必填字段**：`mode`（`rework` 或 `user-rule`）+ `error_cause` + `fix_approach` + `lesson`；有用户原话则 `user_feedback` 摘录关键部分。格式与取值见 `protocols/idp-protocol.md`。
+**你要做的**：命中返工/纠正/用户下硬约束时，正常写 auto-memory（`feedback` 类型：规则 + Why + How to apply），这本就是记忆系统的既定行为。hook 会捕获，无需任何额外动作。
 
 **检查清单**：
-- [ ] 命中触发却没写 IDP = 漏采，视为本回合未完成
-- [ ] `lesson` 是否具体可复用（不是"注意检查"而是"X 场景下必须用 Y"）？
-- [ ] 只写触发场景；纯问答、只读、标准开发不写
+- [ ] 返工/纠正场景，是否写了对应的 auto-memory（`feedback` 类型）？
+- [ ] memory 内容是否具体可复用（"X 场景下必须用 Y" + 原因），而非流水账？
+- [ ] 纯问答、只读、标准开发不写 memory
 
 ---
 
@@ -158,9 +153,8 @@ title: Project Rules
 | **GLOBAL_SKILL_MEMORY.md** | `./.claude/skills/` | 协议 1/2（API 验证、约束对齐） | T1-PREPARE |
 | **[skill]/EXAMPLES.md** | `./.claude/skills/[skill]/` | 代码示例 | T1-PREPARE 按需 |
 | **[skill]/SKILL_MEMORY.md** | `./.claude/skills/[skill]/` | 该 Skill 硬性规则 | T1-PREPARE |
-| **GLOBAL_SKILL_MEMORY.md 协议 3** | 同上 | 执行模式检测 | T2-EXECUTE |
-| **protocols/idp-protocol.md** | `./.claude/protocols/` | IDP 写入规则 | T2-EXECUTE 按需 |
-| **protocols/validated-protocol.md** | 同上 | 接受/拒绝信号写入规则 | T3-FEEDBACK |
+| **GLOBAL_SKILL_MEMORY.md 协议 3** | 同上 | 执行模式检测（探索深度判定） | T2-EXECUTE |
+| **protocols/validated-protocol.md** | `./.claude/protocols/` | 接受/拒绝信号写入规则 | T3-FEEDBACK |
 | **SKILL_ITERATION.md** | `./.claude/skills/` | Skill 文件元规范 | T4-MAINTAIN |
 | **[skill]/ITERATION_GUIDE.md** | `./.claude/skills/[skill]/` | 该 Skill 演进规则 | T4-MAINTAIN |
 
@@ -211,30 +205,20 @@ code-pipeline执行时:
 
 ---
 
-## 执行记录（Hook 自动 + AI 补充）
+## 执行记录（Hook 自动，schema:4 memory 快照账本）
 
-Trace 采集由两层协作完成：
+Trace 采集**完全由 Hook 自动完成，零 AI 干预**。评分/buffer/IDP 子系统已退役——trace 只记录一件事：本会话模型写了哪些 auto-memory。
 
 **Hook 层（自动，零 token）**：
-- `trace-collector.py`：每次文件编辑时自动记录路径、行数、编辑次数、修正检测
-- `trace-flush.py`：会话结束时计算五维评分（F/D/K/S/E），超过阈值则写入 `trace.md`
-- 自动填充字段：`timestamp`、`modules`、`files_modified`、`file_count`、`lines_changed`、`edit_count`、`score`、`correction`（修正检测）
+- `trace-collector.py`：只捕获 auto-memory 写入——命中 `~/.claude/projects/<slug>/memory/` 下的主题文件时，把全文快照进 `.trace_memory_snapshots`（`user` 类型过滤，`MEMORY.md` 索引忽略）。**代码编辑不再采集**。
+- `trace-flush.py`：会话结束时，**仅当存在 memory 快照**才写入 `trace.md`（纯代码会话不产生 trace）；快照以 `<!-- MEMORY -->` 子块嵌入（schema:4），随 git 同步供 `origin evolve` 蒸馏。
+- 字段：`timestamp`、`type`（快照主导类型 feedback>project>reference）、`validated`、`pipeline_run_id`、`memory_snapshots`。
 
-**AI 层（补充，少量 token）**：
-- 当 Hook 已创建 trace 条目时，AI 在任务结束前补充 `type` 和 `skills` 字段
-- 如果 Hook 未创建条目（评分未达阈值），AI 不需要手动创建
-
-**AI 补充规则**：
-
-任务结束时，检查 `.claude/traces/trace.md` 最新条目。如果最新条目的 `type` 为 `_`（Hook 占位符），且该条目的时间戳在本次会话期间，则静默替换以下字段：
-
-- `type`：替换为任务类型（`feature` / `bugfix` / `refactor` / `optimization` / `config`）
-- `skills`：替换为本次使用的 Skill 列表
+**AI 要做的**：只需正常写 auto-memory（返工/纠正/定规矩时写 `feedback` 类型）。hook 自动捕获，**不需要手动补 trace 字段、不需要写 IDP**。
 
 **禁止**：
-- 禁止手动创建完整的 trace 条目（这是 Hook 的职责）
-- 禁止修改 Hook 已填充的字段（`score`、`modules`、`correction` 等）
-- 纯问答、只读操作不做任何补充
+- 禁止手动创建或修改 trace 条目（这是 Hook 的职责）。
+- 纯问答、只读操作不做任何事。
 
 ---
 
