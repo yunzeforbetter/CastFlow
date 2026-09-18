@@ -98,9 +98,9 @@ class TestColdStart(TmpProject):
         self.assertFalse(cfg["evolution"]["enabled"])
         self.assertTrue(cfg["optional_skills"]["debug"])
         self.assertTrue(os.path.isdir(os.path.join(
-            runtime_dir(self.root), "skills", "bootstrap-skill")))
+            runtime_dir(self.root), "skills", "skill-creator")))
         self.assertTrue(os.path.isfile(os.path.join(
-            self.root, ".claude", "skills", "bootstrap-skill", "SKILL.md")))
+            self.root, ".claude", "skills", "skill-creator", "SKILL.md")))
         self.assertFalse(os.path.isdir(os.path.join(self.root, ".cursor", "skills")))
         self.assertFalse(os.path.isdir(os.path.join(
             self.root, ".claude", "skills", "origin-evolve-skill")))
@@ -158,13 +158,13 @@ class TestColdStart(TmpProject):
         self.assertTrue(setup.is_seeded(self.root))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "CLAUDE.md")))
         self.assertTrue(os.path.isdir(os.path.join(
-            self.root, ".claude", "skills", "bootstrap-skill")))
+            self.root, ".claude", "skills", "skill-creator")))
         report = setup.unseed(self.root)
         self.assertTrue(report.get("ok"))
         self.assertFalse(setup.is_seeded(self.root))
         self.assertFalse(os.path.isdir(runtime_dir(self.root)))
         self.assertFalse(os.path.isdir(os.path.join(
-            self.root, ".claude", "skills", "bootstrap-skill")))
+            self.root, ".claude", "skills", "skill-creator")))
         again = setup.cold_start(self.root, {
             "language": "en",
             "generate_skills": True,
@@ -182,16 +182,16 @@ class TestColdStart(TmpProject):
     def test_update_framework_refreshes_core_skill(self):
         setup.cold_start(self.root, {"optional_skills": {"architect": False}})
         runtime_md = os.path.join(
-            runtime_dir(self.root), "skills", "bootstrap-skill", "SKILL.md")
+            runtime_dir(self.root), "skills", "skill-creator", "SKILL.md")
         with open(runtime_md, "a", encoding="utf-8", newline="\n") as f:
             f.write("\n<!-- mutated-by-test -->\n")
         report = setup.update_framework(self.root)
         self.assertTrue(report.get("ok"))
-        self.assertIn("bootstrap-skill", report.get("updated") or [])
+        self.assertIn("skill-creator", report.get("updated") or [])
         text = _read(runtime_md)
         self.assertNotIn("mutated-by-test", text)
         self.assertTrue(os.path.isfile(os.path.join(
-            self.root, ".claude", "skills", "bootstrap-skill", "SKILL.md")))
+            self.root, ".claude", "skills", "skill-creator", "SKILL.md")))
 
     def test_cli_setup_seeds_without_scan(self):
         rc = manager_main(["--project-root", self.root, "setup", "--language", "ja"])
@@ -199,7 +199,7 @@ class TestColdStart(TmpProject):
         self.assertTrue(setup.is_seeded(self.root))
         self.assertEqual(config.load_config(self.root)["language"], "ja")
         self.assertTrue(os.path.isfile(os.path.join(
-            runtime_dir(self.root), "skills", "bootstrap-skill", "SKILL.md")))
+            runtime_dir(self.root), "skills", "skill-creator", "SKILL.md")))
 
     def _assert_factory_clean(self, factory):
         for name in (
@@ -240,9 +240,9 @@ class TestColdStart(TmpProject):
         adapters.seed(self.root)
         self._assert_factory_clean(factory)
         self.assertTrue(os.path.isfile(os.path.join(
-            runtime_dir(self.root), "skills", "bootstrap-skill", "SKILL.md")))
+            runtime_dir(self.root), "skills", "skill-creator", "SKILL.md")))
         self.assertTrue(os.path.isdir(os.path.join(
-            self.root, ".claude", "skills", "bootstrap-skill")))
+            self.root, ".claude", "skills", "skill-creator")))
         self.assertFalse(os.path.isdir(os.path.join(factory, ".claude")))
 
 
@@ -252,7 +252,7 @@ class TestLaunchRoot(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(parent, ignore_errors=True))
         checkout = os.path.join(parent, "CastFlow")
         os.makedirs(os.path.join(checkout, ".castflow"))
-        os.makedirs(os.path.join(checkout, "bootstrap-skill"))
+        _write(os.path.join(checkout, ".castflow", "manager.py"), "")
         _write(os.path.join(checkout, ".git"), "gitdir: ../.git/modules/CastFlow\n")
         root = setup.resolve_launch_root(harness_checkout=checkout)
         self.assertEqual(os.path.normpath(root), os.path.normpath(parent))
@@ -261,7 +261,7 @@ class TestLaunchRoot(unittest.TestCase):
         checkout = tempfile.mkdtemp(prefix="cf_clone_")
         self.addCleanup(lambda: shutil.rmtree(checkout, ignore_errors=True))
         os.makedirs(os.path.join(checkout, ".castflow"))
-        os.makedirs(os.path.join(checkout, "bootstrap-skill"))
+        _write(os.path.join(checkout, ".castflow", "manager.py"), "")
         os.makedirs(os.path.join(checkout, ".git"))
         root = setup.resolve_launch_root(
             harness_checkout=checkout, start=checkout)
@@ -273,7 +273,7 @@ class TestLaunchRoot(unittest.TestCase):
         os.makedirs(os.path.join(parent, "Assets", "Scripts"))
         checkout = os.path.join(parent, "CastFlow")
         os.makedirs(os.path.join(checkout, ".castflow"))
-        os.makedirs(os.path.join(checkout, "bootstrap-skill"))
+        _write(os.path.join(checkout, ".castflow", "manager.py"), "")
         os.makedirs(os.path.join(checkout, ".git"))
         root = setup.resolve_launch_root(harness_checkout=checkout)
         self.assertEqual(os.path.normpath(root), os.path.normpath(parent))
@@ -321,10 +321,22 @@ class TestSetupConsole(TmpProject):
         self.assertIn("setup-evo", html)
         self.assertIn("setup-scan-gen", html)
         self.assertIn("扫描模块并生成 skill", html)
+        self.assertIn("goal-loop-creator", html)
+        self.assertIn("长任务转换系统", html)
+        self.assertIn("loop-engine", html)
         self.assertIn("setup-prompt", html)
         self.assertIn("留空", html)
         self.assertIn("MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md", html)
         self.assertIn(".castflow-runtime/skills/", html)
+        self.assertIn("写入", html)
+        self.assertIn("不会再拷一份", html)
+        self.assertNotIn("也不删项目里的", html)
+        self.assertNotIn("bootstrap-assets", html)
+        self.assertNotIn("*.template.md", html)
+        self.assertNotIn("setup-architect", html)
+        self.assertNotIn("opt-architect", html)
+        self.assertNotIn("id=\"setup-debug\"", html)
+        self.assertNotIn("id=\"opt-profiler\"", html)
         self.assertIn("/goal", html)
         self.assertIn("label class=\"choice\"", html)
         self.assertIn("btn-copy-scan-gen", html)
@@ -376,9 +388,9 @@ class TestSetupConsole(TmpProject):
             self.assertEqual(data["config"]["language"], "en")
             self.assertFalse(data["config"]["adapters"]["codex"])
             self.assertTrue(os.path.isdir(os.path.join(
-                self.root, ".claude", "skills", "bootstrap-skill")))
+                self.root, ".claude", "skills", "skill-creator")))
             self.assertFalse(os.path.isdir(os.path.join(
-                self.root, ".cursor", "skills", "bootstrap-skill")))
+                self.root, ".cursor", "skills", "skill-creator")))
             self.assertFalse(os.path.isdir(os.path.join(
                 self.root, ".agents", "skills")))
             self.assertFalse(data.get("generate_skills"))
@@ -464,7 +476,9 @@ class TestLoopEnginePrompt(unittest.TestCase):
             ".cursor/",
             ".grok/",
             "禁止出现在多选",
-            "bootstrap-skill",
+            "castflow.bat",
+            "整棵忽略",
+            "不要按 skill 名列举",
             "_skill-gen-queue",
             "同一时刻只允许 1 个",
             "禁止并行",
@@ -477,7 +491,9 @@ class TestLoopEnginePrompt(unittest.TestCase):
         self.assertIn("Never a module", catalog)
         self.assertIn("CastFlow/", catalog)
         self.assertIn(".castflow-runtime/", catalog)
-        self.assertIn("Offering CastFlow", catalog)
+        self.assertIn("Do not keep a roster of framework skill names", catalog)
+        self.assertNotIn("existing framework skills", catalog)
+        self.assertNotIn("goal-loop-creator", prompt)
 
     def test_catalog_generation_forbids_pushy_description(self):
         prompt = _read(os.path.join(

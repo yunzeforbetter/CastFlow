@@ -1,5 +1,6 @@
 """Project root, harness dir, and runtime layout."""
 
+import json
 import os
 import shutil
 import stat
@@ -12,14 +13,17 @@ RUNTIME_FILES = {
     "catalog": "catalog.json",
     "queue": "generate-queue.json",
     "ui_state": "ui-state.json",
-    "skills": "skills-state.json",
+    "skills": "skills-disabled.json",
 }
 
-RUNTIME_DIRS = ("skills", "memory", "traces", "rules")
+RUNTIME_DIRS = ("skills", "memory", "traces", "rules", "hooks", "templates")
 
 
 def find_harness_dir():
-    """Locate the .castflow/ directory (always relative to this package)."""
+    """Directory that contains this manager package.
+
+    Factory checkout: `<CastFlow>/.castflow`. Seeded project: `<project>/.castflow-runtime`.
+    """
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -73,23 +77,68 @@ def runtime_path(project_root, key):
     return os.path.join(runtime_dir(project_root), RUNTIME_FILES[key])
 
 
-def bootstrap_skill_src():
-    """CastFlow/bootstrap-skill sits next to CastFlow/.castflow."""
-    return os.path.join(os.path.dirname(find_harness_dir()), "bootstrap-skill")
+def _has_core_skills(harness_dir):
+    return os.path.isdir(os.path.join(harness_dir or "", "core", "skills"))
+
+
+def resolve_factory_harness(project_root=None, castflow_home=None):
+    """Harness dir that still has `core/skills` (factory `.castflow`).
+
+    Prefers the running manager when it is the factory. Otherwise uses
+    `castflow_home` from runtime config (relative to the project, or absolute).
+    Returns None when only a project-vendored runtime manager is available.
+    """
+    here = find_harness_dir()
+    if _has_core_skills(here):
+        return here
+    home = castflow_home
+    if not home and project_root:
+        cfg_path = os.path.join(runtime_dir(project_root), RUNTIME_FILES["config"])
+        if os.path.isfile(cfg_path):
+            try:
+                with open(cfg_path, "r", encoding="utf-8-sig") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    home = loaded.get("castflow_home")
+            except (ValueError, OSError):
+                home = None
+    if home:
+        if project_root and not os.path.isabs(home):
+            home = os.path.normpath(os.path.join(project_root, home))
+        for cand in (os.path.join(home, HARNESS_NAME), home):
+            if _has_core_skills(cand):
+                return cand
+    return None
+
+
+def hooks_dir_for(project_root):
+    """Hook scripts the project should run: runtime copy, then factory core."""
+    runtime_hooks = os.path.join(runtime_dir(project_root), "hooks")
+    if os.path.isfile(os.path.join(runtime_hooks, "trace-collector.py")):
+        return runtime_hooks
+    legacy = os.path.join(project_root, HARNESS_NAME, "core", "hooks")
+    if os.path.isfile(os.path.join(legacy, "trace-collector.py")):
+        return legacy
+    factory = resolve_factory_harness(project_root)
+    if factory:
+        return os.path.join(factory, "core", "hooks")
+    return os.path.join(find_harness_dir(), "core", "hooks")
 
 
 def is_factory_checkout(path):
-    """True only for the CastFlow source repo, not a project that received a copy of `.castflow/`."""
+    """True only for the CastFlow source repo, not a seeded project."""
     if not path:
         return False
-    return (
-        os.path.isdir(os.path.join(path, ".castflow"))
-        and os.path.isdir(os.path.join(path, "bootstrap-skill"))
-    )
+    return os.path.isfile(os.path.join(path, HARNESS_NAME, "manager.py"))
 
 
 def factory_root():
     """CastFlow factory checkout, or None when running a project-vendored manager."""
+    harness = resolve_factory_harness()
+    if harness:
+        root = os.path.dirname(harness)
+        if is_factory_checkout(root):
+            return root
     root = os.path.dirname(find_harness_dir())
     if is_factory_checkout(root):
         return root

@@ -43,28 +43,9 @@ def save_queue(project_root, queue):
 
 
 def enqueue_accepted(project_root):
-    """Build a sequential queue: enabled core skills first, then accepted modules."""
+    """Build a sequential queue of accepted modules (programmer-*-skill)."""
     catalog = load_catalog(project_root)
-    config = load_config(project_root)
     items = []
-
-    optional = config.get("optional_skills") or {}
-    core = catalog.get("core_skills") or {}
-    for name in ("architect", "debug", "profiler"):
-        enabled = bool(optional.get(name, core.get(name, {}).get("enabled", False)))
-        core.setdefault(name, {})["enabled"] = enabled
-        if not enabled:
-            continue
-        state = core[name].get("skill_state") or "none"
-        if state == "ready":
-            continue
-        items.append({
-            "kind": "core",
-            "id": name,
-            "skill": "{}-skill".format(name),
-            "state": "queued",
-        })
-        core[name]["skill_state"] = "queued"
 
     for mod in catalog.get("modules") or []:
         if mod.get("status") != "accepted":
@@ -79,7 +60,6 @@ def enqueue_accepted(project_root):
         })
         mod["skill_state"] = "queued"
 
-    catalog["core_skills"] = core
     save_catalog(project_root, catalog)
     return save_queue(project_root, {"items": items})
 
@@ -159,20 +139,6 @@ def build_handoff(project_root, generate=None, prompt=None):
         notes = (mod.get("notes") or "").strip()
         if notes:
             extra.append(notes)
-    else:
-        tmpl = (
-            ".castflow/bootstrap-assets/skill-templates/{}.template/"
-            "SKILL.template.md".format(item.get("id"))
-        )
-        if zh:
-            extra.append(
-                "YAML 召回句只取 `{}`。不要读该模板目录里的其它文件。".format(tmpl)
-            )
-        else:
-            extra.append(
-                "YAML recall: `{}` only. Do not read other files in that "
-                "template directory.".format(tmpl)
-            )
     detail = "\n".join(extra)
     if zh:
         body = (
@@ -180,8 +146,8 @@ def build_handoff(project_root, generate=None, prompt=None):
             "\n"
             "写到 `.castflow-runtime/skills/{}/`（四文件）。\n"
             "正文按 `.castflow-runtime/skills/SKILL_ITERATION.md`。\n"
-            "写完：`python .castflow/manager.py validate`，通过后再 "
-            "`python .castflow/manager.py sync`\n"
+            "写完：`python .castflow-runtime/manager.py validate`，通过后再 "
+            "`python .castflow-runtime/manager.py sync`\n"
             "不要写 `.claude/skills` 或 `.agents/skills`。\n"
             "禁止并行开下一个 skill。"
         ).format(skill, skill)
@@ -195,8 +161,8 @@ def build_handoff(project_root, generate=None, prompt=None):
         "\n"
         "Write `.castflow-runtime/skills/{}/` (four files).\n"
         "Body follows `.castflow-runtime/skills/SKILL_ITERATION.md`.\n"
-        "Then: `python .castflow/manager.py validate`, then "
-        "`python .castflow/manager.py sync`\n"
+        "Then: `python .castflow-runtime/manager.py validate`, then "
+        "`python .castflow-runtime/manager.py sync`\n"
         "Do not write `.claude/skills` or `.agents/skills`.\n"
         "Do not start the next skill in parallel."
     ).format(skill, skill)

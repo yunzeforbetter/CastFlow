@@ -17,13 +17,14 @@ CastFlow cold start
 
 [1] Configure  language, adapters, evolution
 [2] Optional   check "scan modules and generate skills"
-[3] Click      开启冷启动  (copy framework skills + core files)
+[3] Click      开启冷启动  (write .castflow-runtime/ only)
 [4] If checked, paste the prompt (yours or the default) into the AI
 
-Unchecked = install only. No AI prompt.
+Unchecked = install only into .castflow-runtime/. No AI prompt.
 Checked = AI scans the whole project (any language) and generates skills.
 You can edit the prompt; leave it empty to use the built-in one.
-Already installed? Use 回退冷启动 to start over without deleting files by hand.
+The project does not get a copy of .castflow/. Domain templates are gone.
+Already installed? Use 回退冷启动 to start over without deleting source by hand.
 
 Later: open this launcher for the manager (framework / skills / queue).
 """
@@ -55,12 +56,8 @@ def print_launch_guide(seeded=False):
 
 
 def is_castflow_checkout(path):
-    if not path:
-        return False
-    return (
-        os.path.isdir(os.path.join(path, ".castflow"))
-        and os.path.isdir(os.path.join(path, "bootstrap-skill"))
-    )
+    from .paths import is_factory_checkout
+    return is_factory_checkout(path)
 
 
 def pick_project_directory(initial=None, title=None):
@@ -129,10 +126,7 @@ def looks_like_host_project(path):
 
 def is_seeded(project_root):
     skills = os.path.join(runtime_dir(project_root), "skills")
-    for name in ("bootstrap-skill", "skill-creator"):
-        if os.path.isfile(os.path.join(skills, name, "SKILL.md")):
-            return True
-    return False
+    return os.path.isfile(os.path.join(skills, "skill-creator", "SKILL.md"))
 
 
 def resolve_launch_root(explicit=None, harness_checkout=None, start=None):
@@ -315,8 +309,9 @@ def _strip_hook_file(path):
 def unseed(project_root):
     """Remove CastFlow runtime + projections so cold start can run again.
 
-    Does not delete project source, the vendored `.castflow/` manager, or
-    `castflow.bat`. Root CLAUDE.md / AGENTS.md keep a non-stub project section.
+    Does not delete project source. Drops leftover vendored `.castflow/` and
+    project `castflow.bat` (manager lives in runtime). Root CLAUDE.md /
+    AGENTS.md keep a non-stub project section.
     """
     from .paths import reject_factory_runtime
 
@@ -363,6 +358,12 @@ def unseed(project_root):
     rdir = runtime_dir(project_root)
     if _remove_path(rdir):
         removed.append(rdir.replace("\\", "/"))
+    from .bundle import remove_stale_project_harness
+    if remove_stale_project_harness(project_root):
+        removed.append(os.path.join(project_root, ".castflow").replace("\\", "/"))
+    bat = os.path.join(project_root, "castflow.bat")
+    if os.path.isfile(bat) and _remove_path(bat):
+        removed.append(bat.replace("\\", "/"))
     return {
         "ok": True,
         "seeded": is_seeded(project_root),

@@ -10,15 +10,15 @@ description: >
 
 Skill 文件长什么样。只在 **T4-MAINTAIN**（创建或改 skill 自身结构）加载。怎么调用 skill 去写代码，见 `GLOBAL_SKILL_MEMORY.md` 和项目 `CLAUDE.md`，不在这里。
 
-写入 `.castflow-runtime/skills/<name>/`。不要写适配器镜像。`python .castflow/manager.py sync` 只投影到 `.claude/skills` 和 `.agents/skills`；不要创建 `.grok/skills` 或 `.cursor/skills`（那两棵是兼容残留，sync 会清掉以免重复扫描）。
+写入 `.castflow-runtime/skills/<name>/`。不要写适配器镜像。`python .castflow-runtime/manager.py sync` 只投影到 `.claude/skills` 和 `.agents/skills`；不要创建 `.grok/skills` 或 `.cursor/skills`（那两棵是兼容残留，sync 会清掉以免重复扫描）。
 
-模块 `programmer-*-skill` 只按本文件写，不要套域 README 或 `*.template.md`（那些会把 skill 写成空架子）。architect / debug / profiler 若仍有冷启动模板，只取 YAML 召回句，正文仍按本文件。四角色文件里只要同时出现 `{{` 和 `}}`，validate 就当残留占位符 fail（规则是朴素子串，不是 token 形状）。示例代码若源文件含这对括号，改写成不触发的写法。
+模块 `programmer-*-skill` 只按本文件写，不要套域 README 或 `*.template.md`。architect / debug / profiler 的 YAML 召回句见下文，正文仍按本文件。四角色文件里只要同时出现 `{{` 和 `}}`，validate 就当残留占位符 fail（规则是朴素子串，不是 token 形状）。示例代码若源文件含这对括号，改写成不触发的写法。
 
 编排文档只传 skill 名、范围、路径，不要抄本文件。
 
 本文件约束 **catalog / 模块 skill 的四角色文件**。Agent、本文件、自由形态 skill 的评测附件各有自己的形状。
 
-机器检查：`python .castflow/manager.py validate`。缺四角色文件的目录 skip。description 形状错误、同一文件里同时有 `{{` 和 `}}`、emoji、多余 `.md` 是 **error**。体积超上限是 **warning**，不是再开文件的许可。
+机器检查：`python .castflow-runtime/manager.py validate`。缺四角色文件的目录 skip。description 形状错误、同一文件里同时有 `{{` 和 `}}`、emoji、多余 `.md` 是 **error**。体积超上限是 **warning**，不是再开文件的许可。
 
 ---
 
@@ -51,6 +51,10 @@ Skill 文件长什么样。只在 **T4-MAINTAIN**（创建或改 skill 自身结
 
 - 目录名匹配 `programmer-*-skill`：`Change <显示名> (<id>) in this repo. Use when the user names <显示名> or <id>. NOT other programmer-*-skill.` 禁止扩同义词、类/路径清单、额外让位目标。`len(compact) <= 280`。
 - 其它 skill：口语何时用 + 一句 `NOT`。`len(compact) <= 240`。
+- `architect-skill` / `debug-skill` / `profiler-skill` 用下面原句（可按项目微调 NOT 目标）：
+  - architect: `Project architecture constraints and layering. Use when the user asks which layer a change belongs in, or whether it violates architecture. NOT module API how-to (programmer-*-skill).`
+  - debug: `Boundary and failure inspection for this repo. Use when diagnosing null, race, or crash failures. NOT module API how-to (programmer-*-skill).`
+  - profiler: `Hot-path performance review for this repo. Use when a hot path is slow, hitching, or allocating. NOT functional bugs (debug-skill).`
 
 两种都禁止关键词堆砌。禁止 pushy 扩词（命中即 error）：`even if they` / `even if the user`、`whenever the user mentions`、`make sure to use this skill whenever`、`即使没` / `即使不` / `即使用户没`。正文可以多写让位；description 里 `NOT` 这个词最多出现一次。
 
@@ -132,7 +136,7 @@ Related: 规则X
 | 操作 | T4 手动改 | origin-evolve 写入 |
 |------|-----------|-------------------|
 | Append | 与已有条目无语义重叠 | 无已有条目 Jaccard >= 0.5 |
-| Merge | 语义重叠或同一代码区域；给用户看 diff | Jaccard >= 0.5（`python .castflow/manager.py homology`）。本文件不另造阈值 |
+| Merge | 语义重叠或同一代码区域；给用户看 diff | Jaccard >= 0.5（`python .castflow-runtime/manager.py homology`）。本文件不另造阈值 |
 | Retire | grep 证明 Anchors 符号已不存在 | 同上 |
 
 接近体积上限时先 Merge / Retire 再 Append。禁止另开规则文件。本文件的体积只认下面 `validate` 单位。origin-evolve 自己的词容量以那份 skill 为准，不要在这里换算成第二套数字。
@@ -180,4 +184,4 @@ Related: 规则X
 | 框架 API 变了 | | 是 | 可能 | |
 | 用户纠正用法 | | 是 | 可能 | |
 
-写完跑 `python .castflow/manager.py validate`，再 `python .castflow/manager.py sync`。
+写完跑 `python .castflow-runtime/manager.py validate`，再 `python .castflow-runtime/manager.py sync`。

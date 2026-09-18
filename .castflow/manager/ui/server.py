@@ -33,6 +33,8 @@ class BoundRoot(object):
 
 
 def _state(project_root):
+    if setup.is_seeded(project_root):
+        adapters.refresh_projections(project_root)
     harness = find_harness_dir()
     return {
         "project_root": project_root.replace("\\", "/"),
@@ -144,13 +146,13 @@ def make_handler(project_root):
                     result = skills.retire(project_root, body.get("name"))
                     if not result.get("ok"):
                         return self._send_json(400, result)
-                    adapters.sync(project_root)
+                    adapters.refresh_projections(project_root)
                     return self._send_json(200, _state(project_root))
                 if path == "/api/skills/activate":
                     result = skills.restore(project_root, body.get("name"))
                     if not result.get("ok"):
                         return self._send_json(400, result)
-                    adapters.sync(project_root)
+                    adapters.refresh_projections(project_root)
                     return self._send_json(200, _state(project_root))
                 if path == "/api/skills/update":
                     result = skills.update_skill(project_root, body.get("name"))

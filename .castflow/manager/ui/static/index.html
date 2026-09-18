@@ -102,6 +102,13 @@
   <div id="setup-overlay" class="overlay hidden">
     <div class="setup-card">
       <h1>CastFlow 冷启动</h1>
+      <p class="path">装架后项目里只有 <code>.castflow-runtime/</code>（skills / hooks / manager）。不会再拷一份 <code>.castflow/</code>。</p>
+      <div class="steps">
+        <div class="step"><b>1 选项目</b>语言、适配器、进化</div>
+        <div class="step"><b>2 可选</b>勾选扫描并生成 skill</div>
+        <div class="step"><b>3 开启冷启动</b>写入 <code>.castflow-runtime/</code></div>
+        <div class="step ai"><b>4 仅勾选时</b>把提示词交给 AI</div>
+      </div>
       <div class="card block">
         <h2>项目文件夹</h2>
         <p>CastFlow 可以和工程不在同一目录。点按钮用系统对话框选择游戏/应用根目录，不要手改路径。</p>
@@ -114,7 +121,7 @@
         <input type="checkbox" id="setup-scan-gen" />
         <span>
           <b>扫描模块并生成 skill</b>
-          <span class="path">可选，默认不勾。勾选后由 AI 扫描整个项目、搜集功能模块并生成 skill（不限 C# / C++ / Python 等）。不勾选只拷贝框架 skill 和核心文件，不需要 AI 提示词。</span>
+          <span class="path">可选，默认不勾。勾选后由 AI 扫描整个项目、搜集功能模块并生成 skill（不限语言）。不勾选只把框架 skill、hooks、manager 写入 <code>.castflow-runtime/</code>，不需要 AI 提示词。</span>
         </span>
       </label>
       <div id="setup-mod-wrap" class="hidden">
@@ -126,6 +133,13 @@
             <button type="button" class="btn" id="btn-fill-default-prompt">填入默认提示词</button>
           </div>
         </div>
+      </div>
+
+      <div class="card block">
+        <h2>冷启动会装入的核心 skill</h2>
+        <p><b>goal-loop-creator</b> — <span class="pill">长任务转换系统</span></p>
+        <p class="path">把需求转成 AI 可跑的、基于 loop-engine 理念的长任务包（Goal Loop Package）。不执行 <code>/goal</code>，不生成模块 skill。</p>
+        <p class="path" style="margin-top:8px">同时装入：<code>skill-creator</code>（catalog 四件套）、<code>origin-evolve-skill</code>（进化开启时）。</p>
       </div>
 
       <div id="setup-form">
@@ -147,9 +161,6 @@
           </p>
           <p>
             <label class="chk"><input type="checkbox" id="setup-evo" checked /> 进化插件</label>
-            <label class="chk"><input type="checkbox" id="setup-architect" /> architect-skill</label>
-            <label class="chk"><input type="checkbox" id="setup-debug" /> debug-skill</label>
-            <label class="chk"><input type="checkbox" id="setup-profiler" /> profiler-skill</label>
           </p>
         </div>
         <div class="toolbar">
@@ -180,13 +191,13 @@
     <section id="tab-framework">
       <div class="card">
         <h2>从 CastFlow 源更新</h2>
-        <p>刷新 <code>skill-creator</code> / <code>origin-evolve</code> / <code>bootstrap-skill</code> 以及 hooks、根规则。不覆盖你已经生成的项目 skill。</p>
+        <p>从 CastFlow 仓刷新 <code>.castflow-runtime/</code> 里的框架 skill（<code>skill-creator</code> / <code>origin-evolve-skill</code> / <code>goal-loop-creator</code>）、hooks 和根规则。不覆盖你已经生成的项目 skill。</p>
         <div class="toolbar">
           <button type="button" class="btn primary" id="btn-framework-update">从 CastFlow 源更新并同步</button>
           <button type="button" class="btn" data-action="sync" id="btn-sync">只同步投影</button>
           <button type="button" class="btn bad" id="btn-unseed">回退并重新冷启动</button>
         </div>
-        <p class="path">回退会卸下运行时和投影 skill，再打开向导。不删除工程源码，也不删项目里的 `.castflow/` 管理器。</p>
+        <p class="path">回退会卸下整个 <code>.castflow-runtime/</code>（含 manager / hooks）和投影 skill，并清掉误留的 <code>.castflow/</code>。不删除工程源码。然后重新打开向导。</p>
         <p class="path" id="framework-msg"></p>
       </div>
       <div class="card">
@@ -201,9 +212,6 @@
               <option value="ko">ko</option>
             </select>
           </label>
-          <label class="chk"><input type="checkbox" id="opt-architect" /> architect</label>
-          <label class="chk"><input type="checkbox" id="opt-debug" /> debug</label>
-          <label class="chk"><input type="checkbox" id="opt-profiler" /> profiler</label>
         </p>
         <div class="toolbar">
           <button type="button" class="btn" id="evo-btn">启用进化</button>
@@ -214,7 +222,7 @@
     </section>
 
     <section id="tab-skills" class="hidden">
-      <p class="path">真源 <code>.castflow-runtime/skills/</code>。停用后不同步到 AI；激活后立刻 sync。项目里双击 <code>castflow.bat</code> 打开本管理器。</p>
+      <p class="path">真源 <code>.castflow-runtime/skills/</code>。停用名单只在本机 <code>.castflow-runtime/skills-disabled.json</code>（gitignore，不进仓库）。没写进该文件的 skill 默认激活。打开本页会自动刷新投影（新增 / 删除 / 停用立刻反映到 <code>.claude/skills</code>）。<code>goal-loop-creator</code> 是核心 skill：长任务转换系统。</p>
       <div class="toolbar">
         <button class="btn primary" data-action="sync" onclick="doSync()">sync</button>
       </div>
@@ -222,7 +230,7 @@
         <h2>Skills</h2>
         <table>
           <thead>
-            <tr><th>name</th><th>kind</th><th>status</th><th>retire / update</th></tr>
+            <tr><th>name</th><th>kind</th><th>role</th><th>status</th><th>retire / update</th></tr>
           </thead>
           <tbody id="skill-rows"></tbody>
         </table>
@@ -247,7 +255,7 @@
       </div>
       <div class="card">
         <h2>队列是做什么的</h2>
-        <p>框架 skill 冷启动时已经装好。<strong>队列只装还需要 AI 写正文的项目 skill</strong>。</p>
+        <p>框架 skill 冷启动时已经写入 <code>.castflow-runtime/skills/</code>，包括 <code>goal-loop-creator</code>（<b>长任务转换系统</b>）。<strong>队列只装还需要 AI 写正文的模块 skill</strong>（<code>programmer-*-skill</code>）。</p>
       </div>
       <div class="card">
         <h2>给 AI 的下一句</h2>
@@ -259,7 +267,7 @@
         <h2>待生成列表</h2>
         <p class="path">模块发现由 AI（勾选后粘贴提示词）完成，不跑 Python 扫目录。</p>
         <div class="toolbar">
-          <button type="button" class="btn ok" id="btn-queue">把已勾选的核心 skill 加入队列</button>
+          <button type="button" class="btn ok" id="btn-queue">把已接受的模块加入队列</button>
         </div>
         <ol id="queue-list"></ol>
       </div>
@@ -311,17 +319,13 @@
           el.checked = ad[el.dataset.setupAd] !== false;
         });
         $("setup-evo").checked = !!(STATE.config.evolution && STATE.config.evolution.enabled !== false);
-        const opt = (STATE.config && STATE.config.optional_skills) || {};
-        $("setup-architect").checked = opt.architect !== false;
-        $("setup-debug").checked = !!opt.debug;
-        $("setup-profiler").checked = !!opt.profiler;
         toggleScanGen();
         return;
       }
 
       const skillItems = STATE.skills || [];
       $("skill-rows").innerHTML = skillItems.map(skillRow).join("") ||
-        "<tr><td colspan=4 class='path'>还没有 skill。</td></tr>";
+        "<tr><td colspan=5 class='path'>还没有 skill。</td></tr>";
 
       const items = (STATE.queue && STATE.queue.items) || [];
       $("queue-list").innerHTML = items.map(i =>
@@ -343,10 +347,6 @@
         (ad2[k] ? "checked" : "") + "/> " + k + "</label>"
       ).join("");
       $("lang-select").value = STATE.config.language || "zh";
-      const opt2 = STATE.config.optional_skills || {};
-      $("opt-architect").checked = opt2.architect !== false;
-      $("opt-debug").checked = !!opt2.debug;
-      $("opt-profiler").checked = !!opt2.profiler;
     }
 
     function toggleScanGen() {
@@ -369,15 +369,21 @@
 
     function skillRow(s) {
       const status = s.retired ? "retired" : "active";
+      const statusLabel = s.retired ? "停用" : "启用";
       const family = s.family || (s.kind === "project" ? "project" : "framework");
       const retireBtn = s.retired
         ? "<button class='btn ok' data-action='activate' onclick=\"doActivate('" + esc(s.name) + "')\">激活</button>"
         : "<button class='btn bad' data-action='retire' onclick=\"doRetire('" + esc(s.name) + "')\">停用</button>";
       const updateHint = family === "framework" ? "update" : "update";
+      const role = s.role || family;
+      const roleCell = s.name === "goal-loop-creator"
+        ? "<span class='pill active'>长任务转换系统</span><div class='path'>" + esc(role) + "</div>"
+        : "<div class='path'>" + esc(role) + "</div>";
       return "<tr>" +
         "<td>" + esc(s.name) + "<div class='path'>" + esc(family) + "</div></td>" +
         "<td><span class='pill'>" + esc(s.kind) + "</span></td>" +
-        "<td><span class='pill " + status + "'>" + status + "</span></td>" +
+        "<td>" + roleCell + "</td>" +
+        "<td><span class='pill " + status + "'>" + statusLabel + "</span></td>" +
         "<td><div class='row-actions'>" + retireBtn +
           "<button class='btn' data-action='update' onclick=\"doUpdate('" + esc(s.name) + "')\">" + updateHint + "</button>" +
         "</div></td></tr>";
@@ -405,11 +411,6 @@
           language: $("setup-lang").value,
           adapters,
           evolution: { enabled: $("setup-evo").checked },
-          optional_skills: {
-            architect: $("setup-architect").checked,
-            debug: $("setup-debug").checked,
-            profiler: $("setup-profiler").checked,
-          },
           generate_skills: !!generate_skills,
           generate_prompt: generate_skills ? prompt : ""
         });
@@ -418,10 +419,10 @@
         const text = STATE.handoff || "";
         if (STATE.generate_skills && text) {
           $("setup-summary").textContent =
-            "框架已拷贝。把下面提示词复制给 AI，让它读取指定文件并执行。";
+            "已写入 .castflow-runtime/（skills / hooks / manager）。把下面提示词复制给 AI，让它读取指定文件并执行。";
         } else {
           $("setup-summary").textContent =
-            "框架 skill 和核心文件已拷贝。未勾选扫描生成，不需要 AI 提示词。勾选错了可以点「重新冷启动」。";
+            "已写入 .castflow-runtime/（skills / hooks / manager）。未勾选扫描生成，不需要 AI 提示词。勾选错了可以点「重新冷启动」。";
         }
         $("setup-handoff").textContent = text;
         const wrap = $("setup-handoff-wrap");
@@ -435,7 +436,7 @@
     }
 
     async function resetColdStart() {
-      if (!confirm("将卸下本项目的 CastFlow 运行时和投影文件，然后重新打开向导。不会删除工程源码。")) {
+      if (!confirm("将卸下本项目的 .castflow-runtime/（含 manager / hooks）和投影文件，并清掉误留的 .castflow/。然后重新打开向导。不会删除工程源码。")) {
         return;
       }
       try {
@@ -526,12 +527,7 @@
         STATE = await api("/api/config", "POST", {
           language: $("lang-select").value,
           adapters,
-          sync: true,
-          optional_skills: {
-            architect: $("opt-architect").checked,
-            debug: $("opt-debug").checked,
-            profiler: $("opt-profiler").checked,
-          }
+          sync: true
         });
         render();
       });

@@ -15,7 +15,12 @@ import subprocess
 import sys
 
 from .config import load_config
-from .paths import bootstrap_skill_src, find_harness_dir, runtime_dir
+from .paths import (
+    find_harness_dir,
+    hooks_dir_for,
+    resolve_factory_harness,
+    runtime_dir,
+)
 from . import skills as skills_mod
 
 ADAPTER_SKILL_DIRS = {
@@ -45,6 +50,8 @@ GITIGNORE_BLOCK_LINES = (
     ".agents/skills/",
     ".grok/skills/",
     ".cursor/skills/",
+    "# Per-machine skill disable list. Missing file = every skill active.",
+    ".castflow-runtime/skills-disabled.json",
     "# END CASTFLOW GITIGNORE",
 )
 PROJECTION_INDEX_PATHS = (
@@ -62,7 +69,6 @@ CORE_SKILL_COPY = (
 
 CORE_SKILL_DIRS = skills_mod.CORE_SKILL_DIRS
 RETIRED_SKILL_DIRS = skills_mod.HARNESS_RETIRED_SKILL_NAMES
-SEED_SKILL_NAME = skills_mod.BOOTSTRAP_SKILL_NAME
 
 
 def _python_cmd():
@@ -90,11 +96,7 @@ def hook_script_ref(script_abs, project_root):
 
 
 def hook_commands(project_root):
-    local_hooks = os.path.join(project_root, ".castflow", "core", "hooks")
-    if os.path.isdir(local_hooks):
-        hooks_dir = local_hooks
-    else:
-        hooks_dir = os.path.join(find_harness_dir(), "core", "hooks")
+    hooks_dir = hooks_dir_for(project_root)
     collector = hook_script_ref(
         os.path.join(hooks_dir, "trace-collector.py"), project_root)
     flush = hook_script_ref(
@@ -228,9 +230,25 @@ def link_or_copy_skill(src, dst):
 
 
 
-def _render_root_rules(evolution_on):
-    harness = find_harness_dir()
-    path = os.path.join(harness, "core", "templates", "root", "ROOT_RULES.template.md")
+def _root_rules_template_path(project_root=None):
+    candidates = []
+    factory = resolve_factory_harness(project_root)
+    if factory:
+        candidates.append(os.path.join(
+            factory, "core", "templates", "root", "ROOT_RULES.template.md"))
+    if project_root:
+        candidates.append(os.path.join(
+            runtime_dir(project_root), "templates", "ROOT_RULES.template.md"))
+    candidates.append(os.path.join(
+        find_harness_dir(), "core", "templates", "root", "ROOT_RULES.template.md"))
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return candidates[0]
+
+
+def _render_root_rules(evolution_on, project_root=None):
+    path = _root_rules_template_path(project_root)
     with open(path, "r", encoding="utf-8-sig") as f:
         text = f.read()
     keep_evo = "evolution" if evolution_on else "no-evolution"
@@ -265,7 +283,7 @@ def _keep_if_block(text, tag):
 
 
 def _write_root_rules(project_root, evolution_on, adapters, dry_run):
-    body = _render_root_rules(evolution_on)
+    body = _render_root_rules(evolution_on, project_root=project_root)
     targets = []
     if adapters.get("claude") or adapters.get("grok"):
         targets.append(os.path.join(project_root, "CLAUDE.md"))
@@ -312,13 +330,37 @@ def _write_root_rules(project_root, evolution_on, adapters, dry_run):
     return written
 
 
+def _sync_runtime_support(project_root, factory, dry_run):
+    """Copy hooks, module-catalog, ROOT_RULES, evolve-reminder into runtime."""
+    if dry_run or not factory:
+        return
+    rdir = runtime_dir(project_root)
+    hooks_src = os.path.join(factory, "core", "hooks")
+    if os.path.isdir(hooks_src):
+        _mirror_tree(hooks_src, os.path.join(rdir, "hooks"), skip_names={"__pycache__"})
+    for name in ("module-catalog.md", "evolve-reminder.md", "evolve-reminder.mdc"):
+        src = os.path.join(factory, "core", "rules", name)
+        if os.path.isfile(src):
+            _copy_file(src, os.path.join(rdir, "rules", name))
+    rules_src = os.path.join(
+        factory, "core", "templates", "root", "ROOT_RULES.template.md")
+    if os.path.isfile(rules_src):
+        _copy_file(
+            rules_src,
+            os.path.join(rdir, "templates", "ROOT_RULES.template.md"),
+        )
+
+
 def _sync_core_into_runtime(project_root, evolution_on, dry_run):
-    harness = find_harness_dir()
-    skills_src = os.path.join(harness, "core", "skills")
+    factory = resolve_factory_harness(project_root)
     dest_root = os.path.join(runtime_dir(project_root), "skills")
     if dry_run:
         return dest_root
     os.makedirs(dest_root, exist_ok=True)
+    if not factory:
+        return dest_root
+    _sync_runtime_support(project_root, factory, dry_run)
+    skills_src = os.path.join(factory, "core", "skills")
     for name in CORE_SKILL_COPY:
         src = os.path.join(skills_src, name)
         if os.path.isfile(src):
@@ -330,17 +372,13 @@ def _sync_core_into_runtime(project_root, evolution_on, dry_run):
         src = os.path.join(skills_src, dirname)
         if os.path.isdir(src):
             _mirror_tree(src, os.path.join(dest_root, dirname))
-    boot_src = bootstrap_skill_src()
-    if os.path.isdir(boot_src):
-        _mirror_tree(boot_src, os.path.join(dest_root, SEED_SKILL_NAME))
     for retired in RETIRED_SKILL_DIRS:
         _remove_tree(os.path.join(dest_root, retired))
-    # protocols
-    proto_src = os.path.join(harness, "core", "protocols")
+    proto_src = os.path.join(factory, "core", "protocols")
     proto_dst = os.path.join(runtime_dir(project_root), "protocols")
     if os.path.isdir(proto_src):
         _mirror_tree(proto_src, proto_dst)
-    traces_src = os.path.join(harness, "core", "traces", "config")
+    traces_src = os.path.join(factory, "core", "traces", "config")
     traces_dst = os.path.join(runtime_dir(project_root), "traces", "config")
     if os.path.isdir(traces_src):
         os.makedirs(traces_dst, exist_ok=True)
@@ -348,7 +386,7 @@ def _sync_core_into_runtime(project_root, evolution_on, dry_run):
             src = os.path.join(traces_src, fname)
             if os.path.isfile(src):
                 _copy_file(src, os.path.join(traces_dst, fname))
-    readme_src = os.path.join(harness, "core", "traces", "README.md")
+    readme_src = os.path.join(factory, "core", "traces", "README.md")
     if os.path.isfile(readme_src):
         _copy_file(readme_src, os.path.join(runtime_dir(project_root), "traces", "README.md"))
     return dest_root
@@ -414,8 +452,16 @@ def _project_skills(project_root, adapters, dry_run, evolution_on=True):
                 link_or_copy_skill(src_path, dest_path)
             written.append(entry)
         if not dry_run:
-            for name in skip:
-                _remove_entry(os.path.join(dest, name))
+            wanted = set(written)
+            if os.path.isdir(dest):
+                try:
+                    existing = os.listdir(dest)
+                except OSError:
+                    existing = []
+                for entry in existing:
+                    if entry in wanted or entry == "__pycache__":
+                        continue
+                    _remove_entry(os.path.join(dest, entry))
         projected[key] = {"enabled": True, "path": dest, "skills": written}
     for key, rel in COMPAT_SKILL_DIRS.items():
         dest = os.path.join(project_root, rel)
@@ -531,9 +577,16 @@ def _merge_cursor_hooks(project_root, evolution_on, cmds, dry_run):
 
 
 def _write_evolve_reminder(project_root, adapters, evolution_on, dry_run):
-    harness = find_harness_dir()
-    src_md = os.path.join(harness, "core", "rules", "evolve-reminder.md")
-    src_mdc = os.path.join(harness, "core", "rules", "evolve-reminder.mdc")
+    factory = resolve_factory_harness(project_root)
+    rdir = runtime_dir(project_root)
+    src_md = ""
+    src_mdc = ""
+    if factory:
+        src_md = os.path.join(factory, "core", "rules", "evolve-reminder.md")
+        src_mdc = os.path.join(factory, "core", "rules", "evolve-reminder.mdc")
+    if not os.path.isfile(src_md):
+        src_md = os.path.join(rdir, "rules", "evolve-reminder.md")
+        src_mdc = os.path.join(rdir, "rules", "evolve-reminder.mdc")
     if not os.path.isfile(src_md):
         return []
     written = []
@@ -690,6 +743,31 @@ def untrack_projection_paths(project_root, dry_run=False):
     return report
 
 
+def refresh_projections(project_root, dry_run=False):
+    """Re-link adapter skill trees from runtime. Does not refresh framework sources.
+
+    New skills (not in the local disable list) are projected. Disabled and
+    deleted skills are removed from `.claude/skills` and `.agents/skills`.
+    """
+    from .paths import reject_factory_runtime
+    reject_factory_runtime(project_root)
+    dest_root = os.path.join(runtime_dir(project_root), "skills")
+    for retired in RETIRED_SKILL_DIRS:
+        _remove_tree(os.path.join(dest_root, retired))
+    skills_mod.prune_missing_disabled(project_root)
+    config = load_config(project_root)
+    adapters = config.get("adapters") or {}
+    evolution_on = bool(config.get("evolution", {}).get("enabled", True))
+    return {
+        "evolution": evolution_on,
+        "dry_run": dry_run,
+        "retired": sorted(skills_mod.retired_names(project_root)),
+        "gitignore": ensure_projection_gitignore(project_root, dry_run=dry_run),
+        "projected": _project_skills(
+            project_root, adapters, dry_run, evolution_on=evolution_on),
+    }
+
+
 def adapter_status(project_root):
     config = load_config(project_root)
     adapters = config.get("adapters") or {}
@@ -717,7 +795,6 @@ def sync(project_root, config=None, dry_run=False):
         config = load_config(project_root)
     adapters = config.get("adapters") or {}
     evolution_on = bool(config.get("evolution", {}).get("enabled", True))
-    cmds = hook_commands(project_root)
 
     report = {
         "evolution": evolution_on,
@@ -726,6 +803,7 @@ def sync(project_root, config=None, dry_run=False):
     }
 
     report["runtime_skills"] = _sync_core_into_runtime(project_root, evolution_on, dry_run)
+    cmds = hook_commands(project_root)
     report["inventory"] = skills_mod.inventory(project_root)
     report["retired"] = sorted(skills_mod.retired_names(project_root))
     report["projected"] = _project_skills(
@@ -759,13 +837,21 @@ def seed(project_root, dry_run=False):
     reject_factory_runtime(project_root)
     ensure_runtime_layout(project_root)
     config = load_config(project_root)
+    from .paths import factory_root
+    factory = factory_root()
+    if factory:
+        try:
+            rel = os.path.relpath(factory, project_root)
+            config["castflow_home"] = rel.replace("\\", "/")
+        except ValueError:
+            config["castflow_home"] = factory.replace("\\", "/")
+    bundled = None
     if not dry_run:
         save_config(project_root, config)
-    report = sync(project_root, config=config, dry_run=dry_run)
-    if not dry_run:
         from .bundle import install_project_manager
         bundled = install_project_manager(project_root)
-        report = sync(project_root, config=config, dry_run=False)
+    report = sync(project_root, config=config, dry_run=dry_run)
+    if not dry_run:
         report["manager"] = bundled
         report["factory_runtime_removed"] = scrub_factory_runtime()
     return report

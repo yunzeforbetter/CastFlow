@@ -45,17 +45,16 @@ Not a module by default (still show in the multi-select, unchecked):
 Never a module (do not walk, do not list, do not generate `programmer-*-skill`):
 
 - `CastFlow/` (framework repo: submodule, nested copy, or mistaken project root)
-- `.castflow/` (harness: installer, manager, core, hooks, templates)
-- `.castflow-runtime/` (already-installed framework and project skills)
+- `.castflow/` (CastFlow checkout harness; should not appear in a seeded project)
+- `.castflow-runtime/` (the project's only CastFlow tree: skills, hooks, manager.
+  Skip the whole tree. Do not list skill names. Anything already there is not a product module.)
 - `.claude/` `.agents/` `.cursor/` `.grok/` (adapter discovery / projection)
-- root `bootstrap-skill/` and `castflow.bat`
-- existing framework skills: `bootstrap-skill`, `skill-creator`,
-  `origin-evolve-skill`, `goal-loop-creator`, `architect-skill`,
-  `debug-skill`, `profiler-skill`
+- root `castflow.bat`
 
 The scan target is the user's product/game/app scripts. CastFlow is the
 installer, not a product module. Path segments matching the names above
 (case-insensitive for `CastFlow`) take the whole subtree out of scope.
+Do not keep a roster of framework skill names to skip.
 
 ## Module card (AI fills; do not fabricate)
 
