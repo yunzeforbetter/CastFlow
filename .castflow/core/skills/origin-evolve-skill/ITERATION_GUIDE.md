@@ -18,8 +18,8 @@ This skill evolves only when the trace data model or the proposal taxonomy chang
 
 ### Rule 3: Threshold or Bound Change
 
-**Trigger**: defaults in `traces/governance.json` change, or weight bounds in `weights.json` prove wrong in practice.
-**Files**: SKILL_MEMORY.md Rule 3 (Jaccard, capacity), SKILL.md Step 6 (calibration bounds).
+**Trigger**: defaults in `traces/config/limits.json` change.
+**Files**: SKILL_MEMORY.md Rule 3 (Jaccard, capacity).
 **Check**: Same numbers cited in all locations.
 
 ## File Boundaries

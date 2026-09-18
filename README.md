@@ -1,25 +1,63 @@
-# CastFlow
+# CastFlow 2.0
 
 > **让 AI 助手从第一天就深度理解你的项目，并且越用越懂。**
 
-CastFlow 是一套可移植、可演进、零成本采集的 **AI 协同开发操作系统**。它把"AI 助手不理解项目"这个行业难题，拆解成 **冷启动装架 → 渐进式信息披露 → 多模块编排 → 自我进化** 四层闭环，全部由项目真实代码驱动，不依赖任何大模型供应商、不占用任何运行时 token。
+CastFlow 是一套可移植、可演进的 **AI 协同开发操作系统**，面向 **Claude Code / Grok TUI / Codex CLI / Cursor**。
 
-一次装架，终身进化。
+**2.0 的改造原因：模型已经更强、也更敏感。** 1.x 用密集规则、9 步编排、报备清单和打分仪式去「管住」早期模型；放到今天，这些约束占用上下文、压扁判断力，反而限制 AI 的能力。2.0 把框架收成少而硬的护栏，把发挥空间还给模型。
+
+落在产品上：入口从「跟 AI 聊完 Phase 0–6」换成「双击向导」；知识真源从「每个宿主各写一份」换成「一份 runtime，投影发现路径」；日常工作从「9 步 pipeline」换成「按模块 skill 直接写」；进化原料从「给编辑打分」换成「你本来就会写的 memory 快照」。
+
+一次装架，终身进化。新旧对照与完整变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ---
 
 ## 目录
 
+- [为什么做 2.0](#为什么做-20)
+- [2.0 相对 1.x 的核心提升](#20-相对-1x-的核心提升)
 - [解决什么问题](#解决什么问题)
-- [核心设计理念](#核心设计理念)
+- [核心设计](#核心设计)
 - [项目结构总览](#项目结构总览)
-- [端到端案例：从集成到自主进化](#端到端案例从集成到自主进化)
-- [文件清单（每个文件的作用）](#文件清单每个文件的作用)
-- [渐进式信息披露（T1-T4）](#渐进式信息披露t1-t4)
-- [自我进化详解](#自我进化详解)
+- [端到端：从装架到自主进化](#端到端从装架到自主进化)
+- [文件清单](#文件清单)
+- [渐进式信息披露（T1–T4）](#渐进式信息披露t1-t4)
+- [自我进化](#自我进化)
 - [命令参考](#命令参考)
 - [升级与回滚](#升级与回滚)
 - [测试套件](#测试套件)
+
+---
+
+## 为什么做 2.0
+
+CastFlow 1.x 诞生时，模型更容易幻觉、更容易越权、也更需要逐步手把手。当时合理的对策是：**把流程写死、把检查写满、把经验打成分数。**
+
+模型变强之后，同一套对策开始反向生效：
+
+- 规则越多，always-on 上下文越吵；敏感模型会把「建议」当成不可违反的仪式，该判断的时候先报备、该动手的时候先打卡。
+- 9 步 pipeline、并行子代理、域模板套话，是在替模型做它已经会做的编排，同时挤掉它本该用来读项目代码的注意力。
+- 五维评分把「改了多少行」当成「学到了什么」——模型对反馈已经足够敏感，真正值钱的是用户明确说过的纠正，不是编辑密度。
+
+2.0 因此做减法：只保留项目特有、机器可校验、人必须审批的硬约束；把发现模块、写补丁、组织长任务交回给更强的模型。框架负责 **真源、投影、时点、进化账本**，不再扮演第二套操作系统去微操每一步。
+
+---
+
+## 2.0 相对 1.x 的核心提升
+
+| 维度 | 1.x | 2.0 |
+|------|-----|-----|
+| 冷启动 | 对话里问语言、代跑 seed/scan、Phase 0–6 | GUI 向导：配置 → 可选扫描提示词 → 拷文件；可 `unseed` 重来 |
+| 知识真源 | `.claude/skills` 等适配器树各写一份 | `.castflow-runtime/skills/` 一份真源；只投影到 `.claude/skills` 与 `.agents/skills` |
+| 模块发现 | Python 按目录/文件数切 | AI 按**逻辑功能**粗扫，宿主多选；不扫框架自身 |
+| 写 skill | 并行子代理，上下文挤薄 | 一次一个：落队列 → 清上下文 → 写 → validate/sync → 标 done |
+| 日常改代码 | `code-pipeline-skill` 9 步编排 | 直接调用 `programmer-<模块>-skill` |
+| 进化原料 | 五维评分 + 编辑 buffer + IDP | schema:4 **memory 快照账本**；纯代码会话不记条目 |
+| 规则合并 | 模型自己算 Jaccard | `manager.py homology` 连通分量，一批算完 |
+| 运行时协议 | 报备清单、Grep 次数、执行模式命名 | 三件事：API 先证后用、约束覆盖抄来的代码、范围不够就先问 |
+| 框架位置 | 必须当子目录塞进工程 | 文件夹选择器；CastFlow 可在另一盘；hook 自动改绝对路径 |
+
+**2.0 刻意删掉的东西**（不是没做完，是规则过密、会限制更强模型）：`code-pipeline-skill` 及三个 pipeline agent、Python `scan`、五维评分、programmer 域模板、`AUTHORING_GUIDE`、`skill-forge`、`CLAUDE.template.md`、`placeholders.py`、向 `.grok/skills` / `.cursor/skills` 再写一份。
 
 ---
 
@@ -29,44 +67,56 @@ AI 助手进入大型项目常见的四种失控：
 
 | 问题 | 症状 | CastFlow 的治法 |
 |------|------|----------------|
-| 架构遗忘 | 生成的代码风格不一致、越过分层、绕过 Manager | `architect-skill` 从真实代码提取分层规则，T1-PREPARE 时点强制加载 |
-| API 幻觉 | 调用了不存在的方法、方法签名错乱、编译不通过 | P0 规则：EXAMPLES.md → 用户指导 → Grep 至少两次真实使用，均未命中则 TODO |
-| 知识碎片化 | 规则散落在口头约定、PR 评论、隐藏文档里，跨会话无法共享 | 四件套 Skill（SKILL/EXAMPLES/SKILL_MEMORY/ITERATION_GUIDE），文件即知识 |
-| 经验不积累 | 上一次犯过的错，下一次照犯不误 | Hook 零 token 快照你写的 auto-memory（`feedback`/`project`/`reference`）→ trace 成为 memory 账本 → `origin-evolve-skill` 蒸馏为规则提议 → 用户审批写入 Skill |
+| 架构遗忘 | 风格不一致、越过分层 | `architect-skill` 从真实代码提取规则；T1 强制加载运行时协议 |
+| API 幻觉 | 调用不存在的方法、签名乱编 | 协议 1：EXAMPLES / 打开过的定义 / 用户指针，三者任一即可；未验证处标 TODO，不猜签名 |
+| 知识碎片化 | 规则散落口头约定与 PR 评论 | 四件套 Skill（SKILL / EXAMPLES / SKILL_MEMORY / ITERATION_GUIDE），文件即知识 |
+| 经验不积累 | 上次犯过的错下次照犯 | 跨工具共用 `.castflow-runtime/memory` + `traces/`；`origin evolve` 蒸馏为规则，**人审批后**写入真源再 sync |
 
-它是一套 **把项目知识变成可执行、可验证、可迭代的代码资产** 的AI工程框架。
+它把项目知识变成 **可执行、可验证、可迭代** 的仓库资产。
 
 ---
 
-## 核心设计理念
+## 核心设计
 
-### 1. 冷启动即可用：装架与生产解耦
+### 1. 冷启动：拷文件；扫描生成是可选项
 
-`python .castflow/bootstrap.py` 只做一件事 —— **装架**（Phase A）：把核心协议、元规范、模板、Hook、agent 定义同步到 `.claude/`，生成项目根 `CLAUDE.md`。**不生成任何项目级 Skill 正文**。
+```bash
+CastFlow\castflow.bat                 # Windows：打印说明后打开向导（可先选工程目录）
+python .castflow/manager.py launch    # 同上（任意 OS）
+python .castflow/manager.py setup     # 无界面：config + seed + sync
+python .castflow/manager.py unseed    # 卸下运行时和投影，再走一遍向导
+python .castflow/manager.py update-framework
+```
 
-项目级 Skill（architect / debug / profiler / programmer-\<模块\>）由 **bootstrap-skill** 作为 AI skill 驱动，经 **子代理并行 + `skill-creator` 主路径** 按需生成。这样：
+CastFlow **不必**放在工程目录里。向导用系统文件夹对话框选项目根；跨盘时 hook 写入绝对路径。
 
-- 安装器保持确定性（纯 Python，零依赖，可重入，`--dry-run` 可预览）
-- 内容生产保持创造性（AI 扫描真实代码，由 `AUTHORING_GUIDE.md` 约束产出质量）
-- 两者在 `SKILL_ITERATION.md` 元规范下同频
+- 未勾选「扫描模块并生成 skill」：只拷框架 skill 和核心文件，**不需要 AI 提示词**
+- 勾选后：可改提示词；留空默认 `/goal 读取并按照 .castflow-runtime/skills/MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md 执行`
+- 扫描的是用户项目的业务脚本，**不**扫 `CastFlow/` `.castflow/` `.castflow-runtime/` 或适配器树
+- 模块约定：`.castflow/core/rules/module-catalog.md`
+- 工厂仓（CastFlow 自己）拒绝 `seed` / `sync` / `setup`，并清掉误留下的 runtime
+
+Skill 正文只有一份真源：`.castflow-runtime/skills/`。`sync` 用 symlink / junction / copy 投影到 `.claude/skills` 与 `.agents/skills`。Grok / Cursor 扫描这两处，**不再**各写一份 `.grok/skills` / `.cursor/skills`（残留会被清掉，避免重复召回）。退役的 skill 不再投影。项目根 `.gitignore` 由 sync 托管一块稳定规则，忽略整棵投影目录；已跟踪的投影会 `git rm --cached`，不删工作树。runtime 仍可提交。
 
 ### 2. 渐进式信息披露：时点驱动加载
 
-Skill 内容不会在每次调用时全量入上下文。按 **T1-PREPARE / T2-EXECUTE / T3-FEEDBACK / T4-MAINTAIN** 四个行为时点分层加载：写代码前读一份、生成中按需补一份、反馈时记一份、迭代 skill 时另读一份。命名与映射的权威源是项目根 `CLAUDE.md`。
+Skill 不会每次全量入上下文。按 **T1-PREPARE / T2-EXECUTE / T3-FEEDBACK / T4-MAINTAIN** 分层：写代码前读运行时协议全文，写的时候不再重读。权威源是项目根 `CLAUDE.md` / `AGENTS.md`（由 `ROOT_RULES.template.md` 生成）。
 
-### 3. 多模块编排：code-pipeline 工序流
+### 3. 按模块 skill 工作
 
-`code_pipeline 实现 X` 触发 **9 步**标准流水：**Step 1** 需求拆分与 API 声明（`requirement-analysis-agent`）→ **Step 2** 约束同步与 Handoff 冻结（同 agent，按需）→ **Step 3** 各模块实现（**模块配对执行单元**：`programmer-<module>-agent` + 同模块 skill）→ **Step 4** 依赖闭合（`integration-matching-agent`）→ **Step 5** 覆盖验收与 verdict（`pipeline-verify-agent`）→ **Step 6** 补全 `CompletableBlocks`（按需）→ **Step 7/8** 调试与性能（可选）→ **Step 9** 收尾与 `pipeline_run_id` 清理。编排合同与 Step 调度卡见装架产物 `skills/code-pipeline-skill/config/pipeline_protocol.md`；AI 入口见同目录 `SKILL.md`。
+跨模块需求直接调用已生成的 `programmer-<id>-skill`（以及 architect / debug / profiler）。`code-pipeline-skill` 已退役。
 
-### 4. 自我进化：零 token 采集 + memory 快照账本 + 人在回路
+生成纪律：勾选后把短卡落到 `.castflow-runtime/_skill-gen-queue/`，一次只写一个 programmer skill，validate/sync 成功后标 `done` 再清上下文。并行生成会把上下文挤薄。architect / debug / profiler 走 GUI JSON 队列，同样一次一个。
 
-经验原料的**唯一**捕获路径是 **auto-memory 快照**（schema:4）。你在返工、被纠正、被下硬约束时本来就会写 auto-memory —— trace-collector 的 Hook 在你写入 `~/.claude/projects/<slug>/memory/` 时自动把这些 memory 全文快照进 `trace.md`。评分、buffer、IDP 三套子系统已**全部退役**：Hook 不再解析代码编辑、不再打分、不再要求 AI 手填经验字段。
+### 4. 自我进化：零额外动作采集 + 人在回路
 
-- `feedback` / `project` / `reference` 三类 memory 被快照；`user` 类型（个人画像）被过滤，不进 git
-- 纯代码会话（没写任何 memory）不产生任何 trace 条目——账本只记"学到了什么"，不记"改了多少行"
-- 蒸馏推迟到 `origin evolve` 统一做：`origin-evolve-skill` 读 trace 里的 `<!-- MEMORY -->` 快照、识别模式、生成 Append/Merge/Retire 提议，**用户审批后才写入** Skill
+经验原料的**唯一**捕获路径是 **memory 快照**（schema:4）。返工、被纠正、被下硬约束时写入 `.castflow-runtime/memory/`（YAML `name` + `type: feedback|project|reference`）。Hook 自动全文快照进 `trace.md`。评分、编辑 buffer、IDP 已全部退役。
 
-一次真实纠正 → 一条 `feedback` memory → 一次快照 → 一条规则提议，全程 AI 零额外动作。
+- `user` 类型（个人画像）被过滤，不进 git
+- 纯代码会话不产生 trace 条目——账本只记「学到了什么」
+- 蒸馏推迟到 `origin evolve`：读 `<!-- MEMORY -->`、homology 聚类、生成 Append/Merge/Retire，**审批后**写入真源再 sync
+
+进化插件可在向导或 `manager.py evolve on|off` 关掉（卸 hook 与 origin-evolve 投影，不删已有 traces）。
 
 ---
 
@@ -74,422 +124,376 @@ Skill 内容不会在每次调用时全量入上下文。按 **T1-PREPARE / T2-E
 
 ```
 CastFlow/
-├── README.md                              # 本文件
-├── CHANGELOG.md                           # 按版本变更记录
-├── LICENSE
-├── bootstrap-skill/                       # 【顶层 AI skill】框架初始化器，
-│   │                                      # 由 "bootstrap castflow" 触发，驱动装架与 project skill 生成
-│   ├── SKILL.md                           #   Phase 0-6 工作流、语言门禁、模板路径
-│   ├── EXAMPLES.md                        #   Phase 0/2/3 对外话术、manifest 示例、核心更新对话
-│   ├── SKILL_MEMORY.md                    #   规则 1-9（语言门禁、占位符实值化、shell pipe 禁令等）
-│   └── ITERATION_GUIDE.md                 #   迭代本 skill 的规范
+├── README.md                              # 本文件（2.0）
+├── CHANGELOG.md                           # 2.0 对照 1.x + 完整变更
+├── LICENSE                                # MIT
+├── castflow.bat                           # Windows 冷启动：文件夹选择器 + GUI
+├── bootstrap-skill/                       # 顶层 AI skill：只请用户开 GUI，不代跑装架
+│   ├── SKILL.md
+│   ├── EXAMPLES.md
+│   ├── SKILL_MEMORY.md
+│   └── ITERATION_GUIDE.md
 │
-├── .castflow/                             # 框架源码（装架后休眠，仅随 git pull 更新）
-│   ├── bootstrap.py                       # 薄包装器，委托到 installer/
-│   │
+├── .castflow/                             # 框架源码（装架后休眠，随 git pull 更新）
+│   ├── bootstrap.py                       # 薄包装，委托 installer/（高级 / 兼容入口）
+│   ├── manager.py                         # 【主入口】launch / setup / seed / sync / skills …
+│   ├── manager/                           # 冷启动、投影、队列、进化开关、stdlib HTTP 控制台
+│   │   ├── cli.py / setup.py / adapters.py / skills.py / catalog.py
+│   │   ├── evolution.py / queue.py / config.py / paths.py / pick_dir.py
+│   │   └── ui/server.py + static/index.html
 │   ├── installer/                         # 装架引擎（纯 Python 3.6+，零依赖）
-│   │   ├── cli.py                         #   CLI 解析 + 主流程编排
-│   │   ├── paths.py                       #   项目根 / harness 目录查找（支持 submodule 任意深度）
-│   │   ├── backup.py                      #   BackupSession 会话目录式备份 + LRU 轮换
-│   │   ├── io_ops.py                      #   safe_write / safe_copy_file / safe_copy_dir
-│   │   ├── templates.py                   #   {{PLACEHOLDER}} 替换 + conditional block
-│   │   ├── placeholders.py                #   各类占位符字典构建（已精简：安装器不再负责 skill 正文）
-│   │   ├── hook_config.py                 #   .cursor/hooks.json 与 .claude/settings.json 幂等合并
-│   │   ├── claude_merge.py                #   CLAUDE.md 三策略合并（1=换模板 / 2=保留 / 3=增量）
-│   │   ├── validate.py                    #   Skill 规范验证（无 emoji / 无日期 / 无残留占位符 / 字数）
-│   │   ├── manifest.py                    #   bootstrap-output/cf_manifest.json 读写
-│   │   └── generate.py                    #   Phase A 全量 + Phase A 子集（--claude-md-only / --templates-only）
-│   │
-│   ├── core/                              # 被装架同步到 .claude/ 的核心内容
-│   │   ├── CLAUDE.template.md             #   项目根 CLAUDE.md 的框架段模板（时点定义唯一权威源）
-│   │   ├── GLOBAL_SKILL_MEMORY.md         #   跨 skill 运行时协议 1/2/3
-│   │   ├── SKILL_ITERATION.md             #   Skill 四文件元规范 + Anchors 格式 + 容量治理
-│   │   ├── protocols/
-│   │   │   └── validated-protocol.md      #   接受/拒绝信号判定（T3）
-│   │   ├── skills/                        # 3 个核心 skill（随装架拷贝到 .claude/skills/）
-│   │   │   ├── code-pipeline-skill/       #   多模块协作 9 步工序 + pipeline_protocol
-│   │   │   │   └── scripts/
-│   │   │   │       └── pipeline_merge.py  #     pipeline Step 3 并行输出聚合
-│   │   │   ├── origin-evolve-skill/       #   读 trace、识别模式、生成 Append/Merge/Retire 提议
-│   │   │   └── skill-creator/             #   Skill 生成/迭代/eval/benchmark 全套工具链
-│   │   ├── agents/                        # code-pipeline 调用的 3 个分析型 agent prompt
-│   │   │   ├── requirement-analysis-agent.md
-│   │   │   ├── integration-matching-agent.md
-│   │   │   └── pipeline-verify-agent.md
-│   │   ├── hooks/                         # 生产 Hook 脚本（跨平台）
-│   │   │   ├── trace-collector.py         #   auto-memory 写入采集（命中 memory 目录即全文快照，user 类型过滤）
-│   │   │   └── trace-flush.py             #   会话结束 → 有快照才写 trace.md + 三级龄期 compaction
-│   │   ├── templates/                     # 装架后供 skill-creator 使用的创作资产
-│   │   │   ├── AUTHORING_GUIDE.md         #   Skill 创作元规范（四份域 README 的共享上游）
-│   │   │   ├── agents/programmer.template.md
-│   │   │   └── skills/programmer.template/   # 模块 skill 四件套模板 + 域 README
-│   │   └── traces/                        # 默认阈值与字段契约（分发到 .claude/traces/）
-│   │       ├── config/
-│   │       │   ├── limits.json            #   compaction 阈值 / 过期天数 / 保护参数
-│   │       │   └── hooks.config.json      #   memory 目录匹配正则（适配 autoMemoryDirectory 重定向）
-│   │       └── README.md                  #   schema:4 字段契约 + limits / hooks.config 说明
-│   │
-│   └── bootstrap-assets/                  # 仅在冷启动期间使用的资产（不进 .claude/）
-│       └── skill-templates/               #   architect / debug / profiler 的四件套模板 + 域 README
-│           ├── architect.template/
-│           ├── debug.template/
-│           └── profiler.template/
+│   │   ├── cli.py / paths.py / backup.py / io_ops.py / templates.py
+│   │   ├── hook_config.py / claude_merge.py / validate.py
+│   │   ├── manifest.py / generate.py
+│   └── core/                              # 被 seed 同步进 runtime 的核心
+│       ├── skills/
+│       │   ├── GLOBAL_SKILL_MEMORY.md     # T1 运行时三协议
+│       │   ├── SKILL_ITERATION.md         # 四角色文件标准；validate 管形状
+│       │   ├── MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md
+│       │   ├── origin-evolve-skill/       # 读 trace → Append/Merge/Retire 提议
+│       │   ├── skill-creator/             # catalog 四件套（评测环非冷启动）
+│       │   └── goal-loop-creator/         # 把演进需求打成可恢复 Goal Loop 包
+│       ├── protocols/validated-protocol.md
+│       ├── rules/
+│       │   ├── evolve-reminder.md(.mdc)   # pending 时提醒 origin evolve
+│       │   └── module-catalog.md          # 什么算模块；AI 只审表不扫树
+│       ├── hooks/
+│       │   ├── trace-collector.py         # 写 memory 时全文快照
+│       │   ├── trace-flush.py             # 会话结束落账 + 龄期 compaction
+│       │   ├── _homology.py               # Jaccard 连通分量（一批算完）
+│       │   └── _castflow_paths.py         # hook 定位 runtime
+│       ├── templates/root/ROOT_RULES.template.md
+│       └── traces/                        # schema:4 契约 + limits / hooks.config
 │
-└── test/                                  # 框架自身回归测试（不被 bootstrap 分发，149 tests）
-    ├── hooks/                             # 107 tests：memory 快照采集、compaction、365 天生产模拟（共享 _trace_harness）
-    ├── bootstrap/                         # 42 tests：installer 包单元测试
-    └── origin-evolve/                     # ~7000 次断言：origin-evolve 规范暴力验证
+├── .castflow/bootstrap-assets/            # 仅冷启动；不分发到用户 .claude/
+│   └── skill-templates/{architect,debug,profiler}.template/
+│
+└── test/                                  # 框架回归（不分发）
+    ├── run_all.py
+    ├── manager/                           # seed/sync/retire、gitignore、向导
+    ├── hooks/                             # 快照采集、homology、compaction、365 天
+    ├── bootstrap/                         # installer 单元测试
+    ├── skills/                            # GLOBAL_SKILL_MEMORY 契约
+    └── origin-evolve/                     # 规范确定性暴力验证
 ```
 
-### 装架后用户项目的结构
+### 装架后用户项目
 
 ```
 项目根目录/
-├── CLAUDE.md                              # 项目全局规则（框架段 + 项目段，增量合并）
-├── .claude/
-│   ├── skills/
-│   │   ├── GLOBAL_SKILL_MEMORY.md         # T1/T2 运行时协议
-│   │   ├── SKILL_ITERATION.md             # Skill 四文件元规范
-│   │   ├── code-pipeline-skill/           # 【核心】多模块工序
-│   │   ├── origin-evolve-skill/           # 【核心】自我进化引擎
-│   │   ├── skill-creator/                 # 【核心】Skill 生成工具（含 eval/benchmark）
-│   │   ├── architect-skill/               # 【项目级，Phase 5 生成】
-│   │   ├── debug-skill/                   # 【可选，Phase 2 勾选才生成】
-│   │   ├── profiler-skill/                # 【可选，Phase 2 勾选才生成】
-│   │   └── programmer-<模块>-skill/       # 【按需生成】
-│   ├── protocols/                         # validated 单份 T3 协议
-│   ├── agents/                            # code-pipeline 调用的 3 个分析 agent
-│   ├── hooks/                             # trace-collector.py + trace-flush.py
-│   ├── templates/                         # AUTHORING_GUIDE + programmer.template + agent 模板
-│   ├── traces/                            # trace.md（memory 账本）/ config/limits.json / config/hooks.config.json
-│   ├── rules/                             # origin-evolve 生成的跨模块规则
-│   └── settings.json                      # Claude Code hook 配置（增量合并）
-├── .cursor/
-│   └── hooks.json                         # Cursor hook 配置（增量合并）
-└── CastFlow/                              # 框架源码（submodule，进入休眠）
+├── CLAUDE.md / AGENTS.md                  # 框架段（ROOT_RULES）+ 项目段
+├── .castflow-runtime/                     # 【真源】
+│   ├── skills/                            # 全量 skill 清单（可提交）
+│   ├── memory/                            # 跨工具 feedback / project / reference
+│   ├── traces/                            # trace.md 账本 + config
+│   ├── protocols/ / rules/
+│   └── config.json / skills-state.json    # 适配器、进化开关、退役名单
+├── .claude/skills/                        # 发现镜像（gitignore，勿手改）
+├── .agents/skills/                        # Codex 发现镜像（gitignore）
+├── .claude/settings.json                  # Claude hook（增量合并）
+├── .cursor/hooks.json                     # Cursor hook（无 .cursor/skills 树）
+└── CastFlow/                              # 可选：submodule；也可放在工程外
 ```
 
 ---
 
-## 端到端案例：从集成到自主进化
+## 端到端：从装架到自主进化
 
-### 步骤 1 — 集成（30 秒）
+### 步骤 1 — 拿到框架
 
 ```bash
 git submodule add https://github.com/yunzeforbetter/CastFlow.git
 ```
 
-**CastFlow 最好放置在与.claude目录同级的位置**
+CastFlow 与 `.claude` 同级最省事，但不是必须。克隆到任意目录再双击 `castflow.bat`，用文件夹对话框指向游戏/应用工程即可。
 
-### 步骤 2 — 冷启动（约 5 分钟，AI 主导）
+### 步骤 2 — 冷启动（双击 bat）
 
-在 Cursor / Claude Code 中输入：
-
-```
-bootstrap castflow
-```
-
-AI 加载 `CastFlow/bootstrap-skill/SKILL.md` 并按 Phase 0-6 执行：
-
-| Phase | 动作 | 结果 |
-|-------|------|------|
-| 0 | **语言门禁** — 输出 zh/en/ja/ko/other 菜单，等用户回复 | `manifest.language = zh` |
-| 1 | 扫描 `Assets/Scripts/`、Unity 版本、命名约定 | 内部知识 |
-| 2 | 询问 **debug / profiler** 是否启用（单独消息） | `optional_skills` |
-| 3 | 确认命名规范（单独消息，可补充团队约定） | `content/claude/naming_conventions.md` |
-| 4 | **装架** — `python .castflow/bootstrap.py`（**Phase A**：.claude/ 核心 + 根 CLAUDE.md + templates/） | `.claude/` 就绪 |
-| 5 | **Phase 5 子代理并行**：主 agent 对每个项目级 skill 发一段话（任务 + 必读 `SKILL_ITERATION.md` + `AUTHORING_GUIDE.md` + 域 README + 模板 + 占位符实值 + 语言），子代理用 **skill-creator** 扫描真实代码、填模板、落盘到 `.claude/skills/<name>/` | `architect-skill/`（+ 可选 `debug-skill/` / `profiler-skill/`） |
-| 6 | `python .castflow/bootstrap.py --validate` 校验规范，清理 `bootstrap-output/` | 冷启动完成 |
-
-此时项目已拥有完整的 Skill 骨架 + Hook 配置。`.cursor/hooks.json` 与 `.claude/settings.json` 已增量合并，Hook 开始静默采集。
-
-**如果出现搜寻不到的情况，可以显示告诉ai助手CastFlow的完整路径并让它启用 bootstrap castflow**
-
-### 步骤 3 — 为xx模块生成 Skill（按需增量）
-
-```
-为xx系统生成 skill
+```bash
+CastFlow\castflow.bat
+# 或: python CastFlow/.castflow/manager.py launch
 ```
 
-触发 `skill-creator`（不需要记忆命令，自然语言即可）：AI 会自动完成代码扫描、信息提炼、四文件生成。**这是项目知识体系持续扩张的主要渠道**。
+| 步 | 动作 | 结果 |
+|----|------|------|
+| 1 配置 | 语言、适配器、进化 | 写入 runtime `config.json` |
+| 2 可选 | 勾选扫描生成，可改提示词 | 留空 = `/goal` 读 loop-engine |
+| 3 开启冷启动 | seed + sync | 框架 skill 与核心文件已投影 |
+| 4 AI（仅勾选时） | 粘贴提示词 | 按 loop-engine 扫描、勾选、一次一个生成 |
 
-### 步骤 4 — 日常使用：Skill + Pipeline
+装架后控制台三页：**框架**（从源更新并同步）/ **Skills**（retire / activate / update / sync）/ **队列**。勾选错了用「回退并重新冷启动」，不必手删文件。
 
-**单 skill 调用**（自然语言描述匹配元数据自动加载）：
+有人说 `bootstrap castflow` 时，agent **只**应请你双击 `castflow.bat`，不再问语言、不代跑 seed。
 
-```
-帮我在xx系统里加一个批量升级功能
-```
+### 步骤 3 — 为模块生成 Skill
 
-**多模块编排**：
+冷启动勾选并粘贴 `/goal` 后：AI 按逻辑功能划分 → 宿主多选 → 短卡进 `_skill-gen-queue/` → 一次写一个 `programmer-*-skill`。architect / debug / profiler 之后用 `castflow generate skills`（JSON 队列一次一个）。禁止并行。规则见 `SKILL_ITERATION.md`。写入 runtime，再 sync。
 
-```
-code_pipeline 实现用户交易系统
-```
-
-触发 9 步工序：需求分析 agent 拆模块与 API →（可选）约束冻结 → 各模块 **配对执行单元** 并行实现 → `pipeline_merge.py` 将 Step 3 摘要归并到 `PIPELINE_CONTEXT.md` → 集成匹配 agent 做依赖闭合 → `pipeline-verify-agent` 验收与 verdict →（按需）补全与重跑闭合 → 收尾。 **非常适合完整系统开发**
-
-### 步骤 5 — 自主进化（零干预采集，人在回路审批）
-
-一周里你被纠正过几次，每次都顺手写了一条 `feedback` auto-memory。Hook 已把它们快照进 `trace.md`。新会话打开时，`evolve-reminder` 规则静默检查并提示：
+日常增量：
 
 ```
-检测到 8 条 pending 条目（其中 5 条含 feedback 快照），建议运行: origin evolve
+为 xx 系统生成 skill
+```
+
+### 步骤 4 — 日常改功能
+
+```
+帮我在 xx 系统里加一个批量升级功能
+```
+
+宿主按 description 加载对应 `programmer-*-skill`。多模块分别走各模块 skill。
+
+### 步骤 5 — 自主进化
+
+一周里你被纠正过几次，每次写一条 `feedback` memory。Hook 已快照进 `trace.md`。新会话 `evolve-reminder` 提示：
+
+```
+检测到 pending 条目（含 feedback 快照），建议运行: origin evolve
 ```
 
 用户输入 `origin evolve`：
 
-1. 读 trace，只保留 `pending`，排除尚未定案的 `validated:pending-pipeline` 候选
-2. 识别模式：`feedback` 快照本身就是用户给的显式规则（单条即足以成案），同一 skill/主题的多条快照合并为一条连贯规则
-3. 生成提议（写入前 grep 校验快照声明是否仍与当前代码一致）：
-   - **Append** 一条 `programmer-xxx-skill/SKILL_MEMORY.md` 规则：*批量升级必须复用 `xxxx`，禁止直接调 `xx`*，Anchors = `[class:xx, method:xxx]`
-   - **Retire** 一条旧规则（grep 验证其 Anchors 在代码中已不存在）
-   - **Merge** 两条锚点 Jaccard ≥ 0.5 的重复规则
-4. 用户逐个审批（可拒绝，拒绝会记录 `EVOLVE_REJECTION` 避免重复提议）
-5. 写入 `.skillmanager/.skills/`，原 trace 条目替换为一行 `<!-- PROCESSED ts:... entries:N proposals:M -->`
+1. 若有未 flush 快照，先 `manager.py flush`，再加锁
+2. 只保留 `pending`；`homology` 把 MEMORY 子块聚成连通分量
+3. 合格条件：`feedback` 且 quality=ok，**或**同源条数 ≥ 2
+4. 提议 Append / Merge / Retire（写入前 grep 校验 Anchors 仍在代码里）
+5. 逐个审批（拒绝记 `EVOLVE_REJECTION`）
+6. 写入 `.castflow-runtime/skills/`，原条目换成一行 `<!-- PROCESSED … -->`，再 `sync`
 
-下次会话：新规则生效，AI 不再重复犯这一类错。
+下次会话新规则生效，不再重复犯这一类错。
 
 ### 步骤 6 — 框架升级
 
 ```bash
 cd CastFlow && git pull
+python .castflow/manager.py update-framework
 ```
 
-然后在 AI 中再次输入 `bootstrap castflow`，它会走 **核心更新** 工作流：复用 `manifest.language`，对比 `.castflow/core/` 与项目 `.claude/` 差异，仅更新元规范、核心 skill、protocols、templates，**项目级 skill 与 CLAUDE.md 项目段完全保留**。
+只刷新框架 skill 与核心文件，**不覆盖项目 skill**。`CLAUDE.md` 项目段完全保留。
 
 ---
 
-## 文件清单（每个文件的作用）
+## 文件清单
 
-### `CastFlow/bootstrap-skill/` — 顶层 AI skill（框架初始化器）
+### `bootstrap-skill/` — 顶层 AI 初始化器
 
-与其他 skill 的区别：它在 **.claude/ 尚未存在** 时就要运行，因此驻留在 CastFlow 源码内，由用户在 AI 助手中通过自然语言触发。
+`.claude/` 尚不存在时就要能跑，因此驻留在源码树，由自然语言触发。
 
 | 文件 | 作用 |
 |------|------|
-| `SKILL.md` | Phase 0-6 工作流定义、两种工作流（全量初始化 / 核心更新）、Phase 5 一段话手话规范与占位符表 |
-| `EXAMPLES.md` | Phase 0/2/3 对外话术模板、`cf_manifest.json` 字段示例、模块 skill 对话范例 |
-| `SKILL_MEMORY.md` | 9 条硬性规则：语言门禁、manifest 识别、占位符必须实值化、禁止 shell pipe 写文件等 |
-| `ITERATION_GUIDE.md` | 本 skill 自身的演进规则 |
+| `SKILL.md` | 请用户开 GUI；勾选后粘贴 `/goal` 按 loop-engine 一次一个生成 |
+| `EXAMPLES.md` | 对外话术、manifest 示例、核心更新对话 |
+| `SKILL_MEMORY.md` | 硬性规则：不覆盖已有文件、占位符必须实值化、validate 走 manager |
+| `ITERATION_GUIDE.md` | 本 skill 自身演进 |
 
-### `.castflow/bootstrap.py` + `installer/` — 装架引擎
-
-`bootstrap.py` 是薄包装器。真实实现全在 `installer/` 包（11 个模块），所有 I/O 可 `--dry-run`、可备份、可 `--validate`。
+### `.castflow/manager.py` — 产品主入口
 
 | 模块 | 作用 |
 |------|------|
-| `cli.py` | 参数解析 + 主流程调度。支持 `--claude-md-only` / `--templates-only` / `--agent` / `--init-manifest` / `--language` / `--claude-md-harness`（三策略）/ `--project-root` / `--no-backup` / `--backup-keep` / `--clean-backups` |
-| `paths.py` | 双路径解耦：`find_project_root` 向上查 `.claude/`（首次初始化时自动创建）；`find_harness_dir` 锚定 `.castflow/` 本体 |
-| `backup.py` | `BackupSession` 会话目录备份（`.claude/.backups/<timestamp>/`），LRU 保留 N 次（默认 3），自动清理旧 `.bak` 散文件，自动追加 `.gitignore` 条目 |
-| `io_ops.py` | 三件套写入：`safe_write` / `safe_copy_file` / `safe_copy_dir`。统一带 `merge_mode` + `dry_run` + `backup` |
-| `templates.py` | `{{PLACEHOLDER}}` 替换（`strict=True` 未知 key 直接 fail）+ `<!-- if:tech -->` 条件块处理 |
-| `placeholders.py` | 精简后仅构建 CLAUDE.md / agent 所需占位符字典；不再构建 architect/debug/profiler/programmer 的 skill 内容占位符（这些改由 skill-creator 子代理负责） |
-| `hook_config.py` | Cursor `hooks.json` 与 Claude Code `settings.json` 的幂等增量合并，不覆盖项目已有 hook |
-| `claude_merge.py` | CLAUDE.md 三策略：1=整段换模板（旧段备份）/ 2=保留当前 / 3=增量合并（模板新段 + 把项目段多出来的行追加进来）。非 TTY 默认 3，TTY 交互提示 |
-| `validate.py` | Skill 规范验证：无 emoji、无日期、无残留 `{{KEY}}`、字数预算（代码块除外） |
-| `manifest.py` | `bootstrap-output/cf_manifest.json`（canonical 名）读写 + 迁移老版 `manifest.json` 提示 |
-| `generate.py` | `generate_all`（Phase A 全量）+ `run_phase_a_subset`（--claude-md-only / --templates-only）+ `generate_agent`（`--agent <module>`） |
+| `cli.py` | launch / setup / unseed / seed / sync / skills / retire / activate / update / evolve / queue / handoff / flush / homology / validate / status / update-framework / ui |
+| `setup.py` | 向导与无界面冷启动；文件夹选择器；工厂仓拒绝 seed |
+| `adapters.py` | runtime ↔ `.claude/skills` + `.agents/skills`；gitignore 托管；清兼容残留 |
+| `skills.py` | 清单、退役状态、从源刷新 |
+| `catalog.py` / `queue.py` | 模块表与生成队列 |
+| `evolution.py` | 进化开关：卸 hook 与 origin-evolve 投影 |
+| `ui/` | stdlib HTTP 控制台（`127.0.0.1`） |
 
-### `.castflow/core/` — 被同步到 `.claude/` 的框架内容
+### `.castflow/installer/` — 装架引擎（高级）
 
-| 文件/目录 | 作用 |
-|-----------|------|
-| `CLAUDE.template.md` | 项目根 `CLAUDE.md` 的框架段模板。**时点定义（T1-T4）的唯一权威源** |
-| `GLOBAL_SKILL_MEMORY.md` | 跨 skill 运行时协议：协议 1（API 物理验证）、协议 2（学习后约束对齐）、协议 3（执行模式检测） |
-| `SKILL_ITERATION.md` | Skill 四文件元规范：各文件职责隔离、Anchors/Related 格式、容量治理阈值、硬性约束清单 |
-| `protocols/validated-protocol.md` | 用户接受/拒绝信号判定与写入规则（T3-FEEDBACK） |
-| `skills/code-pipeline-skill/` | 多模块协作 9 步工序（复合组件）。含 `SKILL.md`（工作流总览）、`config/pipeline_protocol.md`（含 Step 调度卡）、`config/handoff_protocol.md`、`architecture/*.md`（复杂系统）、`EXAMPLES.md` + `examples/*`、`scripts/pipeline_merge.py`、`config/defaults.json` + `config/params.schema.json` |
-| `skills/origin-evolve-skill/` | 自我进化引擎。读 trace 里的 memory 快照、蒸馏为规则、生成 Append/Merge/Retire 提议，走用户审批 |
-| `skills/skill-creator/` | Skill 生成与迭代工具链。含 `agents/{analyzer,comparator,grader}.md`、`scripts/` 7 个工具（eval 运行、benchmark 聚合、打包、描述优化等）、`eval-viewer/`、`references/schemas.md` |
-| `agents/requirement-analysis-agent.md` | Pipeline **Step 1 / Step 2**：需求拆分、API 声明、（可选）约束同步与蓝图冻结 |
-| `agents/integration-matching-agent.md` | Pipeline **Step 4**：依赖闭合验证（Dependency Closure Report） |
-| `agents/pipeline-verify-agent.md` | Pipeline **Step 5**：Done Criteria 与 Module/Global Verdict、result signal |
-| `hooks/trace-collector.py` | PostToolUse(Write/Edit) 被调用。只采集 auto-memory 写入：命中 `~/.claude/projects/<slug>/memory/` 时读全文、过滤 `user` 类型、按 slug 存入 `.trace_memory_snapshots`（LRU 上限）；`memory_dir_pattern` 从 `traces/config/hooks.config.json` 加载 |
-| `hooks/trace-flush.py` | 会话结束被调用。读 `.trace_memory_snapshots` → 有快照才写入 `trace.md`（`<!-- MEMORY -->` 子块嵌入，schema:4）→ 三级龄期 compaction → 经验资产受保护。含 `--selftest` 子命令 |
-| `templates/AUTHORING_GUIDE.md` | Skill 创作元规范（四份域 README 的共享上游）。包含项目勘察清单、反风格检查、Rubric |
-| `templates/agents/programmer.template.md` | 为功能模块生成专属 programmer agent 时的 prompt 模板 |
-| `templates/skills/programmer.template/` | 模块 skill 四件套模板 + 域 README（最常用，会被分发到 `.claude/templates/`） |
-| `skills/code-pipeline-skill/scripts/pipeline_merge.py` | code-pipeline **Step 3** 调用：从各模块 `temp/pipeline-output/*.md` 提取 `PIPELINE_SUMMARY`，写入 `PIPELINE_CONTEXT.md` 内受控归并块（幂等替换）；缺标记或混入 `Parent Summary` 时 fail-closed |
-| `traces/config/limits.json` | compaction 阈值、过期天数、保护参数的运行时默认值 |
-| `traces/config/hooks.config.json` | Hook 外部化配置：`memory_dir_pattern`（识别 auto-memory 目录的正则）。**仅在 `autoMemoryDirectory` 被重定向到非标准路径时才需修改** |
-| `traces/README.md` | schema:4 字段契约 + `<!-- MEMORY -->` 子块格式 + limits/hooks.config 全字段说明 |
+`bootstrap.py` 是薄包装。日常请走 manager。installer 仍负责 CLAUDE.md 三策略合并、BackupSession、`validate` 实现。
 
-### `.castflow/bootstrap-assets/` — 仅冷启动使用
+| 模块 | 作用 |
+|------|------|
+| `cli.py` | `--claude-md-only` / `--init-manifest` / `--language` / `--claude-md-harness` 1/2/3 / `--project-root` / 备份开关 |
+| `paths.py` | 项目根与 harness 解耦（submodule 任意深度） |
+| `backup.py` | `.claude/.backups/<timestamp>/`，LRU 默认 3 次 |
+| `io_ops.py` | `safe_write` / `safe_copy_file` / `safe_copy_dir` |
+| `templates.py` | `{{PLACEHOLDER}}` + `<!-- if:tech -->` |
+| `hook_config.py` | Cursor / Claude hook 幂等合并 |
+| `claude_merge.py` | 1=换模板 / 2=保留 / 3=增量（非 TTY 默认 3） |
+| `validate.py` | 无 emoji / 无日期 / 无残留 `{{` `}}` / description 形状 / 字数 warning |
+| `manifest.py` | `bootstrap-output/cf_manifest.json` |
+| `generate.py` | Phase A：核心文件 + 根规则（**不**写项目 skill 正文） |
 
-`skill-templates/{architect,debug,profiler}.template/` 各含四份 `*.template.md` + 一份 `README.md`（域说明）。这些模板 **不被安装器分发到 `.claude/`**，由 Phase 5 的子代理在执行 `skill-creator` 时直接读取填充。
+已移除：`--skill`、`--templates-only`、`--agent`、`--strict-content`、Phase B。
 
-### `test/` — 框架自身回归测试（不分发）
+### `.castflow/core/` — seed 进 runtime 的内容
 
-| 文件 | 覆盖 | 规模 |
-|------|------|------|
-| `hooks/_trace_harness.py` | 共享测试基座：`make_trace_block` / `TraceTestBase` / hyphen-module 导入（被下列 hook 测试复用） | — |
-| `hooks/test_evolution.py` | collector 采集、buffer 格式、flush 评分、compaction 四级、validated 保护、审计行过期、空行清理 | 84 tests |
-| `hooks/test_365day_simulation.py` | 365 天生产模拟：工作日/周末、季度漂移、混合会话、知识库生命周期、有界压缩、模块多样性 | 23 tests |
-| `bootstrap/test_bootstrap.py` | installer 包：占位符替换、strict 模式、CLAUDE.md 三策略、hook config 幂等合并、BackupSession、LRU 轮换 | 42 tests |
-| `origin-evolve/verify_redesign.py` | origin-evolve 规范确定性部分暴力验证：诊断计数、归因树、Append/Merge/Retire、Jaccard 边界、容量策略 | ~7000 次断言 |
+| 路径 | 作用 |
+|------|------|
+| `GLOBAL_SKILL_MEMORY.md` | 三协议。T1 读全文，T2 不重读 |
+| `SKILL_ITERATION.md` | 四角色 + Anchors/Related + 附件指针；机器检查走 `manager.py validate` |
+| `MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md` | 勾选后 `/goal` 执行的扫描→多选→一次一个生成 |
+| `origin-evolve-skill/` | 蒸馏 memory 快照；永不自动跑 |
+| `skill-creator/` | catalog 四件套；冷启动禁止评测环 |
+| `goal-loop-creator/` | 把长任务打成 `loop-engine/packages/<slug>/`（不执行 `/goal`） |
+| `hooks/trace-collector.py` | 主路径 `.castflow-runtime/memory/*.md`；可选 inbound Claude auto-memory |
+| `hooks/trace-flush.py` | 有快照才写 trace；`--selftest` |
+| `hooks/_homology.py` | slug / skill / Anchors Jaccard≥0.5 → 连通分量 |
+| `templates/root/ROOT_RULES.template.md` | 注入 `CLAUDE.md` / `AGENTS.md` |
+| `traces/` | schema:4 契约、`limits.json`、`hooks.config.json` |
+
+域模板 `bootstrap-assets/skill-templates/` **不分发**。生成 architect/debug/profiler 时只取 YAML 召回句，正文按 `SKILL_ITERATION.md`。模块 skill 不要套域 README。
 
 ---
 
-## 渐进式信息披露（T1-T4）
+## 渐进式信息披露（T1–T4）
 
-命名约定 `T<序号>-<动词>`，权威源为项目根 `CLAUDE.md`「使用Skill的分层加载」段（always-applied，自动注入）。
+命名 `T<序号>-<动词>`，权威源为项目根 `CLAUDE.md`。
 
 | 时点 | 触发 | AI 主动读什么 |
 |------|------|--------------|
-| **T1-PREPARE** | 写代码前 | `GLOBAL_SKILL_MEMORY.md` 协议 1/2 + 目标 skill 的 `SKILL_MEMORY.md` + 按需 `EXAMPLES.md` 章节 |
-| **T2-EXECUTE** | 代码生成中 | `GLOBAL_SKILL_MEMORY.md` 协议 3（探索深度判定） |
+| **T1-PREPARE** | 写代码前 | `GLOBAL_SKILL_MEMORY.md` 全文 + 目标 `SKILL_MEMORY.md` + 按需 EXAMPLES |
+| **T2-EXECUTE** | 正在写 | 不重读；按已加载的协议 3 决定是否先收集信息 |
 | **T3-FEEDBACK** | 用户反馈 | `protocols/validated-protocol.md` |
-| **T4-MAINTAIN** | 创建/修改 skill 结构 | `SKILL_ITERATION.md` + 目标 skill 的 `ITERATION_GUIDE.md` |
+| **T4-MAINTAIN** | 创建/改 skill 结构 | `SKILL_ITERATION.md` + 目标 `ITERATION_GUIDE.md` |
 
-时点不强制串行。四文件职责隔离是硬约束：代码示例只放 EXAMPLES、硬性规则只放 SKILL_MEMORY、导航和定位放 SKILL、演进规则放 ITERATION_GUIDE。
+四角色职责隔离是硬约束：代码示例只放 EXAMPLES、硬性规则只放 SKILL_MEMORY、导航放 SKILL、演进规则放 ITERATION_GUIDE。脚本/数据附件可以有，但不能拿来拆 EXAMPLES。
+
+`description` 是 always-on 召回句（约 200 字符）：做什么 + 何时用 + **一句** NOT。漏召回好过误召回。禁止同义词清单和「即使没点名也要用」。
 
 ---
 
-## 自我进化详解
+## 自我进化
 
-### 数据采集（Hook 零 token，只快照 auto-memory）
+### 采集（Hook 零 token）
 
 ```
-模型写 auto-memory (~/.claude/projects/<slug>/memory/*.md)
-   │  PostToolUse: Write/Edit/MultiEdit
+模型写 .castflow-runtime/memory/*.md（第一段 frontmatter：name + type）
+   │  PostToolUse: Write/Edit
    ▼
-trace-collector：命中 memory 目录 → 读全文 → type==user 过滤 → 按 slug 存入 .trace_memory_snapshots
-   │  Stop
+trace-collector：围栏解析 → 合法 type → quality ok/thin → .trace_memory_snapshots
+   │  Stop（有 .trace_lock 则整段 no-op）
    ▼
-trace-flush：本会话有快照才写 trace.md（纯代码会话不产生条目）；每份快照嵌为 <!-- MEMORY --> 子块
+trace-flush：有快照才写 trace.md（<!-- MEMORY --> 子块）→ 龄期 compaction
 ```
 
-**代码编辑不再采集、不再打分。** 采集的唯一对象是 auto-memory 写入，`user` 类型（个人画像）被过滤不进 git。
+代码编辑不再采集、不再打分。日常会话不要去读 `trace.md` 或 `memory/`；提醒只看 `.unflushed` / `.evolve_nudge`。无 Stop hook 的宿主（Codex）请 `manager.py flush`。
 
-| 平台 | 配置文件 | 采集事件 | 结束事件 |
-|------|---------|---------|---------|
-| Cursor | `.cursor/hooks.json` | `afterFileEdit` | `stop` |
+| 平台 | 配置 | 采集 | 结束 |
+|------|------|------|------|
 | Claude Code | `.claude/settings.json` | `PostToolUse(Write/Edit/MultiEdit)` | `Stop` |
+| Cursor | `.cursor/hooks.json` | `afterFileEdit` | `stop` |
+| Grok | `.grok/hooks/castflow.json` | 同上类 PostToolUse | `Stop` |
 
-### Trace 条目结构（schema:4）
+### Trace（schema:4）
 
 ```
 <!-- TRACE status:pending schema:4 -->
 timestamp: 2026-07-03T13:00:00Z
 type: feedback
 validated: _
-pipeline_run_id: _
 memory_snapshots: 1
 <!-- MEMORY slug:observablelist-ordered-insert type:feedback -->
 description: ObservableList 有序插入必须用 Insert 不能用 Add
 ---
-ObservableList 有序插入必须用 Insert(index) 不能用 Add()。
-Why: Add 永远追加到末尾，列表顺序会错。
-How to apply: 需要按指定位置插入时用 Insert(index, item) 并做边界检查。
+（memory 全文）
 <!-- /MEMORY -->
 <!-- /TRACE -->
 ```
 
-| 字段 | 写入方 | 含义 |
-|------|--------|------|
-| `status` | hook 写 `pending`，evolve 改其他 | `pending` → `processed` / `expired` / `invalid` |
-| `type` | hook | 快照主导类型（`feedback` > `project` > `reference`） |
-| `validated` | hook | `_` / `true` / `false` / `pending-pipeline` / `invalid` |
-| `pipeline_run_id` | hook | code-pipeline 运行标记（可选） |
-| `memory_snapshots` | hook | 嵌入的 MEMORY 子块数量 |
+旧 schema:1–3 可能仍带 `score` / `modules` / `correction` 等退役字段；evolve 读到不报错、不依赖，随 compaction 淘汰。
 
-每个 MEMORY 子块是 memory 文件的逐字副本（超 8KB 截断，标 `truncated:1`）。旧 schema:1-3 条目可能仍带已退役字段（`score`/`modules`/`correction`/`lesson` 等），origin-evolve 读到不报错但不依赖，随 compaction 龄期自然淘汰。
+### 龄期 Compaction
 
-### 三级龄期 Compaction
+带 memory 快照或 `validated:true` 的**经验资产永不自动删除**。
 
-评分退役后，压缩改为纯龄期驱动。带 memory 快照或 `validated:true` 的**经验资产条目永不自动删除**，只有纯骨架条目会被淘汰。
+| 级 | 触发 | 策略 |
+|----|------|------|
+| L0 | 每次 flush | 清理过期 PROCESSED 审计行 |
+| L1 | — | 移除 `validated:invalid` 骨架 |
+| L2 | entries/size 超阈值 | 移除超龄非资产骨架 |
+| L3 | L2 后仍超标 | 超龄溢出；始终保留最近 `keep_recent_n`（默认 20） |
 
-| 级 | 触发 | 策略 | 保护 |
-|----|------|------|------|
-| L0 | 每次 flush | 清理过期 PROCESSED 审计行 | — |
-| L1 | — | 移除 `validated:invalid` 骨架条目 | 经验资产 |
-| L2 | entries/size 超阈值 | 移除 `age > level2_age_days` 的非资产骨架 | 经验资产 + in-flight pipeline |
-| L3 | L2 后仍超标 | 移除 `age > level3_age_days` 的溢出条目 | 始终保留最近 `keep_recent_n`（默认 20）条 |
+阈值见 `traces/config/limits.json`。
 
-阈值见 `traces/config/limits.json`：`compact_max_entries`(80) / `compact_max_size_kb`(100) / `level2_age_days`(14) / `level3_age_days`(7) / `keep_recent_n`(20)。
+### origin-evolve
 
-### origin-evolve 执行流
-
-evolve-reminder 规则检测到 `pending ≥ passive_trigger_threshold`（默认 10）时提醒用户。`origin-evolve-skill` 永远不会自动执行。
+永不自动执行。合格 MEMORY：`feedback`+ok，或 homology 簇大小 ≥ 2。`validated` 只排序、不授权。
 
 ```
-Step 1 Read & Triage（schema 门控：接受 1-4 / 保留 pending / 排除 pending-pipeline / `.trace_lock`）
-Step 2 Identify Patterns（feedback 快照即用户显式规则，单条足以成案；同主题多条合并）
-Step 3 Generate Proposals（归属决策树 + Append/Merge/Retire + 容量检查 + Anchors grep 验证）
-Step 4 User Approval（逐个，可拒绝并记录 EVOLVE_REJECTION）
-Step 5 Write & Mark Processed（写入 .skillmanager/.skills/ + 审计行替换）
+Step 0 flush（若需要）→ lock
+Step 1 Triage（schema 1–4 / pending / 一批 homology）
+Step 2 Distill（grep 校验命名 API）
+Step 3 Propose（归属决策树 + Append/Merge/Retire + 容量）
+Step 4 逐个审批
+Step 5 写入 runtime + PROCESSED 行 + sync；finally 丢锁
 ```
 
-评分权重自校准（原 Step 6）已随评分子系统退役——schema:4 无维度可调。若快照本身失焦（如大量低价值 `project` 快照），属 hook/config 问题（`memory_dir_pattern`），交用户处理而非在此校准。
+**Anchors**：`[kind:path-hint:symbol]`，`kind ∈ {class, method, field, api, pattern}`。旧格式 `[BuildingManager, OnUpgrade]` 仍兼容。
 
-**Anchors 精确格式**：`[kind:path-hint:symbol]`，`kind ∈ {class, method, field, api, pattern}`。
-示例：`[class:Building/BuildingManager, method:Building/BuildingFunc:OnUpgrade, pattern:EventArgs.Create]`。旧格式 `[BuildingManager, OnUpgrade]` 仍向后兼容。
-
-### 闭环
-
-```
-返工/纠正/下硬约束 → 你写 feedback auto-memory → Hook 快照进 trace (pending)
-       ↓
-提醒 → origin evolve → 蒸馏快照 → 提议 → 审批 → 写入 Skill
-                                         ↓
-                                   下次会话：新知识生效，不再重复犯错
-```
+业务规则只写入项目 skill 或 `.castflow-runtime/rules/cross-cutting.md`，永不写 GLOBAL / CLAUDE.md / hooks / origin-evolve 自身。
 
 ---
 
 ## 命令参考
 
-### AI 触发词（日常使用）
+### AI 触发词
 
 | 触发词 | 动作 |
 |--------|------|
-| `bootstrap castflow` | 首次初始化 / 核心更新（由 bootstrap-skill 分流） |
-| `为 X 系统生成 skill` / `分析 Assets/Scripts/X/ 为这个模块创建 skill` | 触发 skill-creator 生成功能模块 skill |
-| `帮我创建一个 X 的 skill` | 触发 skill-creator 生成自由格式 skill |
-| `code_pipeline 实现 X` | 触发多模块 9 步工序 |
-| `origin evolve` | 运行自我进化分析 |
+| `bootstrap castflow` | 请用户双击 `castflow.bat` |
+| 粘贴的 `/goal` 扫描提示词 | 按 loop-engine：programmer-*，一次一个 |
+| `castflow generate skills` | architect/debug/profiler：JSON 队列写一个然后停 |
+| `origin evolve` | 蒸馏 trace（进化开启时） |
 
-### `bootstrap.py` CLI
+### manager.py（主入口）
 
 ```bash
-python .castflow/bootstrap.py                      # Phase A 全量装架
-python .castflow/bootstrap.py --dry-run            # 预览，不写入
-python .castflow/bootstrap.py --validate           # 验证 .claude/skills/ 规范
-python .castflow/bootstrap.py --claude-md-only     # 仅更新根 CLAUDE.md
-python .castflow/bootstrap.py --templates-only     # 仅刷新 .claude/templates/
-python .castflow/bootstrap.py --agent <module>     # 增量生成 programmer-<module>-agent
-python .castflow/bootstrap.py --project-root /path # 显式指定项目根
-python .castflow/bootstrap.py --claude-md-harness 3  # CLAUDE.md 合并策略（1/2/3）
-python .castflow/bootstrap.py --init-manifest --language zh  # 非交互生成缺省 manifest
-python .castflow/bootstrap.py --no-backup          # 跳过备份（git 用户）
-python .castflow/bootstrap.py --backup-keep 5      # 保留最近 5 次备份
-python .castflow/bootstrap.py --clean-backups      # 清空所有备份并退出
-
-# Hook 独立健康检查（不依赖真实 hook 事件）
-python .claude/hooks/trace-flush.py --selftest
+CastFlow\castflow.bat
+python .castflow/manager.py launch
+python .castflow/manager.py setup              # 无界面 seed+sync
+python .castflow/manager.py unseed
+python .castflow/manager.py update-framework
+python .castflow/manager.py seed
+python .castflow/manager.py ui
+python .castflow/manager.py skills
+python .castflow/manager.py retire NAME
+python .castflow/manager.py activate NAME
+python .castflow/manager.py update NAME
+python .castflow/manager.py sync
+python .castflow/manager.py evolve on|off
+python .castflow/manager.py queue
+python .castflow/manager.py handoff
+python .castflow/manager.py flush              # 无 Stop hook 时手动落账
+python .castflow/manager.py homology           # stdin JSON → 连通分量
+python .castflow/manager.py validate
+python .castflow/manager.py status
 ```
-**如果出现python指令无效果，观察是不是未配置环境变量，或者直接使用py -3 来替代**
 
-CLI 的关键移除：
-- **移除 `--skill`**：易与"生成 skill"混淆；Phase 5 项目级 skill 改走子代理 + skill-creator
-- **移除 `--strict-content`**：安装器不再做内容合并，无需此开关
-- **移除 Phase B**：`generate_all` 只跑 Phase A
+### bootstrap.py（高级）
 
-### 文件归属速查
+```bash
+python .castflow/bootstrap.py                  # Phase A
+python .castflow/bootstrap.py --dry-run
+python .castflow/bootstrap.py --validate
+python .castflow/bootstrap.py --claude-md-only
+python .castflow/bootstrap.py --project-root /path
+python .castflow/bootstrap.py --claude-md-harness 3
+python .castflow/bootstrap.py --init-manifest --language zh
+python .castflow/bootstrap.py --no-backup
+python .castflow/bootstrap.py --backup-keep 5
+python .castflow/bootstrap.py --clean-backups
+
+python .castflow/core/hooks/trace-flush.py --selftest
+```
+
+若 `python` 无效果，检查 PATH，或用 `py -3`。
+
+### 文件归属
 
 | 分类 | 管理方 | 更新方式 |
 |------|--------|---------|
-| `CastFlow/` | CastFlow 仓库 | `git pull` / submodule update |
-| `CLAUDE.md` 框架段 | bootstrap | 装架时合并（三策略） |
+| `CastFlow/` | 本仓库 | `git pull` / submodule update |
+| `CLAUDE.md` 框架段 | seed / ROOT_RULES | 装架合并 |
 | `CLAUDE.md` 项目段 | 项目团队 | 直接编辑 |
-| `.claude/skills/*` 核心 skill | CastFlow 框架 | 装架同步 |
-| `.claude/skills/*` 项目 skill | 项目团队 + 进化系统 | skill-creator 创建 / origin-evolve 追加 |
-| `.claude/hooks/` | CastFlow 框架 | 装架生成 |
-| `.claude/traces/` | Hook + evolve | 不手动编辑 |
-| `.claude/rules/` | 进化系统 | evolve 提议，用户审批后生成 |
+| `.castflow-runtime/skills/` 核心 | 框架 | `update-framework` / `update NAME` |
+| `.castflow-runtime/skills/` 项目 | 团队 + evolve | loop-engine / skill-creator / 审批写入 |
+| 适配器 `*/skills/` | sync | 不要手改 |
+| `.castflow-runtime/traces/` | Hook + evolve | 不要手改 |
+| `.castflow-runtime/memory/` | 你在纠正时写 | 不要写 `type: user` |
 
-不要手动编辑 `CastFlow/.castflow/`（会被 `git pull` 覆盖）。所有定制在 `.claude/` 与 `CLAUDE.md` 项目段完成。
+不要手改 `CastFlow/.castflow/`（会被 `git pull` 覆盖）。定制写在 runtime 与 `CLAUDE.md` 项目段。
 
 ---
 
@@ -497,63 +501,54 @@ CLI 的关键移除：
 
 ```bash
 cd CastFlow && git pull
-# 然后在 AI 中输入 bootstrap castflow（会走核心更新工作流）
+python .castflow/manager.py update-framework
 ```
 
-**备份机制**：`merge_mode: full` 覆盖任意已有文件前，原件复制到会话目录：
+覆盖已有文件前，`merge_mode: full` 会把原件拷到：
 
 ```
 .claude/.backups/<YYYY-MM-DD_HH-MM-SS>/
-    .claude/
-        agents/requirement-analysis-agent.md
-        skills/code-pipeline-skill/...
 ```
 
-保留原始相对路径结构，回滚直接 `robocopy` / `rsync` 拷回即可。默认保留最近 3 次会话，更早自动删除。首次使用新版会一次性清理旧版散落的 `.bak` 文件并追加 `.backups/` 到 `.claude/.gitignore`。
+保留相对路径，回滚用 `robocopy` / `rsync` 拷回。默认最近 3 次。首次用新版会清理旧 `.bak` 散文件，并把 `.backups/` 写入 `.claude/.gitignore`。
+
+装架级回退：GUI「回退并重新冷启动」或 `manager.py unseed`（不删工程源码）。
 
 ---
 
 ## 测试套件
 
-所有测试集中在 `CastFlow/test/`（与 `.castflow/` 同级，**不被 bootstrap 分发**），零外部依赖（仅 `unittest`）。每次运行在临时目录创建隔离环境，不影响项目数据。
+全部在 `CastFlow/test/`（**不分发**），零外部依赖（`unittest`）。每次在临时目录隔离运行。
 
 ```bash
-# Hook 流水线（107 tests）
-cd CastFlow/test/hooks
-py test_evolution.py
-py test_evolution.py --keep-data          # 保留到 test-output/evolution/
-py test_365day_simulation.py --keep-data
-py -m unittest discover -s . -p "test_*.py"
-
-# installer 包（42 tests）
-cd CastFlow/test/bootstrap
-py test_bootstrap.py
-
-# 全量（149 tests）
 cd CastFlow
-py -m unittest discover -s test -p "test_*.py"
+py test/run_all.py
+# 或
+py -m unittest discover -s test -p "test_*.py" -t .
 
-# origin-evolve 规范暴力验证（~7000 断言，~1 秒）
-cd CastFlow/test/origin-evolve
-py verify_redesign.py
+py test/hooks/test_evolution.py
+py test/hooks/test_homology.py
+py test/hooks/test_365day_simulation.py --keep-data
+py test/bootstrap/test_bootstrap.py
+py test/origin-evolve/verify_redesign.py
 
-# macOS / Linux：将 py 替换为 python3
+# macOS / Linux：py 换成 python3
 ```
 
-**测试覆盖层级**：
+`run_all.py` 还会跑 `trace-flush.py --selftest`。
 
-| 层级 | 是否覆盖 | 说明 |
-|------|---------|------|
-| Python 函数正确性 | 是 | 评分公式、compaction 逻辑、状态转换等直接调用真实代码 |
-| 数据格式与流转 | 是 | trace 条目的写/读/解析/压缩全链路用真实 `trace.md` 文件 |
-| Hook 事件触发 | 否 | Cursor/Claude Code 通过 stdin JSON 触发 Hook，测试中直接调用函数替代 |
-| origin-evolve AI 分析 | 否 | 模式识别是 AI 行为，测试中用简化检测函数替代 |
-| 用户审批交互 | 否 | 人在回路无法自动化 |
+| 层级 | 覆盖 | 说明 |
+|------|------|------|
+| Python 正确性 | 是 | 采集门、compaction、homology、validate、seed/sync |
+| 数据格式与流转 | 是 | 真实 `trace.md` 写/读/压缩 |
+| Hook 事件触发 | 否 | 测试直接调函数，不模拟宿主 stdin JSON |
+| origin-evolve 模式识别 | 否 | AI 行为；确定性部分用 `verify_redesign.py` |
+| 用户审批 | 否 | 人在回路 |
 
-测试的使命是 **保证数据管道的机械正确性**：在长期持续写入和压缩下不会损坏、不会无限膨胀、不会丢失关键信号。AI 侧的质量由 Skill 元规范 + `validate.py` + 人在回路共同保障。
+测试保证 **数据管道机械正确**：长期写入不会损坏、不会无限膨胀、不会丢掉经验资产。生成质量由 `SKILL_ITERATION` + `validate.py` + 人在回路共同保障。
 
 ---
 
 ## LICENSE
 
-见 [LICENSE](./LICENSE)。
+见 [LICENSE](./LICENSE)（MIT）。

@@ -57,7 +57,7 @@ AI 判断用户明确接受或拒绝操作结果时，写入 `traces/.pending_va
 
 ## 文件位置
 
-`<项目根>/.claude/traces/.pending_validated.json`（覆盖写）
+`<项目根>/.castflow-runtime/traces/.pending_validated.json`（覆盖写）
 
 ## 检查清单
 

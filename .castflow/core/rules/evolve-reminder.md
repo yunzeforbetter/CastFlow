@@ -1,0 +1,14 @@
+# CastFlow evolve reminder
+
+Do not Read `.castflow-runtime/traces/trace.md`.
+
+If `.castflow-runtime/traces/.unflushed` exists, suggest:
+
+    python .castflow/manager.py flush
+    origin evolve
+
+If `.castflow-runtime/traces/.evolve_nudge` exists (and no unflushed file), suggest:
+
+    origin evolve
+
+Do not run origin-evolve unless the user asks. Skip this reminder if evolution is disabled in `.castflow-runtime/config.json`.

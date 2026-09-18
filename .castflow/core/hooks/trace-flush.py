@@ -5,11 +5,10 @@ CastFlow Trace Flush - Cross-platform hook script.
 Triggered when the agent stops (Claude Code: Stop).
 Responsibilities (in order):
   1. apply_validated_update  - update validated field for most-recent pending entry
-  2. apply_pipeline_result   - consume code-pipeline's component-owned result signal
-  3. flush_new_trace         - write a new trace entry IF memory snapshots were captured
-  4. apply_trace_expiration  - expire stale pending-pipeline / uncertain trace entries
-  5. check_and_compact       - compress trace.md if over threshold (skipped when locked)
-  6. check_notify            - passive trigger notification via NOTIFY block in trace.md
+  2. flush_new_trace         - write a new trace entry IF memory snapshots were captured
+  3. apply_trace_expiration  - expire stale uncertain trace entries
+  4. check_and_compact       - compress trace.md if over threshold (skipped when locked)
+  5. check_notify            - passive trigger notification via NOTIFY block in trace.md
 
 Learning model (schema:4 - memory snapshots only):
   The scoring/buffer subsystem was retired. A trace entry is written ONLY when
@@ -26,16 +25,21 @@ import re
 import sys
 from datetime import datetime, timezone
 
+_HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _HOOKS_DIR not in sys.path:
+    sys.path.insert(0, _HOOKS_DIR)
+from _castflow_paths import evolution_enabled, runtime_dir  # noqa: E402
+
 TRACE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "traces")
 TRACE_FILE = os.path.join(TRACE_DIR, "trace.md")
 LIMITS_FILE = os.path.join(TRACE_DIR, "config", "limits.json")
 PENDING_VALIDATED_FILE = os.path.join(TRACE_DIR, ".pending_validated.json")
-# code-pipeline own runtime signal; consumed by the shared trace hook.
-PENDING_PIPELINE_FILE = os.path.join(TRACE_DIR, ".pending_pipeline_result.json")
 NOTIFY_STATE_FILE = os.path.join(TRACE_DIR, ".notify_state.json")
 TRACE_LOCK_FILE = os.path.join(TRACE_DIR, ".trace_lock")
 # Memory snapshots captured by trace-collector; flushed into trace.md here.
 MEMORY_SNAPSHOTS_FILE = os.path.join(TRACE_DIR, ".trace_memory_snapshots")
+UNFLUSHED_FILE = os.path.join(TRACE_DIR, ".unflushed")
+EVOLVE_NUDGE_FILE = os.path.join(TRACE_DIR, ".evolve_nudge")
 
 TRACE_SCHEMA_VERSION = 4
 
@@ -47,9 +51,9 @@ DEFAULT_LIMITS = {
     "keep_recent_n": 20,
     "passive_trigger_threshold": 10,
     "passive_trigger_min_new": 5,
-    "pipeline_pending_expire_days": 7,
     "validated_uncertain_expire_days": 14,
     "processed_expire_days": 30,
+    "waiting_expire_days": 21,
 }
 
 # Memory snapshot type precedence when an entry carries multiple snapshots:
@@ -122,6 +126,63 @@ def _dominant_type(memory_snapshots):
         if t and t != "_":
             return t
     return "_"
+
+
+def _signal_char_count(text):
+    n = 0
+    for ch in text or "":
+        if ch.isalnum():
+            n += 1
+    return n
+
+
+def _compute_quality(description, body):
+    desc = (description or "").strip()
+    if len(desc) >= 8 and _signal_char_count(body) >= 20:
+        return "ok"
+    return "thin"
+
+
+def _snapshot_quality(snap):
+    q = str((snap or {}).get("quality") or "").strip()
+    if q in ("ok", "thin"):
+        return q
+    body = snap.get("body") if snap else None
+    if body is None:
+        body = (snap or {}).get("content") or ""
+    return _compute_quality((snap or {}).get("description"), body)
+
+
+def _trace_quality_and_gate(memory_snapshots):
+    """TRACE.quality = best feedback quality; gate_hint = any feedback+ok."""
+    snaps = [s for s in (memory_snapshots or []) if isinstance(s, dict)]
+    has_ok_feedback = False
+    has_feedback = False
+    any_thin = False
+    for snap in snaps:
+        quality = _snapshot_quality(snap)
+        if quality == "thin":
+            any_thin = True
+        if str(snap.get("type") or "").strip() == "feedback":
+            has_feedback = True
+            if quality == "ok":
+                has_ok_feedback = True
+    gate_hint = "promotable" if has_ok_feedback else "waiting"
+    if has_feedback:
+        quality = "ok" if has_ok_feedback else "thin"
+    elif not snaps:
+        quality = "thin"
+    else:
+        quality = "thin" if any_thin else "ok"
+    return quality, gate_hint
+
+
+def _format_anchors(anchors):
+    if not anchors:
+        return "[]"
+    if isinstance(anchors, str):
+        return anchors
+    return "[{}]".format(", ".join(str(a) for a in anchors))
 
 
 # ============================================================
@@ -198,213 +259,33 @@ def apply_validated_update():
 
 
 # ============================================================
-# Pipeline result batch update
-# ============================================================
-
-def _detect_project_root_from_trace_dir():
-    """Resolve the project root for an installed `.claude/traces` layout.
-
-    Runtime hooks are copied to `.claude/hooks/` and use `TRACE_DIR = .claude/traces`.
-    The project root is therefore the parent directory of `.claude/`.
-    If the expected layout is unavailable, fall back to walking upward looking
-    for a directory that contains `.claude/`.
-    """
-    trace_dir = os.path.abspath(TRACE_DIR)
-    claude_dir = os.path.dirname(trace_dir)
-    if os.path.basename(claude_dir) == ".claude":
-        return os.path.dirname(claude_dir)
-
-    candidate = trace_dir
-    for _ in range(6):
-        if os.path.isdir(os.path.join(candidate, ".claude")):
-            return candidate
-        parent = os.path.dirname(candidate)
-        if parent == candidate:
-            break
-        candidate = parent
-
-    return None
-
-
-def detect_pipeline_context():
-    """Detect active code-pipeline run_id from PIPELINE_CONTEXT.md.
-
-    Searches for PIPELINE_CONTEXT.md from the installed `.claude/traces`
-    runtime layout. Falls back to an upward search for a directory containing
-    `.claude/` if the expected layout is unavailable.
-    Returns run_id string if file exists and contains pipeline_run_id field,
-    otherwise returns None.
-    """
-    search_dir = _detect_project_root_from_trace_dir()
-    if not search_dir:
-        return None
-    candidate = os.path.join(search_dir, "PIPELINE_CONTEXT.md")
-
-    if not os.path.isfile(candidate):
-        return None
-
-    try:
-        with open(candidate, "r", encoding="utf-8") as f:
-            for line in f:
-                m = re.match(r"pipeline_run_id:\s*(\S+)", line.strip())
-                if m:
-                    return m.group(1)
-    except OSError:
-        pass
-
-    return None
-
-
-def apply_pipeline_result():
-    """Read code-pipeline's result signal and batch-update matching trace entries."""
-    if not os.path.isfile(PENDING_PIPELINE_FILE):
-        return
-
-    try:
-        with open(PENDING_PIPELINE_FILE, "r", encoding="utf-8") as f:
-            content_str = f.read()
-    except OSError:
-        return
-
-    try:
-        target_run_id, target_validated = parse_pipeline_result_signal(content_str)
-    except ValueError as exc:
-        _log_error(exc)
-        return
-
-    if not os.path.isfile(TRACE_FILE):
-        return
-
-    try:
-        with open(TRACE_FILE, "r", encoding="utf-8") as f:
-            content = f.read()
-    except OSError:
-        return
-
-    trace_block_pattern = re.compile(
-        r"(<!-- TRACE[^>]*-->.*?<!-- /TRACE -->)",
-        re.DOTALL
-    )
-    matched_any = 0
-    consumed_any = False
-
-    def replace_pipeline_validated(m):
-        nonlocal matched_any, consumed_any
-        block = m.group(1)
-        if ("pipeline_run_id: " + target_run_id) not in block:
-            return block
-        matched_any += 1
-        if target_validated == "pending-pipeline":
-            if re.search(r"^validated:\s*pending-pipeline\s*$", block, re.MULTILINE):
-                consumed_any = True
-            return block
-        if not re.search(r"^validated:\s*pending-pipeline\s*$", block, re.MULTILINE):
-            return block
-        consumed_any = True
-        return re.sub(
-            r"^(validated:\s*)pending-pipeline\s*$",
-            r"\g<1>" + target_validated,
-            block,
-            count=1,
-            flags=re.MULTILINE,
-        )
-
-    new_content = trace_block_pattern.sub(replace_pipeline_validated, content)
-
-    if matched_any == 0 or not consumed_any:
-        return
-
-    if new_content != content:
-        try:
-            tmp_file = TRACE_FILE + ".tmp"
-            with open(tmp_file, "w", encoding="utf-8", newline="\n") as f:
-                f.write(new_content)
-            os.replace(tmp_file, TRACE_FILE)
-        except OSError:
-            return
-
-    try:
-        os.remove(PENDING_PIPELINE_FILE)
-    except OSError:
-        pass
-
-
-def _parse_bool_token(value, field_name):
-    if isinstance(value, bool):
-        return value
-    token = str(value).strip().lower()
-    if token in ("true", "1", "yes"):
-        return True
-    if token in ("false", "0", "no"):
-        return False
-    raise ValueError("Invalid {} value in pipeline result signal: {!r}".format(
-        field_name, value))
-
-
-def parse_pipeline_result_signal(content_str):
-    """Parse and validate code-pipeline's result signal."""
-    run_id = ""
-    result_str = ""
-    finalized = None
-
-    try:
-        data = json.loads(content_str)
-        run_id = data.get("pipeline_run_id", "")
-        result_str = data.get("result", "")
-        finalized = data.get("finalized")
-    except json.JSONDecodeError:
-        for line in content_str.splitlines():
-            m = re.match(r"pipeline_run_id:\s*(\S+)", line)
-            if m:
-                run_id = m.group(1)
-            m2 = re.match(r"result:\s*(\S+)", line)
-            if m2:
-                result_str = m2.group(1)
-            m3 = re.match(r"finalized:\s*(\S+)", line)
-            if m3:
-                finalized = m3.group(1)
-
-    if not run_id:
-        raise ValueError("Pipeline result signal missing pipeline_run_id")
-    if not re.match(r"^pipeline_\d{8}_\d{6}$", run_id):
-        raise ValueError("Invalid pipeline_run_id in pipeline result signal: {}".format(run_id))
-    if not result_str:
-        raise ValueError("Pipeline result signal missing result")
-
-    result_upper = str(result_str).strip().upper()
-    if result_upper not in ("GO", "GO-WITH-CAUTION", "NO-GO"):
-        raise ValueError("Invalid result in pipeline result signal: {}".format(result_str))
-    if finalized is None:
-        raise ValueError("Pipeline result signal missing finalized")
-
-    finalized_bool = _parse_bool_token(finalized, "finalized")
-    if result_upper in ("GO", "NO-GO") and not finalized_bool:
-        raise ValueError("{} requires finalized=true in pipeline result signal".format(
-            result_upper))
-
-    if result_upper == "GO-WITH-CAUTION":
-        validated_value = "true" if finalized_bool else "pending-pipeline"
-    elif result_upper == "GO":
-        validated_value = "true"
-    else:
-        validated_value = "false"
-
-    return run_id, validated_value
-
-
-# ============================================================
 # Trace lifecycle updates
 # ============================================================
 
+def _block_status(block):
+    status_match = re.search(r"<!-- TRACE status:(\S+)", block)
+    return status_match.group(1) if status_match else "pending"
+
+
+def _block_gate_hint(block):
+    """Infer gate_hint for old blocks: feedback + MEMORY => promotable."""
+    explicit = _get_block_field(block, "gate_hint")
+    if explicit in ("promotable", "waiting"):
+        return explicit
+    entry_type = _get_block_field(block, "type")
+    if entry_type == "feedback" and "<!-- MEMORY " in block:
+        return "promotable"
+    return "waiting"
+
+
 def apply_trace_expiration():
-    """Expire stale pending-pipeline and uncertain pending trace entries."""
+    """Expire waiting pending rows past waiting_expire_days. Not validated:_."""
     if not os.path.isfile(TRACE_FILE):
         return
 
     limits = load_limits()
     now = datetime.now(timezone.utc)
-    pipeline_pending_expire = int(limits.get("pipeline_pending_expire_days", 7))
-    validated_uncertain_expire = int(limits.get("validated_uncertain_expire_days", 14))
+    waiting_expire = int(limits.get("waiting_expire_days", 21))
 
     try:
         with open(TRACE_FILE, "r", encoding="utf-8") as f:
@@ -424,11 +305,10 @@ def apply_trace_expiration():
         block = m.group(1)
         age = _get_block_age_days(block, now)
         validated = _get_block_field(block, "validated")
-        status_match = re.search(r"<!-- TRACE status:(\S+)", block)
-        status = status_match.group(1) if status_match else "pending"
+        status = _block_status(block)
         new_block = block
 
-        if validated == "pending-pipeline" and age > pipeline_pending_expire:
+        if validated == "pending-pipeline":
             new_block = re.sub(
                 r"^(validated:\s*)pending-pipeline\s*$",
                 r"\g<1>invalid",
@@ -443,7 +323,7 @@ def apply_trace_expiration():
                 count=1,
                 flags=re.MULTILINE,
             )
-        elif validated == "_" and status == "pending" and age > validated_uncertain_expire:
+        elif status == "pending" and _block_gate_hint(block) == "waiting" and age > waiting_expire:
             new_block = re.sub(
                 r"^(<!-- TRACE status:)(\S+)",
                 r"\g<1>expired",
@@ -492,50 +372,51 @@ def _format_memory_blocks(memory_snapshots):
     for snap in memory_snapshots:
         if not isinstance(snap, dict):
             continue
-        slug = str(snap.get("name") or "_")
+        slug = str(snap.get("name") or snap.get("slug") or "_")
         mtype = str(snap.get("type") or "_")
+        quality = _snapshot_quality(snap)
         description = str(snap.get("description") or "")
+        skill = str(snap.get("skill") or "")
+        anchors = _format_anchors(snap.get("anchors"))
         content = _sanitize_snapshot_content(str(snap.get("content") or ""))
         trunc = " truncated:1" if snap.get("truncated") else ""
         blocks.append(
-            "<!-- MEMORY slug:{} type:{}{} -->\n"
+            "<!-- MEMORY slug:{} type:{} quality:{}{} -->\n"
+            "skill: {}\n"
+            "anchors: {}\n"
             "description: {}\n"
             "---\n"
             "{}\n"
             "<!-- /MEMORY -->\n".format(
-                slug, mtype, trunc, description, content.rstrip("\n")
+                slug, mtype, quality, trunc, skill, anchors,
+                description, content.rstrip("\n")
             )
         )
     return "".join(blocks)
 
 
-def format_trace(entry_type, pipeline_run_id, memory_snapshots):
-    """Format a schema:4 trace entry — a memory-snapshot ledger record.
-
-    Only lifecycle + snapshot fields remain; the memory content itself is the
-    learning material for origin-evolve to distill.
-    """
+def format_trace(entry_type, memory_snapshots):
+    """Format a schema:4 trace entry — a memory-snapshot ledger record."""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    validated = "pending-pipeline" if pipeline_run_id else "_"
-    run_id_value = pipeline_run_id if pipeline_run_id else "_"
 
     memory_blocks = _format_memory_blocks(memory_snapshots)
     memory_count = len(memory_snapshots) if memory_snapshots else 0
+    quality, gate_hint = _trace_quality_and_gate(memory_snapshots)
 
     return (
         "<!-- TRACE status:pending schema:{} -->\n"
         "timestamp: {}\n"
         "type: {}\n"
-        "validated: {}\n"
-        "pipeline_run_id: {}\n"
+        "validated: _\n"
+        "quality: {}\n"
+        "gate_hint: {}\n"
         "memory_snapshots: {}\n"
         "{}"
         "<!-- /TRACE -->\n"
     ).format(
         TRACE_SCHEMA_VERSION,
         timestamp, entry_type or "_",
-        validated, run_id_value,
+        quality, gate_hint,
         memory_count, memory_blocks,
     )
 
@@ -558,6 +439,14 @@ def append_trace(entry):
 # New trace flush
 # ============================================================
 
+def _clear_unflushed():
+    try:
+        if os.path.isfile(UNFLUSHED_FILE):
+            os.remove(UNFLUSHED_FILE)
+    except OSError:
+        pass
+
+
 def flush_new_trace():
     """Write a trace entry IF the model captured memory this session.
 
@@ -567,14 +456,15 @@ def flush_new_trace():
     memory_snapshots = read_memory_snapshots()
     if not memory_snapshots:
         clear_memory_snapshots()
+        _clear_unflushed()
         return
 
     entry_type = _dominant_type(memory_snapshots)
-    pipeline_run_id = detect_pipeline_context()
-    entry = format_trace(entry_type, pipeline_run_id, memory_snapshots)
+    entry = format_trace(entry_type, memory_snapshots)
     append_trace(entry)
 
     clear_memory_snapshots()
+    _clear_unflushed()
 
 
 # ============================================================
@@ -589,22 +479,8 @@ def count_trace_entries(content):
 def count_pending_entries(content):
     """Count pending TRACE blocks eligible for origin-evolve analysis.
 
-    Entries still waiting for pipeline finalization (`validated:pending-pipeline`)
-    remain pending in lifecycle terms, but they should not trigger passive
-    origin-evolve notifications until the pipeline reaches a final verdict or
-    expires to invalid.
     """
-    trace_block_pattern = re.compile(
-        r"<!-- TRACE status:pending\b[^>]*-->.*?<!-- /TRACE -->",
-        re.DOTALL,
-    )
-    count = 0
-    for m in trace_block_pattern.finditer(content):
-        block = m.group(0)
-        if _get_block_field(block, "validated") == "pending-pipeline":
-            continue
-        count += 1
-    return count
+    return len(re.findall(r"<!-- TRACE status:pending\b", content))
 
 
 def check_and_compact():
@@ -651,19 +527,10 @@ def _get_block_age_days(block, now):
 
 
 def _is_experience_asset(block):
-    """True if the block carries durable learning value and must not be
-    auto-removed by age-based compaction: a validated:true entry, or one
-    carrying at least one embedded memory snapshot.
-    """
-    if _get_block_field(block, "validated") == "true":
-        return True
-    count_str = _get_block_field(block, "memory_snapshots")
-    try:
-        if int(count_str) > 0:
-            return True
-    except (TypeError, ValueError):
-        pass
-    return "<!-- MEMORY " in block
+    """Promotable pending rows are never age-deleted or cap-deleted."""
+    if _block_status(block) != "pending":
+        return False
+    return _block_gate_hint(block) == "promotable"
 
 
 def _compact_level0_audit(content, limits, now):
@@ -692,8 +559,6 @@ def _compact_level1_invalid(blocks):
     for i, m in enumerate(blocks):
         block = m.group(0)
         validated = _get_block_field(block, "validated")
-        if validated == "pending-pipeline":
-            continue
         status_match = re.search(r"<!-- TRACE status:(\S+)", block)
         status = status_match.group(1) if status_match else "pending"
         if status in ("expired", "invalid") or validated == "invalid":
@@ -702,21 +567,14 @@ def _compact_level1_invalid(blocks):
 
 
 def _compact_level2_old_age(blocks, already_removed, limits, now):
-    """Level 2: Remove old non-asset skeleton entries past the age threshold.
-
-    Experience assets (validated:true or carrying memory snapshots) and
-    in-flight pipeline entries are never age-removed.
-    """
+    """Level 2: never age-delete status:pending (waiting or promotable)."""
     to_remove = set()
     level2_age = int(limits["level2_age_days"])
     for i, m in enumerate(blocks):
         if i in already_removed:
             continue
         block = m.group(0)
-        validated = _get_block_field(block, "validated")
-        if validated in ("pending-pipeline", "false"):
-            continue
-        if _is_experience_asset(block):
+        if _block_status(block) == "pending":
             continue
         if _get_block_age_days(block, now) > level2_age:
             to_remove.add(i)
@@ -724,8 +582,7 @@ def _compact_level2_old_age(blocks, already_removed, limits, now):
 
 
 def _compact_level3_overflow(blocks, already_removed, limits, now):
-    """Level 3: If still over the entry cap, drop the oldest non-asset entries,
-    always keeping the most recent keep_recent_n entries as a floor."""
+    """Level 3: skip all pending. Overflow of pending is waiting-only (below)."""
     remaining = len(blocks) - len(already_removed)
     max_entries = int(limits["compact_max_entries"])
     if remaining <= max_entries:
@@ -733,8 +590,6 @@ def _compact_level3_overflow(blocks, already_removed, limits, now):
 
     level3_age = int(limits["level3_age_days"])
     keep_recent_n = int(limits.get("keep_recent_n", 20))
-
-    # Protect the newest keep_recent_n block indices from overflow removal.
     protected = set(range(max(0, len(blocks) - keep_recent_n), len(blocks)))
 
     candidates = []
@@ -742,10 +597,7 @@ def _compact_level3_overflow(blocks, already_removed, limits, now):
         if i in already_removed or i in protected:
             continue
         block = m.group(0)
-        validated = _get_block_field(block, "validated")
-        if validated in ("pending-pipeline", "false"):
-            continue
-        if _is_experience_asset(block):
+        if _block_status(block) == "pending":
             continue
         age = _get_block_age_days(block, now)
         if age > level3_age:
@@ -756,7 +608,31 @@ def _compact_level3_overflow(blocks, already_removed, limits, now):
     to_remove = set()
     for _, idx in candidates[:overflow]:
         to_remove.add(idx)
+    return to_remove
 
+
+def _compact_waiting_overflow(blocks, already_removed, limits):
+    """If pending count > compact_max_entries, drop oldest waiting only."""
+    pending_idx = []
+    waiting_idx = []
+    for i, m in enumerate(blocks):
+        if i in already_removed:
+            continue
+        block = m.group(0)
+        if _block_status(block) != "pending":
+            continue
+        pending_idx.append(i)
+        if _block_gate_hint(block) == "waiting":
+            ts = _get_block_field(block, "timestamp")
+            waiting_idx.append((ts, i))
+    max_entries = int(limits["compact_max_entries"])
+    if len(pending_idx) <= max_entries:
+        return set()
+    overflow = len(pending_idx) - max_entries
+    waiting_idx.sort(key=lambda x: x[0])
+    to_remove = set()
+    for _, idx in waiting_idx[:overflow]:
+        to_remove.add(idx)
     return to_remove
 
 
@@ -785,6 +661,7 @@ def _rebuild_after_compact(content, blocks, blocks_to_remove, now):
 def compact_trace(content, limits):
     """Execute three-level compaction on trace.md content."""
     now = datetime.now(timezone.utc)
+    original = content
 
     trace_block_pattern = re.compile(
         r"<!-- TRACE[^>]*-->.*?<!-- /TRACE -->",
@@ -795,13 +672,16 @@ def compact_trace(content, limits):
     blocks = list(trace_block_pattern.finditer(content))
 
     blocks_to_remove = _compact_level1_invalid(blocks)
+    blocks_to_remove |= _compact_waiting_overflow(blocks, blocks_to_remove, limits)
     blocks_to_remove |= _compact_level2_old_age(blocks, blocks_to_remove, limits, now)
     blocks_to_remove |= _compact_level3_overflow(blocks, blocks_to_remove, limits, now)
 
-    if not blocks_to_remove:
+    if blocks_to_remove:
+        final_content = _rebuild_after_compact(content, blocks, blocks_to_remove, now)
+    elif content != original:
+        final_content = content
+    else:
         return
-
-    final_content = _rebuild_after_compact(content, blocks, blocks_to_remove, now)
 
     try:
         tmp_file = TRACE_FILE + ".tmp"
@@ -816,8 +696,35 @@ def compact_trace(content, limits):
 # Passive trigger notification
 # ============================================================
 
+def count_notify_entries(content):
+    """Pending TRACE rows that are promotable or validated:false."""
+    pattern = re.compile(
+        r"(<!-- TRACE[^>]*-->.*?<!-- /TRACE -->)",
+        re.DOTALL,
+    )
+    n = 0
+    for m in pattern.finditer(content or ""):
+        block = m.group(1)
+        if _block_status(block) != "pending":
+            continue
+        if _block_gate_hint(block) == "promotable":
+            n += 1
+        elif _get_block_field(block, "validated") == "false":
+            n += 1
+    return n
+
+
+def _write_evolve_nudge(pending_count):
+    try:
+        os.makedirs(os.path.dirname(EVOLVE_NUDGE_FILE), exist_ok=True)
+        with open(EVOLVE_NUDGE_FILE, "w", encoding="utf-8", newline="\n") as f:
+            f.write("pending_promotable: {}\n".format(pending_count))
+    except OSError:
+        pass
+
+
 def check_notify():
-    """Check if analyzable pending count crosses threshold and notify."""
+    """Notify on promotable / validated:false pending, not all waiting."""
     if not os.path.isfile(TRACE_FILE):
         return
 
@@ -828,7 +735,7 @@ def check_notify():
     try:
         with open(TRACE_FILE, "r", encoding="utf-8") as f:
             content = f.read()
-        pending_count = count_pending_entries(content)
+        pending_count = count_notify_entries(content)
     except OSError:
         return
 
@@ -848,12 +755,11 @@ def check_notify():
     if new_since_last < min_new:
         return
 
-    # Write NOTIFY block to trace.md so AI sees it on next read
     notify_block = (
         "\n<!-- NOTIFY type:passive_trigger -->\n"
         "pending_count: {}\n"
         "new_since_last: {}\n"
-        "message: CastFlow: {} pending trace entries accumulated. "
+        "message: CastFlow: {} promotable pending traces. "
         "Run 'origin evolve' to analyze and generate improvement proposals.\n"
         "<!-- /NOTIFY -->\n"
     ).format(pending_count, new_since_last, pending_count)
@@ -863,6 +769,8 @@ def check_notify():
             f.write(notify_block)
     except OSError:
         return
+
+    _write_evolve_nudge(pending_count)
 
     try:
         os.makedirs(os.path.dirname(NOTIFY_STATE_FILE), exist_ok=True)
@@ -928,6 +836,7 @@ def selftest():
     try:
         limits = load_limits()
         assert "keep_recent_n" in limits
+        assert "waiting_expire_days" in limits
         assert "level2_score_threshold" not in limits, "score keys must be gone"
         print("OK (keep_recent_n={})".format(limits["keep_recent_n"]))
     except Exception as e:
@@ -950,14 +859,15 @@ def selftest():
         snaps = [{
             "type": "feedback", "name": "use-x-not-y",
             "description": "prefer X over Y",
-            "content": "---\nname: use-x-not-y\n---\n\nAlways use X. Reason: Y leaks.",
+            "content": "---\nname: use-x-not-y\n---\n\nAlways use X not Y because Y leaks extra state.",
             "path": ".claude/projects/p/memory/use-x-not-y.md", "truncated": False,
         }]
-        entry = format_trace("feedback", None, snaps)
+        entry = format_trace("feedback", snaps)
         assert "schema:4" in entry, "schema must be 4"
         assert "type: feedback" in entry
         assert "memory_snapshots: 1" in entry
-        assert "<!-- MEMORY slug:use-x-not-y type:feedback -->" in entry
+        assert "gate_hint:" in entry
+        assert "<!-- MEMORY slug:use-x-not-y type:feedback quality:" in entry
         assert "Always use X" in entry
         # retired fields must be gone
         for gone in ("score:", "score_breakdown:", "modules:", "mode:", "lesson:"):
@@ -975,7 +885,7 @@ def selftest():
             "content": "explains <!-- TRACE --> and closing --> markers",
             "path": "x", "truncated": False,
         }]
-        entry = format_trace("project", None, evil)
+        entry = format_trace("project", evil)
         assert entry.count("<!-- /TRACE -->") == 1, "content must not inject a TRACE close"
         assert "<! --" in entry, "content <!-- should be defanged"
         print("OK")
@@ -985,16 +895,18 @@ def selftest():
 
     print("[5] Experience-asset detection... ", end="")
     try:
-        asset = format_trace("feedback", None, [{
-            "type": "feedback", "name": "r", "description": "",
-            "content": "x", "path": "p", "truncated": False}])
-        assert _is_experience_asset(asset), "memory-carrying block is an asset"
+        asset = format_trace("feedback", [{
+            "type": "feedback", "name": "r",
+            "description": "use this rule when inserting",
+            "content": "abcdefghijklmnopqrstuvwxyz", "path": "p",
+            "truncated": False, "quality": "ok"}])
+        assert _is_experience_asset(asset), "ok-feedback block is an asset"
         skeleton = (
             "<!-- TRACE status:pending schema:4 -->\n"
             "timestamp: 2020-01-01T00:00:00Z\ntype: _\nvalidated: _\n"
-            "pipeline_run_id: _\nmemory_snapshots: 0\n<!-- /TRACE -->\n"
+            "gate_hint: waiting\nmemory_snapshots: 0\n<!-- /TRACE -->\n"
         )
-        assert not _is_experience_asset(skeleton), "empty skeleton is not an asset"
+        assert not _is_experience_asset(skeleton), "waiting skeleton is not an asset"
         print("OK")
     except Exception as e:
         print("FAIL: {}".format(e))
@@ -1025,23 +937,54 @@ def selftest():
 # Main
 # ============================================================
 
+def run_flush_pipeline():
+    """Shipped flush door after paths are bound. Lock => no-op, keep snapshots."""
+    if os.path.isfile(TRACE_LOCK_FILE):
+        return "locked"
+    apply_validated_update()
+    flush_new_trace()
+    apply_trace_expiration()
+    check_and_compact()
+    check_notify()
+    return "ok"
+
+
+def _bind_runtime_trace_dir():
+    """Point flush I/O at `.castflow-runtime/traces/` when present."""
+    global TRACE_DIR, TRACE_FILE, LIMITS_FILE, PENDING_VALIDATED_FILE
+    global NOTIFY_STATE_FILE, TRACE_LOCK_FILE, MEMORY_SNAPSHOTS_FILE
+    global UNFLUSHED_FILE, EVOLVE_NUDGE_FILE
+    rt = runtime_dir()
+    traces = os.path.join(rt, "traces")
+    if not os.path.isdir(rt):
+        return
+    TRACE_DIR = traces
+    TRACE_FILE = os.path.join(TRACE_DIR, "trace.md")
+    LIMITS_FILE = os.path.join(TRACE_DIR, "config", "limits.json")
+    PENDING_VALIDATED_FILE = os.path.join(TRACE_DIR, ".pending_validated.json")
+    NOTIFY_STATE_FILE = os.path.join(TRACE_DIR, ".notify_state.json")
+    TRACE_LOCK_FILE = os.path.join(TRACE_DIR, ".trace_lock")
+    MEMORY_SNAPSHOTS_FILE = os.path.join(TRACE_DIR, ".trace_memory_snapshots")
+    UNFLUSHED_FILE = os.path.join(TRACE_DIR, ".unflushed")
+    EVOLVE_NUDGE_FILE = os.path.join(TRACE_DIR, ".evolve_nudge")
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
         success = selftest()
         sys.exit(0 if success else 1)
 
     try:
+        if not evolution_enabled():
+            return
+        _bind_runtime_trace_dir()
+
         try:
             sys.stdin.read()
         except Exception:
             pass
 
-        apply_validated_update()
-        apply_pipeline_result()
-        flush_new_trace()
-        apply_trace_expiration()
-        check_and_compact()
-        check_notify()
+        run_flush_pipeline()
 
     except Exception as exc:
         _log_error(exc)

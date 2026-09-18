@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-CastFlow Bootstrap - Deterministic File Generator
+CastFlow Bootstrap - legacy installer entry.
 
-Thin wrapper that delegates to the installer package.
-Kept for backward compatibility so existing commands still work:
-    python .castflow/bootstrap.py
-    python .castflow/bootstrap.py --validate
-    python .castflow/bootstrap.py --dry-run
-    python .castflow/bootstrap.py
+Preferred commands:
+    python .castflow/manager.py launch
+    python .castflow/manager.py seed
+    python .castflow/manager.py ui
 
-The actual implementation lives in .castflow/installer/ (Python package).
+This file still wraps installer CLI (--validate, --dry-run, Phase A copies).
+Scan is not a manager command; module discovery is the pasted /goal loop-engine prompt.
 """
 
 import os

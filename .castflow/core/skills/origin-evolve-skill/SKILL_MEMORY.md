@@ -6,23 +6,24 @@ Mandatory constraints. Violation = invalid execution.
 
 ### Rule 1: Evidence-Based Proposals
 
-Every proposal cites 2+ trace entries (by timestamp) sharing one root cause. Single occurrences and speculative improvements are forbidden.
+A MEMORY subblock is eligible only when `(type is feedback AND quality is ok)` or `homologous_count >= 2`. One ok feedback snapshot can justify a proposal. `project` / `reference` / thin feedback need a homology component of size >= 2.
+
+`validated` never grants eligibility. `validated:false` only ranks already-eligible items (P0) and counts the TRACE toward notify.
 
 Self-check: would the proposal still hold if you removed the cited evidence? If yes, the evidence is incidental and the proposal is unfounded — drop it.
-
-`validated:false` traces are P0 evidence regardless of correction signal. When 3+ such traces share one module with `correction:_`, read `error_cause` / `user_feedback` / `lesson` to identify systematic AI misunderstanding.
 
 ---
 
 ### Rule 2: Attribution Decision Tree
 
-**Target skill** (in priority order):
-1. One module with mapped `programmer-*-skill` -> that skill
-2. Two or more modules under one common parent that owns a skill -> parent's skill
-3. Two or more modules with no common parent -> `.claude/rules/`
-4. `skills` field empty in cited traces -> SKILL.md description of the closest skill
+**Target** (in priority order):
+1. Whitelisted `skill:` on the MEMORY subblock (runtime skill dir with SKILL.md, not origin-evolve-skill / skill-creator / bootstrap-skill) -> that skill
+2. Else anchors hit exactly one project skill's existing Anchors -> that skill
+3. Steps 1 and 2 both hit and disagree -> user pick (still a single skill write)
+4. Anchors hit two or more different project skills -> `.castflow-runtime/rules/cross-cutting.md`
+5. None of the above -> do not write a rule file; leave waiting
 
-**Anchor evidence as secondary signal**: when the proposed rule's significant anchors (excluding generic symbols such as `OnDestroy`, `Subscribe`, `AddTimer`, `LoadAsset`) are owned by an existing skill different from the module-list result, surface BOTH candidates in Step 4 for user choice. Do not auto-override.
+Never write `.claude/rules/` business rules. Never write GLOBAL_SKILL_MEMORY.md, CLAUDE.md, AGENTS.md, hook scripts, or origin-evolve itself.
 
 **Target file within the skill**:
 | Pattern | File |
@@ -42,7 +43,7 @@ Self-check: would the proposal still hold if you removed the cited evidence? If 
 | Merge | Existing rule with anchor Jaccard >= 0.5 | Diff showing anchor union and content delta |
 | Retire | Anchor symbols absent from current code (use path-hint if available to narrow grep scope) | `grep` output proving 0 matches |
 
-Thresholds (Jaccard, capacity word count) read from `traces/governance.json` with defaults: Jaccard 0.5, file capacity 2000 words. If file is over capacity, propose Retire of an obsolete entry before Append.
+Thresholds: Jaccard 0.5 (via `manager.py homology`, not this skill), file capacity 2000 words. If file is over capacity, propose Retire of an obsolete entry before Append.
 
 Retired entries: prepend `[RETIRED]` to the heading. Never delete content; AI consumers skip retired entries by convention.
 
@@ -52,7 +53,7 @@ Retired entries: prepend `[RETIRED]` to the heading. Never delete content; AI co
 
 No proposal may be written without explicit user approval. This includes Append, Merge, and Retire.
 
-Trace entries (schema:4) are entirely hook-generated and read-only: `timestamp`, `type`, `validated`, `pipeline_run_id`, `memory_snapshots`, plus embedded `<!-- MEMORY -->` subblocks. There are no AI-supplemented fields — the scoring/IDP subsystem was retired. The learning material is the verbatim memory snapshot content; distill rules from it, never fabricate or modify trace fields. (Legacy schema:1-3 entries may still carry retired fields like `score`/`modules`/`correction`/`lesson`; read them if present but do not depend on them.)
+Trace entries (schema:4) are entirely hook-generated and read-only: `timestamp`, `type`, `validated`, `quality`, `gate_hint`, `memory_snapshots`, plus MEMORY `skill` / `anchors` / `quality`. There are no AI-supplemented fields. Distill rules from snapshot content; never fabricate or modify trace fields. Legacy fields (`pipeline_run_id`, `score`, `modules`, `correction`) may still appear; ignore them.
 
 CLAUDE.md changes are always proposed as suggestions to the user; never write directly.
 

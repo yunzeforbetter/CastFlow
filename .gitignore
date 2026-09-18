@@ -3,5 +3,14 @@
 **/*.pyo
 **/*.pyd
 
+# 工厂仓禁止持有装架产物（runtime + 发现树）。误 seed 本仓时拒绝并删除。
+.castflow-runtime/
+.claude/
+.agents/
+.grok/
+.cursor/
+/AGENTS.md
+/CLAUDE.md
+
 # 排除 Python 3 自动生成的缓存目录
 **/__pycache__/

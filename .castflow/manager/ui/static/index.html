@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CastFlow</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #1a222c; --line: #2b3642;
+      --text: #e7eef5; --muted: #8aa0b5; --acc: #3d9cf0;
+      --ok: #3ecf8e; --warn: #e6b84d; --bad: #e25c5c;
+      --chip: #243140;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    header {
+      display: flex; align-items: center; gap: 16px;
+      padding: 14px 20px; border-bottom: 1px solid var(--line);
+      background: #121920;
+    }
+    header h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
+    header .path { color: var(--muted); font-size: 12px; }
+    nav { display: flex; gap: 6px; margin-left: auto; }
+    nav button, .btn {
+      background: var(--chip); color: var(--text); border: 1px solid var(--line);
+      border-radius: 6px; padding: 6px 12px; cursor: pointer;
+    }
+    nav button.active, .btn.primary { background: var(--acc); border-color: var(--acc); color: #061018; }
+    .btn.ok { background: var(--ok); border-color: var(--ok); color: #062014; }
+    .btn.bad { background: transparent; color: var(--bad); border-color: var(--bad); }
+    main { padding: 20px; max-width: 960px; margin: 0 auto; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card h2 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    input[type=text], textarea, select {
+      width: 100%; background: #0f171f; color: var(--text);
+      border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px;
+    }
+    textarea { min-height: 48px; resize: vertical; }
+    textarea.prompt { min-height: 180px; font: 12px/1.4 ui-monospace, Consolas, monospace; }
+    .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--chip); }
+    .pill.accepted, .pill.active, .pill.ready { background: #163526; color: var(--ok); }
+    .pill.rejected, .pill.retired { background: #3a1b1b; color: var(--bad); }
+    .pill.candidate, .pill.queued { color: var(--warn); }
+    .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    pre {
+      background: #0b1117; border: 1px solid var(--line); border-radius: 8px;
+      padding: 12px; white-space: pre-wrap; font-size: 12px;
+    }
+    .hidden { display: none; }
+    .err { color: var(--bad); }
+    .okmsg { color: var(--ok); }
+    .path { color: var(--muted); font-size: 12px; }
+    label.chk { display: inline-flex; align-items: center; gap: 6px; margin: 4px 14px 4px 0; }
+    label.choice {
+      display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+      padding: 14px 16px; margin: 16px 0; border-radius: 10px;
+      border: 2px solid var(--acc); background: #15202b;
+    }
+    label.choice input { width: 18px; height: 18px; margin-top: 3px; flex: none; }
+    label.choice b { display: block; font-size: 15px; margin-bottom: 4px; }
+    .overlay {
+      position: fixed; inset: 0; background: var(--bg);
+      z-index: 40; overflow: auto; padding: 28px 16px 48px;
+    }
+    .overlay.hidden { display: none !important; pointer-events: none; }
+    .setup-card { max-width: 720px; margin: 0 auto; }
+    .setup-card h1 { margin: 0 0 8px; font-size: 22px; }
+    .setup-card .block { margin: 18px 0; }
+    .steps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; }
+    .step {
+      border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #121920;
+    }
+    .step b { display: block; color: var(--acc); font-size: 12px; margin-bottom: 4px; }
+    .step.ai { border-color: #3a4a20; }
+  </style>
+</head>
+<body>
+  <header id="app-header" class="hidden">
+    <div>
+      <h1>CastFlow</h1>
+      <div class="path" id="project-path">loading…</div>
+      <div class="path" id="status-bar"></div>
+      <button type="button" class="btn" id="btn-pick-root-header">选择项目文件夹</button>
+    </div>
+    <nav id="tabs">
+      <button data-tab="framework" class="active">框架</button>
+      <button data-tab="skills">Skills</button>
+      <button data-tab="queue">队列</button>
+    </nav>
+  </header>
+
+  <div id="setup-overlay" class="overlay hidden">
+    <div class="setup-card">
+      <h1>CastFlow 冷启动</h1>
+      <div class="card block">
+        <h2>项目文件夹</h2>
+        <p>CastFlow 可以和工程不在同一目录。点按钮用系统对话框选择游戏/应用根目录，不要手改路径。</p>
+        <p class="path" id="setup-project"></p>
+        <p class="path" id="setup-castflow"></p>
+        <button type="button" class="btn primary" id="btn-pick-root">选择项目文件夹…</button>
+      </div>
+
+      <label class="choice">
+        <input type="checkbox" id="setup-scan-gen" />
+        <span>
+          <b>扫描模块并生成 skill</b>
+          <span class="path">可选，默认不勾。勾选后由 AI 扫描整个项目、搜集功能模块并生成 skill（不限 C# / C++ / Python 等）。不勾选只拷贝框架 skill 和核心文件，不需要 AI 提示词。</span>
+        </span>
+      </label>
+      <div id="setup-mod-wrap" class="hidden">
+        <div class="card block">
+          <h2>给 AI 的提示词</h2>
+          <p class="path">可改。留空则用 <code>/goal</code> 读取 <code>.castflow-runtime/skills/MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md</code> 并按文件执行。</p>
+          <textarea id="setup-prompt" class="prompt" placeholder="留空 = 使用默认提示词"></textarea>
+          <div class="toolbar" style="margin-top:8px">
+            <button type="button" class="btn" id="btn-fill-default-prompt">填入默认提示词</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="setup-form">
+        <div class="card block">
+          <h2>配置</h2>
+          <p>文档语言
+            <select id="setup-lang" style="width:auto;display:inline-block;margin-left:8px">
+              <option value="zh">中文 (zh)</option>
+              <option value="en">English (en)</option>
+              <option value="ja">日本語 (ja)</option>
+              <option value="ko">한국어 (ko)</option>
+            </select>
+          </p>
+          <p>
+            <label class="chk"><input type="checkbox" data-setup-ad="claude" checked /> claude · .claude/skills</label>
+            <label class="chk"><input type="checkbox" data-setup-ad="codex" checked /> codex · .agents/skills</label>
+            <label class="chk"><input type="checkbox" data-setup-ad="grok" checked /> grok · hooks</label>
+            <label class="chk"><input type="checkbox" data-setup-ad="cursor" checked /> cursor · hooks</label>
+          </p>
+          <p>
+            <label class="chk"><input type="checkbox" id="setup-evo" checked /> 进化插件</label>
+            <label class="chk"><input type="checkbox" id="setup-architect" /> architect-skill</label>
+            <label class="chk"><input type="checkbox" id="setup-debug" /> debug-skill</label>
+            <label class="chk"><input type="checkbox" id="setup-profiler" /> profiler-skill</label>
+          </p>
+        </div>
+        <div class="toolbar">
+          <button class="btn primary" id="setup-go" onclick="doSetup()">开启冷启动</button>
+        </div>
+        <p class="err" id="setup-err"></p>
+      </div>
+
+      <div id="setup-done" class="hidden">
+        <div class="card">
+          <h2>3. 完成</h2>
+          <p class="okmsg" id="setup-summary"></p>
+          <div id="setup-handoff-wrap">
+            <p>把下面这段复制给 AI：</p>
+            <pre id="setup-handoff"></pre>
+          </div>
+          <div class="toolbar">
+            <button class="btn primary" id="btn-copy-setup-handoff" onclick="copyText('setup-handoff')">复制交接</button>
+            <button class="btn ok" onclick="enterManager()">进入管理器</button>
+            <button class="btn bad" id="btn-setup-reset" type="button">重新冷启动</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main id="app-main" class="hidden">
+    <section id="tab-framework">
+      <div class="card">
+        <h2>从 CastFlow 源更新</h2>
+        <p>刷新 <code>skill-creator</code> / <code>origin-evolve</code> / <code>bootstrap-skill</code> 以及 hooks、根规则。不覆盖你已经生成的项目 skill。</p>
+        <div class="toolbar">
+          <button type="button" class="btn primary" id="btn-framework-update">从 CastFlow 源更新并同步</button>
+          <button type="button" class="btn" data-action="sync" id="btn-sync">只同步投影</button>
+          <button type="button" class="btn bad" id="btn-unseed">回退并重新冷启动</button>
+        </div>
+        <p class="path">回退会卸下运行时和投影 skill，再打开向导。不删除工程源码，也不删项目里的 `.castflow/` 管理器。</p>
+        <p class="path" id="framework-msg"></p>
+      </div>
+      <div class="card">
+        <h2>设置</h2>
+        <div id="adapter-checks"></div>
+        <p style="margin-top:10px">
+          <label>语言
+            <select id="lang-select" style="width:auto;display:inline-block">
+              <option value="zh">zh</option>
+              <option value="en">en</option>
+              <option value="ja">ja</option>
+              <option value="ko">ko</option>
+            </select>
+          </label>
+          <label class="chk"><input type="checkbox" id="opt-architect" /> architect</label>
+          <label class="chk"><input type="checkbox" id="opt-debug" /> debug</label>
+          <label class="chk"><input type="checkbox" id="opt-profiler" /> profiler</label>
+        </p>
+        <div class="toolbar">
+          <button type="button" class="btn" id="evo-btn">启用进化</button>
+          <button type="button" class="btn primary" id="btn-save">保存设置并同步</button>
+        </div>
+        <p class="path" id="evo-label"></p>
+      </div>
+    </section>
+
+    <section id="tab-skills" class="hidden">
+      <p class="path">真源 <code>.castflow-runtime/skills/</code>。停用后不同步到 AI；激活后立刻 sync。项目里双击 <code>castflow.bat</code> 打开本管理器。</p>
+      <div class="toolbar">
+        <button class="btn primary" data-action="sync" onclick="doSync()">sync</button>
+      </div>
+      <div class="card" style="overflow:auto">
+        <h2>Skills</h2>
+        <table>
+          <thead>
+            <tr><th>name</th><th>kind</th><th>status</th><th>retire / update</th></tr>
+          </thead>
+          <tbody id="skill-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tab-queue" class="hidden">
+      <div class="card">
+        <label class="choice">
+          <input type="checkbox" id="queue-scan-gen" />
+          <span>
+            <b>扫描模块并生成 skill</b>
+            <span class="path">勾选后复制默认 <code>/goal</code> 提示词（读取 <code>.castflow-runtime/skills/MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md</code>）。可改写；留空用默认。</span>
+          </span>
+        </label>
+        <textarea id="queue-prompt" class="prompt hidden" placeholder="留空 = 使用默认提示词"></textarea>
+        <div class="toolbar" style="margin-top:10px">
+          <button type="button" class="btn" id="btn-fill-queue-prompt">填入默认提示词</button>
+          <button type="button" class="btn primary" id="btn-copy-scan-gen">复制扫描生成指令</button>
+        </div>
+        <p class="path" id="queue-scan-msg"></p>
+      </div>
+      <div class="card">
+        <h2>队列是做什么的</h2>
+        <p>框架 skill 冷启动时已经装好。<strong>队列只装还需要 AI 写正文的项目 skill</strong>。</p>
+      </div>
+      <div class="card">
+        <h2>给 AI 的下一句</h2>
+        <pre id="handoff-text"></pre>
+        <button type="button" class="btn primary" id="btn-copy-handoff">复制交接话术</button>
+        <p class="path" id="copy-msg"></p>
+      </div>
+      <div class="card">
+        <h2>待生成列表</h2>
+        <p class="path">模块发现由 AI（勾选后粘贴提示词）完成，不跑 Python 扫目录。</p>
+        <div class="toolbar">
+          <button type="button" class="btn ok" id="btn-queue">把已勾选的核心 skill 加入队列</button>
+        </div>
+        <ol id="queue-list"></ol>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let STATE = null;
+
+    function $(id) { return document.getElementById(id); }
+
+    function setStatus(text, isErr) {
+      const bar = $("status-bar");
+      const fw = $("framework-msg");
+      const cls = isErr ? "err" : "path";
+      if (bar) { bar.className = cls; bar.textContent = text || ""; }
+      if (fw) { fw.className = cls; fw.textContent = text || ""; }
+    }
+
+    async function api(path, method, body) {
+      const opt = { method: method || "GET", headers: { "Content-Type": "application/json" } };
+      if (body) opt.body = JSON.stringify(body);
+      const res = await fetch(path, opt);
+      const raw = await res.text();
+      let data = {};
+      if (raw) {
+        try { data = JSON.parse(raw); }
+        catch (e) { throw new Error("服务器返回了非 JSON（HTTP " + res.status + "）"); }
+      }
+      if (!res.ok) throw new Error((data && data.error) || res.statusText || ("HTTP " + res.status));
+      return data;
+    }
+
+    function render() {
+      if (!STATE) return;
+      $("project-path").textContent = STATE.project_root + "  ·  " + STATE.runtime;
+      if ($("setup-castflow")) {
+        $("setup-castflow").textContent = "CastFlow: " + (STATE.castflow_home || "");
+      }
+      const seeded = !!STATE.seeded;
+      $("setup-overlay").classList.toggle("hidden", seeded);
+      $("app-header").classList.toggle("hidden", !seeded);
+      $("app-main").classList.toggle("hidden", !seeded);
+      if (!seeded) {
+        $("setup-project").textContent = "项目: " + STATE.project_root;
+        $("setup-lang").value = (STATE.config && STATE.config.language) || "zh";
+        const ad = (STATE.config && STATE.config.adapters) || {};
+        document.querySelectorAll("[data-setup-ad]").forEach(el => {
+          el.checked = ad[el.dataset.setupAd] !== false;
+        });
+        $("setup-evo").checked = !!(STATE.config.evolution && STATE.config.evolution.enabled !== false);
+        const opt = (STATE.config && STATE.config.optional_skills) || {};
+        $("setup-architect").checked = opt.architect !== false;
+        $("setup-debug").checked = !!opt.debug;
+        $("setup-profiler").checked = !!opt.profiler;
+        toggleScanGen();
+        return;
+      }
+
+      const skillItems = STATE.skills || [];
+      $("skill-rows").innerHTML = skillItems.map(skillRow).join("") ||
+        "<tr><td colspan=4 class='path'>还没有 skill。</td></tr>";
+
+      const items = (STATE.queue && STATE.queue.items) || [];
+      $("queue-list").innerHTML = items.map(i =>
+        "<li><span class='pill " + (i.state || "") + "'>" + i.state + "</span> " +
+        esc(i.kind) + " / " + esc(i.id) + " → " + esc(i.skill) + "</li>"
+      ).join("") || "<p class='path'>队列空。勾选扫描生成后把提示词交给 AI。</p>";
+      $("handoff-text").textContent = STATE.handoff || "";
+
+      const evo = !!(STATE.config.evolution && STATE.config.evolution.enabled);
+      $("evo-btn").textContent = evo ? "关闭进化" : "启用进化";
+      $("evo-btn").className = "btn " + (evo ? "bad" : "ok");
+      $("evo-label").textContent = evo
+        ? "进化开：采集 runtime/memory，可用 origin evolve。"
+        : "进化关：不投影 hook / origin-evolve。";
+
+      const ad2 = STATE.config.adapters || {};
+      $("adapter-checks").innerHTML = ["claude", "grok", "codex", "cursor"].map(k =>
+        "<label class='chk'><input type='checkbox' data-ad='" + k + "' " +
+        (ad2[k] ? "checked" : "") + "/> " + k + "</label>"
+      ).join("");
+      $("lang-select").value = STATE.config.language || "zh";
+      const opt2 = STATE.config.optional_skills || {};
+      $("opt-architect").checked = opt2.architect !== false;
+      $("opt-debug").checked = !!opt2.debug;
+      $("opt-profiler").checked = !!opt2.profiler;
+    }
+
+    function toggleScanGen() {
+      const on = $("setup-scan-gen") && $("setup-scan-gen").checked;
+      const wrap = $("setup-mod-wrap");
+      if (wrap) wrap.classList.toggle("hidden", !on);
+    }
+
+    function toggleQueueScanGen() {
+      const on = $("queue-scan-gen") && $("queue-scan-gen").checked;
+      const box = $("queue-prompt");
+      if (box) box.classList.toggle("hidden", !on);
+    }
+
+    function fillDefaultPrompt(id) {
+      const el = $(id);
+      if (!el) return;
+      el.value = (STATE && STATE.default_prompt) || "";
+    }
+
+    function skillRow(s) {
+      const status = s.retired ? "retired" : "active";
+      const family = s.family || (s.kind === "project" ? "project" : "framework");
+      const retireBtn = s.retired
+        ? "<button class='btn ok' data-action='activate' onclick=\"doActivate('" + esc(s.name) + "')\">激活</button>"
+        : "<button class='btn bad' data-action='retire' onclick=\"doRetire('" + esc(s.name) + "')\">停用</button>";
+      const updateHint = family === "framework" ? "update" : "update";
+      return "<tr>" +
+        "<td>" + esc(s.name) + "<div class='path'>" + esc(family) + "</div></td>" +
+        "<td><span class='pill'>" + esc(s.kind) + "</span></td>" +
+        "<td><span class='pill " + status + "'>" + status + "</span></td>" +
+        "<td><div class='row-actions'>" + retireBtn +
+          "<button class='btn' data-action='update' onclick=\"doUpdate('" + esc(s.name) + "')\">" + updateHint + "</button>" +
+        "</div></td></tr>";
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    async function reload() {
+      STATE = await api("/api/state");
+      render();
+    }
+    async function doSetup() {
+      $("setup-err").textContent = "";
+      $("setup-go").disabled = true;
+      const adapters = {};
+      document.querySelectorAll("[data-setup-ad]").forEach(el => {
+        adapters[el.dataset.setupAd] = el.checked;
+      });
+      const generate_skills = $("setup-scan-gen") && $("setup-scan-gen").checked;
+      const prompt = ($("setup-prompt") && $("setup-prompt").value) || "";
+      try {
+        STATE = await api("/api/setup", "POST", {
+          language: $("setup-lang").value,
+          adapters,
+          evolution: { enabled: $("setup-evo").checked },
+          optional_skills: {
+            architect: $("setup-architect").checked,
+            debug: $("setup-debug").checked,
+            profiler: $("setup-profiler").checked,
+          },
+          generate_skills: !!generate_skills,
+          generate_prompt: generate_skills ? prompt : ""
+        });
+        $("setup-form").classList.add("hidden");
+        $("setup-done").classList.remove("hidden");
+        const text = STATE.handoff || "";
+        if (STATE.generate_skills && text) {
+          $("setup-summary").textContent =
+            "框架已拷贝。把下面提示词复制给 AI，让它读取指定文件并执行。";
+        } else {
+          $("setup-summary").textContent =
+            "框架 skill 和核心文件已拷贝。未勾选扫描生成，不需要 AI 提示词。勾选错了可以点「重新冷启动」。";
+        }
+        $("setup-handoff").textContent = text;
+        const wrap = $("setup-handoff-wrap");
+        if (wrap) wrap.classList.toggle("hidden", !text);
+        const copyBtn = $("btn-copy-setup-handoff");
+        if (copyBtn) copyBtn.classList.toggle("hidden", !text);
+      } catch (err) {
+        $("setup-err").textContent = err.message || String(err);
+      }
+      $("setup-go").disabled = false;
+    }
+
+    async function resetColdStart() {
+      if (!confirm("将卸下本项目的 CastFlow 运行时和投影文件，然后重新打开向导。不会删除工程源码。")) {
+        return;
+      }
+      try {
+        STATE = await api("/api/unseed", "POST", {});
+        if ($("setup-form")) $("setup-form").classList.remove("hidden");
+        if ($("setup-done")) $("setup-done").classList.add("hidden");
+        if ($("setup-scan-gen")) $("setup-scan-gen").checked = false;
+        if ($("setup-prompt")) $("setup-prompt").value = "";
+        if ($("setup-err")) $("setup-err").textContent = "";
+        render();
+      } catch (err) {
+        setStatus((err && err.message) || String(err), true);
+        if ($("setup-err")) $("setup-err").textContent = (err && err.message) || String(err);
+      }
+    }
+    async function pickRoot() {
+      await runAction("选择项目文件夹", async () => {
+        const data = await api("/api/pick-root", "POST", {});
+        if (data.cancelled) {
+          setStatus("未选择文件夹", false);
+          return;
+        }
+        STATE = data;
+        render();
+      });
+    }
+    function enterManager() {
+      $("setup-overlay").classList.add("hidden");
+      $("app-header").classList.remove("hidden");
+      $("app-main").classList.remove("hidden");
+      render();
+      showTab("queue");
+    }
+    async function runAction(label, fn) {
+      setStatus(label + "…", false);
+      try {
+        await fn();
+        setStatus(label + "完成", false);
+      } catch (err) {
+        setStatus((err && err.message) || String(err), true);
+      }
+    }
+    async function doSync() {
+      await runAction("同步投影", async () => { STATE = await api("/api/sync", "POST", {}); render(); });
+    }
+    async function doFrameworkUpdate() {
+      await runAction("从源更新", async () => {
+        STATE = await api("/api/framework/update", "POST", {});
+        render();
+      });
+    }
+    async function doRetire(name) {
+      await runAction("停用 " + name, async () => {
+        STATE = await api("/api/skills/retire", "POST", { name });
+        render();
+      });
+    }
+    async function doActivate(name) {
+      await runAction("激活 " + name, async () => {
+        STATE = await api("/api/skills/activate", "POST", { name });
+        render();
+      });
+    }
+    async function doUpdate(name) {
+      await runAction("更新 " + name, async () => {
+        STATE = await api("/api/skills/update", "POST", { name });
+        render();
+      });
+    }
+    async function doQueue() {
+      await runAction("入队", async () => {
+        STATE = await api("/api/queue", "POST", {});
+        render();
+        showTab("queue");
+      });
+    }
+    async function toggleEvo() {
+      await runAction("切换进化", async () => {
+        const on = !(STATE && STATE.config && STATE.config.evolution && STATE.config.evolution.enabled);
+        STATE = await api("/api/evolve", "POST", { enabled: on });
+        render();
+      });
+    }
+    async function saveConfig() {
+      await runAction("保存并同步", async () => {
+        const adapters = {};
+        document.querySelectorAll("[data-ad]").forEach(el => { adapters[el.dataset.ad] = el.checked; });
+        STATE = await api("/api/config", "POST", {
+          language: $("lang-select").value,
+          adapters,
+          sync: true,
+          optional_skills: {
+            architect: $("opt-architect").checked,
+            debug: $("opt-debug").checked,
+            profiler: $("opt-profiler").checked,
+          }
+        });
+        render();
+      });
+    }
+    async function copyScanGen() {
+      const msg = $("queue-scan-msg");
+      try {
+        if (!$("queue-scan-gen") || !$("queue-scan-gen").checked) {
+          if (msg) msg.textContent = "先勾选「扫描模块并生成 skill」";
+          return;
+        }
+        const custom = (($("queue-prompt") && $("queue-prompt").value) || "").trim();
+        const text = custom || (STATE && STATE.default_prompt) || "";
+        $("handoff-text").textContent = text;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (e) {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        if (msg) msg.textContent = "已复制扫描生成指令";
+      } catch (err) {
+        if (msg) msg.textContent = (err && err.message) || String(err);
+      }
+    }
+
+    async function copyHandoff() { copyText("handoff-text"); }
+    async function copyText(id) {
+      const text = ($(id) && $(id).textContent) || "";
+      try {
+        await navigator.clipboard.writeText(text);
+        const m = $("copy-msg");
+        if (m) m.textContent = "已复制";
+      } catch (e) {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+          const m = $("copy-msg");
+          if (m) m.textContent = "已复制";
+        } catch (e2) {
+          setStatus("复制失败，请手动选中文本", true);
+        }
+      }
+    }
+
+    function showTab(name) {
+      document.querySelectorAll("main > section").forEach(s => s.classList.add("hidden"));
+      $("tab-" + name).classList.remove("hidden");
+      document.querySelectorAll("nav button").forEach(b => {
+        b.classList.toggle("active", b.dataset.tab === name);
+      });
+    }
+    document.getElementById("tabs").addEventListener("click", ev => {
+      const btn = ev.target.closest("button[data-tab]");
+      if (btn) showTab(btn.dataset.tab);
+    });
+    function on(id, fn) {
+      const el = $(id);
+      if (el) el.addEventListener("click", fn);
+    }
+    on("evo-btn", toggleEvo);
+    on("btn-save", saveConfig);
+    on("btn-framework-update", doFrameworkUpdate);
+    on("btn-sync", doSync);
+    on("btn-queue", doQueue);
+    on("btn-copy-handoff", copyHandoff);
+    on("btn-copy-scan-gen", copyScanGen);
+    on("btn-pick-root", pickRoot);
+    on("btn-pick-root-header", pickRoot);
+    on("btn-unseed", resetColdStart);
+    on("btn-setup-reset", resetColdStart);
+    on("btn-fill-default-prompt", function() { fillDefaultPrompt("setup-prompt"); });
+    on("btn-fill-queue-prompt", function() { fillDefaultPrompt("queue-prompt"); });
+    const scanGen = $("setup-scan-gen");
+    if (scanGen) scanGen.addEventListener("change", toggleScanGen);
+    const queueScan = $("queue-scan-gen");
+    if (queueScan) queueScan.addEventListener("change", toggleQueueScanGen);
+
+    reload().catch(err => { $("project-path").textContent = err.message; $("project-path").className = "err"; });
+  </script>
+</body>
+</html>

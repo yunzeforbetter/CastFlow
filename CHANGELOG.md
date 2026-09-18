@@ -1,168 +1,139 @@
 # Changelog
 
-## Unreleased
-
-### 路径调整
-- **feat**: `core/scripts/pipeline_merge.py`迁移到`code-pipeline-skill/scripts/pipeline_merge.py`
-
-### code-pipeline-skill 与执行层（真源 `.castflow/core/`）
-
-- **why（改造原因）**: **功能与模块拆成多波次并行时**，旧编排缺少逐步「给—读—写—交」的合同化收口，易出现 **互相等待、依赖未显式闭合的编排死锁**；通过 Step 调度卡、Handoff / merge / result signal 的明确契约与脚本侧 fail-closed，每步有唯一产物与前进条件，避免无限挂起。
-- **why**: 修复 pipeline 对 **公共 agents、templates 等 shared 模块的浸染**——非 pipeline 场景不应被迫携带工序特例；shared 仅保留通用契约，pipeline 专用语义不再写入其正文。
-- **why**: 将编排门禁 **收拢到 `code-pipeline-skill` 自身**（`config/*`、四件套与架构页），以 **复合 Skill（复合编排组件）** 存在：独立演进编排语义，**不升格为框架根**，也不绑架全局 agent/skill 定义。
-- **design**: 将 `code-pipeline-skill` 明确为**复合编排组件**（非框架根）：执行期合同与读写路径集中在 `config/pipeline_protocol.md`；shared agents / templates 保持 orchestrator 无关本体，pipeline 专用消费方式不写入其正文。
-- **feat**: `config/pipeline_protocol.md` 增加 **Step 调度卡**（给 / 读 / 写 / 交 / 不足兜底）；`SKILL_MEMORY.md` **规则 0**：调度各 Step 时必须附带对应调度卡，禁止只喊「执行 Step N」。
-- **feat**: Handoff 与快速路径：`L0`（`No-Handoff Rationale`）与 `L1+`（`Handoff Draft` / Freeze）在 `handoff_protocol` 与 Step 1 骨架中对齐；复杂系统下 `NeedsSubpipeline` 仅允许显式 `sub-pipeline` 派发行。
-- **docs**: `SKILL.md` 恢复 **可执行入口**：场景入口、AI 读取顺序、Step 1–9 **工作流总览**（每步解决什么问题、产物、下一步出口）、最小运行心智模型；YAML `description` 补充步骤语义便于路由。
-- **docs**: `EXAMPLES.md` 增补 **`pipeline_run_id` → trace → result signal → Step 9 清理** 闭环示例与标准模式最小节奏表；导航表链到 F/G 节。
-- **docs**: `ITERATION_GUIDE.md` 增加**防回归**：禁止 `SKILL.md` 退化为「仅 Step 表格 + 外链协议」；协议变更影响 run_id / signal / 归并时须同步示例闭环。
-- **fix**: `core/scripts/pipeline_merge.py`：Step 3 输出须含唯一 `PIPELINE_SUMMARY` / `PIPELINE_DETAIL` 标记；检测 **Parent Summary** 误入模块文件则 fail-closed；`PIPELINE_CONTEXT.md` / `PIPELINE_INDEX.md` 使用 **受控 merge 块** 幂等替换，避免重复 append 污染上下文。
-- **fix**: `core/hooks/trace-flush.py`：消费 `.pending_pipeline_result.json` 前 **校验** `pipeline_run_id` / `result` / `finalized`；`GO-WITH-CAUTION` + `finalized=false` 保持 `pending-pipeline` 直至最终验收；非法或不完整信号 **不删除文件** 并记日志；实现 `pending-pipeline` 与 `validated:_` 不确定条目的**过期**处理（与 `traces/README.md` 中 limits 字段一致）。
-- **docs**: `core/traces/README.md` 补充对 `finalized` 与 component-owned pending 的说明。
-- **note**: 模块实现侧术语统一为 **模块配对执行单元**（`programmer-<module>-agent` + 同模块 `programmer-<module>-skill`）；示例中派发表使用 `programmer-m*-agent` 等形式，避免与泛化 `programmer-ui-agent` 混淆。
-
-### CastFlow结构调整
-
-- **rewrite**: 全面重写 `CastFlow/README.md`，与当前仓库真实布局及工作流对齐：定位与四层闭环（冷启动装架 / 渐进式披露 / 多模块编排 / 自我进化）、**端到端案例**（submodule 集成 → `bootstrap castflow` Phase 0–6 → 模块 skill → `code_pipeline` → `origin evolve` → 核心更新）、CastFlow 与用户项目双树目录、**全量文件清单**（`bootstrap-skill/`、`installer/`、`core/`、`bootstrap-assets/`、`test/` 及装架产物职责表）、T1–T4 时点摘要、trace / 五维评分 / 四级 compaction / `origin-evolve-skill` 执行流、CLI 与测试命令。
-- **docs**: 明确 **装架与内容生产解耦**：`python .castflow/bootstrap.py` 仅 **Phase A**（同步 `.claude/` 核心、合并根 `CLAUDE.md`、分发 `.claude/templates/`），**不**生成项目级 skill 正文；`architect-skill` / `debug-skill` / `profiler-skill` / `programmer-*-skill` 在 **bootstrap-skill Phase 5** 由主 agent 发「一段话手话」、子代理以 **`skill-creator` 为主路径**落盘，替代旧文档中「安装器从 `content/` 合并生成 skill」的流程描述。
-- **docs**: 目录与命名对齐：`CastFlow/bootstrap-skill/` 为顶层 AI 初始化器（`.claude/` 尚不存在时由宿主加载）；`.castflow/bootstrap.py` 为薄入口，实现位于 `.castflow/installer/`；冷启动专用模板在 `.castflow/bootstrap-assets/skill-templates/`（**不分发**到 `.claude/`）；`CLAUDE.template.md` 位于 `.castflow/core/`；创作元规范 `AUTHORING_GUIDE.md` 位于 `.castflow/core/templates/`；自我进化 skill 文档与装架产物统一为 **`origin-evolve-skill`**。
-- **docs**: CLI 与交互：`--claude-md-only`、`--templates-only`、`--agent <module>`、`--init-manifest` + `--language`、`--claude-md-harness`（1/2/3）、`--project-root` / 备份相关开关；**已移除** `--skill`、`--strict-content` 及任何 Phase B / 安装器写 skill 正文的叙述；清单 canonical 名为 `bootstrap-output/cf_manifest.json`。
-- **docs**: 移除或替换过时锚点：不再以 `CORE_FILE_COPIES` / `CORE_DIR_COPIES` 等内部常量名为用户文档主索引；`CLAUDE.md` 框架段已去掉 `framework_rules` / `project_rules` 占位链路，README 侧与 `CLAUDE.template.md` 及 bootstrap-skill Phase 3 一致（命名约定写入 `naming_conventions` / 项目段）。
-
-### Bootstrap 清单文件名
-
-- **change**: CastFlow 初始化清单 canonical 文件名为 `bootstrap-output/cf_manifest.json`（避免与 Unity `Packages/manifest.json` 等混淆）。仍可读旧版 `bootstrap-output/manifest.json` 并提示迁移。
-
-### 跨平台编码一致性修复
-
-- **fix(P0)**: 剥离全部 18 个模板文件的 UTF-8 BOM（`CLAUDE.template.md`、`agents/programmer.template.md`、`skills/*.template/*.template.md`）。原模板在 Windows 记事本等工具保存时被写入 `\xef\xbb\xbf` BOM，虽然 `bootstrap.py` 的 `read_file` 用 `utf-8-sig` 能剥离，但模板被 `shutil.copy2` 复制或被其他工具链直接读取时仍会把 BOM 当作内容解析，在部分终端/编辑器下显示为乱码。
-- **fix(P1)**: `scripts/aggregate_benchmark.py` 中 5 处 `open()` 调用未显式指定 `encoding`：在中文 Windows（默认 cp936/GBK）上读写含中文的 JSON/Markdown 会触发 `UnicodeDecodeError` 或生成 GBK 编码的输出文件。统一改为 `encoding="utf-8"`，写入增加 `newline="\n"` 与 `ensure_ascii=False`，保证跨平台一致。
-- **fix(P1)**: `test/hooks/test_evolution.py` 与 `test/hooks/test_365day_simulation.py` 中 4 处 `open(..., "w")` 补齐 `encoding="utf-8", newline="\n"`。
-- **verify**: 全仓扫描确认已无文本模式 `open()` 缺失 `encoding=`，全部模板与生成文件均为纯 UTF-8（无 BOM），Windows/Linux/macOS 下 bootstrap 产出的 `CLAUDE.md` 与各 skill 文件字节一致。
-
-### 测试套件目录调整
-
-- **change**: Hooks 相关测试从 `.castflow/core/hooks/` 迁移至 `CastFlow/test/hooks/`（与 `.castflow/` 同级）；`bootstrap.py` 仅向用户项目分发生产脚本 `trace-collector.py` / `trace-flush.py`，不再随 `core/hooks/` 复制测试文件。
-- **change**: `verify_redesign.py` 置于 `CastFlow/test/origin-evolve/`，用于 origin-evolve 规范确定性部分的暴力验证；测试通过 `_HOOKS_DIR` 引用 `.castflow/core/hooks/` 中的真实脚本。
-
-### origin-evolve 压缩优化
-
-- **change**: 四个 Skill 文件（SKILL.md / EXAMPLES.md / SKILL_MEMORY.md / ITERATION_GUIDE.md）整体压缩 37% 行数、33% 字符、29% 词数，去除冗余表述，保留全部核心规则。
-- **change**: SKILL.md 中 pending 最小条目阈值从 10 降至 5，与 passive trigger 阈值对齐。
-- **change**: EXAMPLES.md 从 9 个示例合并为 5 个，移除重复说明。
-- **change**: SKILL_MEMORY.md 合并 Rule 5 与 Rule 7，重新编号，check-list 改为内联格式。
-
-### trace-flush.py 健壮性修复
-
-- **fix(P0)**: `apply_pipeline_result()` 中 `result_str` 变量作用域 bug——JSON 解析失败走 fallback 时 `result_str` 未初始化，导致 `UnboundLocalError`。
-- **feat(P1)**: compaction Level 1-3 保护 validated 条目（`true` / `false` / `pending-pipeline`），防止用户反馈信号被自动清理。
-- **feat(P1)**: 新增 Level 0 阶段——每次 compact 时清理过期的 `PROCESSED` / `COMPACTED` 审计行（`processed_expire_days` 可配）。
-- **feat(P2)**: Level 3 compaction 新增 `keep_top_n_per_module` 逻辑，保证每个模块至少保留 N 条最高分条目，防止低频模块的 trace 被全部清除。
-- **fix(P2)**: compact 后清理连续空行（3+ 换行压缩为 2 换行），防止反复 append/compact 导致文件膨胀。
-
-### trace-collector.py 语言扩展
-
-- **feat(P2)**: `TRACKED_EXTENSIONS` 从仅 `.cs` 扩展至 18 种主流语言（.ts/.tsx/.js/.jsx/.py/.go/.java/.kt/.rs/.swift/.cpp/.c/.h/.hpp/.lua/.rb/.dart）。
-
-### 测试套件
-
-- **feat**: `test/hooks/test_evolution.py`（84 tests）——基础单元测试，覆盖 collector 采集、buffer 格式、flush 评分、compaction 四级策略、validated 保护、审计行过期、空行清理、被动通知等全部核心路径。
-- **feat**: `test/hooks/test_100day_simulation.py`（27 tests）——模拟 100 天连续生产环境，验证 trace 条目在持续 append + compact 下保持有界、模块多样性保留、审计行正确过期、空行不累积。
-- **feat**: `test/hooks/test_365day_simulation.py`（23 tests）——模拟 365 天生产环境，含工作日/周末活跃度差异、季度模块焦点漂移、混合会话类型（feature / bugfix / pipeline / trivial chat）、内存知识库模型（规则提取 / 合并 / 退休 / 拒绝记忆），全面验证自进化闭环。
-- **feat**: `test/origin-evolve/verify_redesign.py`——origin-evolve 规范确定性部分暴力验证（诊断计数、归因、Append/Merge/Retire、Jaccard 边界、容量策略）。
+本文件记录 CastFlow 的用户可见变更。版本号遵循语义化：破坏性工作流 = 主版本，新能力 = 次版本，修复与收口 = 补丁。
 
 ---
 
-### Rename: CostFlow -> CastFlow
+## 2.0.0 — 2026-09-18
 
-- **breaking**: 项目更名为 CastFlow，README 及所有面向用户的文档统一使用新名称。
+**CastFlow 2.0：从「对话装架 + 9 步流水线 + 给编辑打分」升级为「GUI 操作系统 + 一份 skill 真源 + memory 账本」。**
 
-### Rename: SKILL_RULE.md -> SKILL_ITERATION.md
+**改造原因：AI 本身已经更强、也更敏感。** 1.x 用过密的规则、编排和打分去管早期模型；放到今天，这些约束占用上下文、把「建议」变成仪式，反而限制判断力。2.0 不是在 1.x 上叠功能，而是按现行模型能力做减法：拆掉昂贵、易误召回、或没有加载入口的子系统，只留项目特有的硬护栏。
 
-- **breaking**: `SKILL_RULE.md` 重命名为 `SKILL_ITERATION.md`，更准确反映其"创建和迭代规范"的定位。
-- **change**: bootstrap.py 文件拷贝映射更新。
-- **change**: 所有引用（17 个 CastFlow 源文件）全部更新。
+日常路径收成四步：向导拷文件 → 可选让 AI 按逻辑功能生成模块 skill → 按模块写代码 → 纠正时写 memory，审批后变成规则。
 
-### Trace 五维评分模型
+### 新旧对照
 
-- **feat**: 评分模型从"文件数阈值"升级为"五维加权评分"（F/D/K/S/E），准入判断从二元变为连续评分。
-- **feat**: K 维度三档分级：Interface=1.0, Implementation=0.6, Base=0.3。
-- **feat**: E 维度（编辑密度），捕获同一文件反复修改的困难迭代行为。
-- **feat**: buffer 格式 `path|lines|edits|flags`，向后兼容旧格式。
-- **feat**: 自动修正检测：collector 对比前后编辑内容，标记 R 标志。flush 自动填充 correction 字段（`auto:minor` / `auto:major`）。
-- **feat**: 自校准反馈闭环：flush 读取 `traces/weights.json`，权重和阈值可由 origin-evolve 微调。
-- **feat**: hooks 源码移入 `.castflow/core/hooks/`，bootstrap 统一分发。
-- **feat**: bootstrap 增量合并 hook 配置到已有的 `.cursor/hooks.json` 和 `.claude/settings.json`，不覆盖原有 hook。
+| | 1.x | 2.0 |
+|--|-----|-----|
+| 你怎么装上 | 对 AI 说 `bootstrap castflow`，回答语言/模块，模型代跑命令 | 双击 `castflow.bat` 或 `manager.py launch`；CastFlow 可在工程外 |
+| 知识写在哪 | 每个宿主一份 `.claude/skills`、`.grok/skills`、`.cursor/skills`… | `.castflow-runtime/skills/` 真源；只投影 Claude 与 Codex 发现路径 |
+| 模块从哪来 | `manager.py scan` 按目录和文件数切 | 无 Python 扫描器。AI 按逻辑功能粗扫，宿主多选；框架树硬排除 |
+| 一次生成几个 | 每批最多 3 个并行子代理 | **一次一个**：落队列、清上下文、validate/sync、标 done |
+| 跨模块功能怎么做 | `code-pipeline-skill` Step 1–9 + 三个专用 agent | 直接调各 `programmer-*-skill`。pipeline 退役，sync 清残留 |
+| 经验怎么进仓库 | 五维评分（F/D/K/S/E）盯编辑 buffer，纯改代码也会产 trace | 只快照你写的 memory。没写 memory = 本会话不记账 |
+| 相近规则怎么合并 | 模型在 skill 正文里发明 Jaccard | `manager.py homology` 一批算连通分量；阈值不写进 evolve skill |
+| AI 写代码前读什么 | 报备约束清单、Grep 至少两次、执行模式命名 | 三协议：先证后用、约束覆盖抄来的代码、范围不够就先问 |
+| 装错了怎么办 | 手删 `.claude/` | GUI 回退 / `unseed`；工程源码不动 |
+| 进化不想用 | 文档里说可以关，路径分散 | 向导或 `evolve on\|off`：卸 hook 与 origin-evolve，traces 保留 |
 
-### 知识生命周期管理
+### 这版真正变好的地方
 
-- **breaking**: SKILL_ITERATION.md 中 SKILL_MEMORY 条目格式新增 Anchors 和 Related 字段。
-- **feat**: SKILL_MEMORY 支持三种写入操作：Append（追加）、Merge（合并）、Retire（退休标记 `[RETIRED]`）。
-- **feat**: Anchors 字段记录代码符号锚点，origin-evolve 通过 grep 验证符号是否存在，驱动 Retire 操作。
-- **feat**: Related 字段记录关联引用，Merge 时识别候选，Retire 时标记需要连带审查的条目。
-- **feat**: 容量治理：写入前检查目标文件字数，超标时强制先 Merge/Retire 腾出空间。
-- **feat**: 所有 4 套 ITERATION_GUIDE 模板增加容量治理规则引用。
+1. **冷启动不再消耗对话。** 语言、适配器、进化、是否扫描，都在 GUI 完成。Agent 只负责一件事：请你打开向导；勾选扫描时再执行你粘贴的 `/goal`。装架与内容生产解耦，失败可 `unseed`。
+2. **一份真源，宿主不再重复召回。** 过去 Grok/Cursor 再拷一棵 skill 树，同一 skill 会被扫两次。现在只联 `.claude/skills` 与 `.agents/skills`；兼容残留会被 sync 清掉。投影目录由托管 `.gitignore` 整目录忽略，Windows junction 不再误入库、切分支不再坏。
+3. **模块划分跟产品走，不跟文件夹走。** 删掉 `scan.py` 和「没有 `.cs` / `Assets/Scripts` 就拒绝」。AI 在当前会话按公开类型和生命周期归类，你在多选框里勾；`util`/`test`/`editor` 默认不勾但仍看得见。CastFlow 自己永远不是模块。
+4. **生成质量优先于吞吐。** 并行子代理会把扫描碎片和三份 SKILL 正文同时塞进上下文。2.0 强制：选中短卡落盘 → 丢掉未选项 → 一次读一张卡写一个 skill → validate 通过才标 done。architect/debug/profiler 同样一次一个。
+5. **进化原料变成「你明确说过的话」。** 五维评分把「改了多少行」当成「学到了什么」，噪声大、校准还要再烧一轮。schema:4 只嵌 memory 全文；`feedback` 单条即可成案，其它类型要 homology 簇 ≥ 2。纯代码会话零条目。
+6. **Merge 是确定性算法，不是散文。** `_homology.py` 用 slug / 同 skill / Anchors Jaccard≥0.5 做并查集。evolve 禁止自己发明阈值，禁止一对一开 Python 进程。
+7. **协议按现行模型能力收口，不再用过密规则绑住更强的模型。** 敏感模型会把报备清单、Grep 次数、执行模式命名当成不可跳过的仪式。`GLOBAL_SKILL_MEMORY` 只留三协议；未验证 API 只给该调用标 TODO，不再停掉整份补丁。`SKILL_ITERATION` 去掉恐吓段、不可执行的 bash 剧本、和 `validate.py` 打架的字数。description 漏召回好过误召回。
+8. **框架是插件，不是绑架。** 进化可关。CastFlow 可放另一盘。工厂仓拒绝把自身当成目标项目。`update-framework` 刷新核心、不动项目 skill。
+9. **长任务有单独的打包器。** `goal-loop-creator` 把演进需求打成可恢复 Goal Loop 包（`RUN_PROMPT.md` + 独立 run state），自己不调用 `/goal`，也不和模块扫描抢路径。
 
-### origin-evolve 重构
+### Added
 
-- **change**: SKILL.md 执行流程新增 Step 3 写入前治理（归属决策树 + 操作类型判定 + 容量检查 + 锚点验证）。
-- **change**: SKILL_MEMORY.md Rule 2 从抽象归属规则升级为两步决策树（先定 Skill，再定文件）。
-- **change**: SKILL_MEMORY.md Rule 3 从 append-only 重写为三种操作（Append/Merge/Retire）。
-- **feat**: EXAMPLES.md 新增 Example 7/8/9（复杂度集中检测 + Merge 操作 + Retire 容量治理）。
+- **管理器与 GUI**：`.castflow/manager.py` + `manager/`。`launch` / `setup` / `unseed` / `update-framework` / `seed` / `sync` / `skills` / `retire` / `activate` / `update` / `evolve` / `queue` / `handoff` / `flush` / `homology` / `validate` / `status` / `ui`。stdlib HTTP 控制台：未装架四步向导，装架后「框架 / Skills / 队列」。
+- **`castflow.bat`**：纯 ASCII（避免 cmd.exe 代码页拆中文）；文件夹选择器；CastFlow 不必住在工程里；跨盘 hook 写绝对路径。
+- **`.castflow-runtime/`**：skill / memory / traces / protocols / config 的项目侧真源。`skills-state.json` 记住退役，后续 sync 遵守且不复活。
+- **模块 skill loop-engine**：`MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md` + `rules/module-catalog.md`。勾选后默认提示词一行：`/goal 读取并按照 …MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md 执行`。
+- **`unseed`**：卸 runtime 与投影，不删工程源码，不删仓库里的 `.castflow/`。
+- **homology**：`core/hooks/_homology.py` 与 `manager.py homology`（stdin JSON → 连通分量）。
+- **`goal-loop-creator`**：可移植 Goal Loop 包的作者 skill（INTAKE→HANDOFF），产物在 `loop-engine/packages/`，不进 skill 真源。
+- **投影 gitignore**：sync 在项目根写入稳定块，忽略 `.claude/skills/` `.agents/skills/` `.grok/skills/` `.cursor/skills/` 整目录；已跟踪路径 `git rm --cached`。
+- **工厂仓保护**：对 CastFlow 仓库本身 seed/sync/setup 拒绝，并删除误留的 runtime / 适配器树 / 根 CLAUDE.md。
+- **description 形状检查**：`validate.py` 限制长度（programmer 280 / 其它 240）、`NOT` 最多一次、拒绝 `when-to-use` 等额外 YAML 键、拒绝 pushy 扩词。
 
-### 模块 Skill 创建流程
+### Changed
 
-- **change**: 模块 Skill 创建从调用 `bootstrap.py --skill` 改为 `.claude/` 内部闭环：AI 直接读取 `.claude/templates/programmer.template/` 模板并生成。
-- **feat**: 区分功能模块 Skill（使用 programmer 模板）和通用职责 Skill（不使用模板，按 SKILL_ITERATION.md 直接创建）。
-- **remove**: 不再依赖 `bootstrap-output/content/` 中间产物。
+- **冷启动主路径** = GUI（拷文件），不是 bootstrap-skill 代跑。bootstrap-skill 只交接。
+- **Skill 发现**只投影 Claude + Codex。Grok/Cursor 扫这两处；sync 清掉 `.grok/skills` / `.cursor/skills` 里的 CastFlow 副本。Hook JSON 与 evolve-reminder 仍按适配器开关写。
+- **模块发现**改为会话内 AI 流程（粗扫 → 多选必须停 → 落卡 → 一次一个）。GUI 不再列出脚本扫描结果。
+- **日常工作**改为直接调用模块 skill。生成写入 runtime，禁止写适配器镜像。
+- **进化采集**改为 schema:4 memory 快照。主路径 `.castflow-runtime/memory/`；Claude `~/.claude/projects/<slug>/memory/` 仅为可选 inbound。`user` 类型过滤。
+- **origin-evolve**：合格条件改为 `feedback+ok` 或同源 ≥ 2；`validated` 不授权；一批 homology；业务规则不写 `.claude/rules/`。
+- **GLOBAL_SKILL_MEMORY**：只保留三协议。同文件豁免仅限已写出的同一符号且同一签名；Grep 命中不是证据。与根规则冲突时根规则赢。不可逆才等确认。
+- **SKILL_ITERATION**：四角色仍是标准，链路需要时可有非 markdown 附件（必须有指针）。体积 warning 走 `manager.py validate`。EXAMPLES 从仓库复制热路径，不要求「完整 using 清单」。
+- **compaction**：纯龄期；经验资产（有快照或 `validated:true`）永不自动删。
+- **根规则**只从 `ROOT_RULES.template.md` 注入 `CLAUDE.md` / `AGENTS.md`。
+- **控制台**：未装架只显示向导；装架后三页。框架页「从 CastFlow 源更新并同步」= `update-framework`。
+- **测试布局**：hooks 测试在 `test/hooks/`；新增 `test/manager/`、`test/hooks/test_homology.py`、`test/skills/`；入口 `test/run_all.py`。
 
-### CLAUDE.md 模板
+### Removed
 
-- **change**: 执行记录段从"AI 全量构造 trace"改为"Hook 自动 + AI 补充"模式。
-- **remove**: 旧版手动评分的进化提示逻辑。
+- `.castflow/core/skills/code-pipeline-skill/` 以及 `requirement-analysis` / `integration-matching` / `pipeline-verify` agent。sync 清已装项目残留。trace-flush 不再消费 pipeline result；遗留 `pending-pipeline` 标 invalid。
+- `.castflow/manager/scan.py`、`manager.py scan`、`/api/scan`、`/api/preview-scan`。
+- 五维评分、编辑 buffer、IDP、`traces/weights.json`、评分自校准（原 evolve Step 6）。
+- `.castflow/core/templates/skills/programmer.template/`、`templates/agents/programmer.template.md`、`--templates-only`、`--agent`。安装器不再分发 `.claude/templates/`。
+- `.castflow/core/templates/AUTHORING_GUIDE.md`（与 SKILL_ITERATION 重复，Rubric 从未被代码执行）。
+- `.castflow/core/skills/skill-forge/`。创建走 skill-creator；冷启动禁止评测环。
+- `.castflow/core/CLAUDE.template.md`、`.castflow/installer/placeholders.py`。
+- bootstrap CLI：`--skill`、`--strict-content`、Phase B。
+- 向 `.grok/skills` / `.cursor/skills` 写入 CastFlow skill。
+
+### Fixed
+
+- 投影进 Git / Windows junction 当普通目录入库后切分支损坏：gitignore 整目录 + `git rm --cached`。
+- `castflow.bat` UTF-8 中文在 cmd.exe 下被拆成非法命令，并误把 CastFlow 自身当项目根。
+- 勾选扫描却把 `CastFlow/` `.castflow/` runtime / 适配器树当成业务模块。
+- 模块 skill description 写成 skill-creator 自由创作的 pushy 扩词（「即使没点名也要用」）。
+- bootstrap / manager 文档仍把已删除的 `scan` 写成现行命令。
+- 模板 UTF-8 BOM、Windows 默认编码下 `open()` 无 `encoding=`（跨平台读写中文）。
+
+### 升级注意（1.x → 2.0）
+
+1. `git pull` 后在目标项目跑 `python .castflow/manager.py update-framework`（或 GUI 框架页）。
+2. 项目 skill 正文应在 `.castflow-runtime/skills/`。若只存在于适配器树，先拷进 runtime 再 sync。
+3. 不要再调用 `code_pipeline` / `manager.py scan` / `bootstrap.py --skill`。
+4. 纠正请写 `.castflow-runtime/memory/`（`type: feedback`），不要指望改代码行数触发进化。
+5. 旧 trace（schema 1–3）可留着，evolve 忽略退役字段，compaction 会自然淘汰骨架。
+6. 若曾提交 `.claude/skills` 等投影，下一次 sync 会从索引移除，工作树联接保留。
 
 ---
 
-### 语言选择 (i18n)
+## 1.x 归档
 
-- **feat**: 初始化/更新时支持语言选择，默认中文。用户可指定任意语言标识（如 en/ja/ko），影响 Agent 生成的 content 内容语言。
-- **feat**: manifest.json 新增 `language` 字段，默认 `"zh"`。
-- **feat**: 4 个 Agent prompt（architect/debug/profiler/module）注入 `{LANGUAGE}` 指令，控制 Agent 生成内容的语言。
-- **feat**: Phase 2 补充信息收集增加语言选择步骤。
-- **design**: 模板固定文本保持中文不变，语言切换仅通过 Agent prompt 控制生成内容。避免双语模板的维护成本。
+以下为 2.0 之前已落地、现已吸收或被 2.0 取代的记录，保留以便对照。不再单独标 Unreleased。
 
-### bootstrap-skill (prompt + 模板)
+### 1.x 装架与多工具（已被 2.0 管理器吸收）
 
-- **fix**: architect SKILL.md 模板移除 3 个大型占位符（`CONSTRAINT_RULES_SUMMARY`、`CONSTRAINT_QUERY_TABLE`、`PATTERN_QUERY_TABLE`），SKILL.md 回归"导航文档"定位，字数从 1754 降至 < 800 警戒线内。
-- **fix**: architect EXAMPLES.md 模板新增 Part 1 "约束规则速查表"，承接从 SKILL.md 移出的速查表数据。
-- **fix**: architect/debug/profiler 三套 SKILL_MEMORY 模板添加 SKILL_RULE 约束注释，明确禁止代码块、目标字数、条目数量限制。
-- **fix**: 三个 Agent prompt（architect/debug/profiler）注入 SKILL_RULE 关键约束：文件字数上限、代码块禁令、Emoji 禁令、文件职责隔离规则。修复了 Agent 因缺少约束信息而生成过大内容的问题。
-- **remove**: 移除冗余的 `constraint_query_table.md` 和 `pattern_query_table.md` content 文件，其内容与 `constraint_rules_summary` 高度重复。
+- Skill 真源最初设计为 runtime，再投影到四个宿主；2.0 收成 Claude + Codex 两棵发现树。
+- 可视化控制台、进化开关、`retire` / `update` / `sync`、HTTP `/api/skills*` 在 1.x 末期引入，2.0 补齐 `activate` / `unseed` / `homology` / `validate` / 文件夹选择器。
+- 冷启动曾是 seed → **scan** → ui → generate；2.0 删除 scan，勾选改为复制 `/goal`。
+- 清单 canonical 名 `bootstrap-output/cf_manifest.json`（避免与 Unity `Packages/manifest.json` 混淆），仍可读旧 `manifest.json`。
+- `find_project_root` / `find_harness_dir` 解耦：支持 CastFlow 作为子目录；`--project-root`。
+- CLAUDE.md 三策略合并；BackupSession LRU；hook 配置幂等增量合并。
+- i18n：manifest `language`，默认中文；模板固定中文，生成内容语言由 prompt 控制。
+- 项目更名 CostFlow → CastFlow；`SKILL_RULE.md` → `SKILL_ITERATION.md`。
 
-### bootstrap.py
+### 1.x 进化（评分模型，2.0 已退役）
 
-- **change**: `build_architect_placeholders` 移除 `CONSTRAINT_QUERY_TABLE` 和 `PATTERN_QUERY_TABLE` 两个占位符映射（6 个 content 文件替代原来的 8 个）。
-- **fix**: `find_project_root` 不再假设 `.castflow/` 在项目根目录下。支持 CostFlow 作为子目录引入（如 `project/CostFlow/.castflow/`）。通过两轮遍历策略定位项目根：先找 `.claude/`，首次初始化时自动在 CostFlow 父目录创建 `.claude/`。
-- **fix**: 新增 `find_harness_dir()` 函数，将"项目根目录"与"框架目录"解耦。所有模板/核心文件读取改为从脚本自身位置定位，不再依赖 `project_root + ".castflow"` 拼接。
-- **feat**: 新增 `--project-root` 参数，允许显式指定项目根目录。
-- **fix**: CLAUDE.md 模板移除 `## Bootstrap 触发` 段落（用过即知，不需要占空间）。
+- 五维加权评分 F/D/K/S/E；K 三档；E 编辑密度；buffer `path|lines|edits|flags`。
+- 自动修正检测（R 标志）；`weights.json` 自校准。
+- collector 扩展 18 种语言后缀；非代码资源过滤。
+- SKILL_MEMORY 增加 Anchors / Related；Append / Merge / Retire；容量治理。
+- origin-evolve 归属决策树；pending 提醒阈值与 evolve-reminder 对齐。
+- compaction L0–L3、validated 保护、审计行过期、空行清理。
+- `apply_pipeline_result()` 的 `result_str` 未初始化（已随 pipeline 一起成为历史）。
 
-### code-pipeline-skill
+这些采集与打分路径在 2.0 由 memory 快照账本替代。字段若仍出现在旧 `trace.md` 里，只随龄期淘汰，新写入不再产生。
 
-- **fix**: EXAMPLES.md 中 Agent 命名从 `implementer-{module}` 统一修正为 `programmer-{module}-agent`，与 SKILL.md 定义一致（5 处）。
-- **fix**: SKILL_MEMORY.md 中 `implementer agent` 引用修正为 `programmer-{module}-agent`（2 处）。
+### 1.x pipeline（2.0 已删除）
 
-### origin-evolve + hooks（新增）
+- `code-pipeline-skill` 曾作为复合编排组件：Step 调度卡、Handoff L0/L1、`pipeline_merge.py` fail-closed、`pending-pipeline` 信号。
+- 设计动机是多波次并行时的合同化收口。实践中浸染 shared agent、和模块 skill 抢入口，且日常改一个系统并不需要 9 步。
+- 2.0 删除该 skill 与三个 agent；日常改动走模块 skill。
 
-- **feat**: 新增跨平台 trace 自动采集系统（`.claude/hooks/`），Cursor 和 Claude Code 共用同一套 Python 脚本。
-  - `trace-collector.py`: 文件编辑时自动记录，过滤 `.meta/.asset/.prefab` 等非代码文件，去重后追加到 buffer。
-  - `trace-flush.py`: Agent 结束时汇总 buffer，自动推断 modules（从路径中提取 `Modules/XXX/`），准入过滤（.cs >= 2 个），生成含分类占位符的 trace 条目。
-- **feat**: 四维 trace 分类体系：`type`（任务类型）、`correction`（用户纠正）、`modules`（涉及模块，自动推断）、`skills`（使用的 Skill）。Hook 脚本填充 modules，AI 按 CLAUDE.md 规则补充其余三个维度。
-- **feat**: 智能提醒阈值：pending >= 5 条或含修正信号的条目 >= 3 条时触发提醒，纠正记录优先触发分析。（早期文档曾写 10，已与 evolve-reminder / origin-evolve-skill 对齐为 5。）
-- **feat**: 平台配置适配：`.cursor/hooks.json`（Cursor）和 `.claude/settings.json`（Claude Code）分别生成，引用同一套脚本。
-- **feat**: 会话启动提醒规则：`.cursor/rules/evolve-reminder.mdc` 和 `.claude/rules/evolve-reminder.md`。
+### 1.x 测试
 
-### CLAUDE.md 模板
-
-- **change**: `## 执行记录` 从"AI 全量构造 trace"改为"补充式"——Hook 自动创建条目，AI 仅替换 `type`/`correction`/`skills` 占位符，降低遗忘风险和 token 消耗。
-- **remove**: 移除 `## Bootstrap 触发` 段落。
+- `test/hooks/test_evolution.py`、`test_365day_simulation.py`（及已移除的 100 天套件）、`test/bootstrap/test_bootstrap.py`、`test/origin-evolve/verify_redesign.py`。
+- hooks 测试从 `.castflow/core/hooks/` 迁到 `CastFlow/test/hooks/`，bootstrap 不再分发测试文件。
+- 2.0 在此基础上增加 manager / homology / GLOBAL_SKILL_MEMORY 契约测试，并由 `test/run_all.py` 串起来。

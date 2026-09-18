@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Shared test harness for the CastFlow hook test suite.
-
-Centralizes the pieces that were copy-pasted across test_evolution.py and the
-production simulations: hyphen-module import, trace-block construction, and the
-temp-dir base class that redirects trace-collector / trace-flush file paths.
-
-Consumers:
-    from _trace_harness import (
-        collector, flush, make_trace_block, build_trace_file, TraceTestBase,
-    )
-"""
+"""Shared test harness for schema:4 memory-snapshot hook tests."""
 
 import importlib.util
 import json
@@ -19,23 +9,21 @@ import shutil
 import sys
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 _HARNESS_DIR = os.path.dirname(os.path.abspath(__file__))
 HOOKS_DIR = os.path.normpath(os.path.join(
     _HARNESS_DIR, "..", "..", ".castflow", "core", "hooks"
 ))
 
-# --keep-data: preserve each test case's trace files for inspection.
-# Parsed once here so every consumer shares one flag.
 KEEP_DATA = "--keep-data" in sys.argv
 if KEEP_DATA:
     sys.argv.remove("--keep-data")
 
 
 def import_hyphen_module(name, filename):
-    """Import a module whose filename contains hyphens (not importable normally)."""
-    spec = importlib.util.spec_from_file_location(name, os.path.join(HOOKS_DIR, filename))
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(HOOKS_DIR, filename))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -45,47 +33,53 @@ collector = import_hyphen_module("collector", "trace-collector.py")
 flush = import_hyphen_module("flush", "trace-flush.py")
 
 
-def make_trace_block(timestamp, modules, score, validated="_", correction="_",
-                     status="pending", pipeline_run_id="_", edit_count=1,
-                     file_count=1, lines_changed=10, mode="_", entry_type="_",
-                     request="_", intent="_", skills=None, files=None):
-    """Build a single trace block string.
-
-    Accepts either a datetime or a pre-formatted timestamp string.
-    """
-    ts_str = timestamp.strftime("%Y-%m-%dT%H:%M:%SZ") if isinstance(timestamp, datetime) else timestamp
-    mods = ", ".join(modules) if isinstance(modules, list) else modules
-    skills_str = "[{}]".format(", ".join(skills)) if skills else "[]"
-    files_str = ", ".join(files[:20]) if files else "test.cs"
+def make_trace_block(timestamp, entry_type="feedback", validated="_",
+                     status="pending", memory_snapshots=None, schema=4,
+                     gate_hint=None, quality=None):
+    ts_str = timestamp.strftime("%Y-%m-%dT%H:%M:%SZ") if isinstance(
+        timestamp, datetime) else timestamp
+    snaps = memory_snapshots or []
+    mem_blocks = ""
+    for snap in snaps:
+        q = snap.get("quality", "ok")
+        mem_blocks += (
+            "<!-- MEMORY slug:{slug} type:{typ} quality:{q} -->\n"
+            "skill: {skill}\n"
+            "anchors: {anchors}\n"
+            "description: {desc}\n"
+            "---\n{content}\n"
+            "<!-- /MEMORY -->\n"
+        ).format(
+            slug=snap.get("slug", "s"),
+            typ=snap.get("type", "feedback"),
+            q=q,
+            skill=snap.get("skill", ""),
+            anchors=snap.get("anchors", "[]"),
+            desc=snap.get("description", ""),
+            content=snap.get("content", "rule"),
+        )
+    extra = ""
+    if quality:
+        extra += "quality: {}\n".format(quality)
+    if gate_hint:
+        extra += "gate_hint: {}\n".format(gate_hint)
     return (
-        "<!-- TRACE status:{status} -->\n"
+        "<!-- TRACE status:{status} schema:{schema} -->\n"
         "timestamp: {ts}\n"
-        "mode: {mode}\n"
-        "type: {type}\n"
-        "request: {request}\n"
-        "intent: {intent}\n"
-        "correction: {correction}\n"
+        "type: {typ}\n"
         "validated: {validated}\n"
-        "pipeline_run_id: {run_id}\n"
-        "modules: [{modules}]\n"
-        "skills: {skills}\n"
-        "files_modified: [{files}]\n"
-        "file_count: {fc}\n"
-        "lines_changed: {lc}\n"
-        "edit_count: {ec}\n"
-        "score: {score}\n"
+        "{extra}"
+        "memory_snapshots: {n}\n"
+        "{mem}"
         "<!-- /TRACE -->\n"
     ).format(
-        status=status, ts=ts_str, mode=mode, type=entry_type,
-        request=request, intent=intent,
-        correction=correction, validated=validated, run_id=pipeline_run_id,
-        modules=mods, skills=skills_str, files=files_str,
-        fc=file_count, lc=lines_changed, ec=edit_count, score=score,
+        status=status, schema=schema, ts=ts_str, typ=entry_type,
+        validated=validated, extra=extra, n=len(snaps),
+        mem=mem_blocks,
     )
 
 
 def build_trace_file(blocks, header=True):
-    """Build a full trace.md content string from a list of block strings."""
     parts = []
     if header:
         parts.append("# Execution Traces\n\n---\n\n")
@@ -95,16 +89,19 @@ def build_trace_file(blocks, header=True):
     return "".join(parts)
 
 
+FLUSH_PATH_ATTRS = (
+    "TRACE_DIR", "TRACE_FILE", "LIMITS_FILE", "PENDING_VALIDATED_FILE",
+    "NOTIFY_STATE_FILE", "TRACE_LOCK_FILE",
+    "MEMORY_SNAPSHOTS_FILE", "TRACE_ERROR_LOG",
+    "UNFLUSHED_FILE", "EVOLVE_NUDGE_FILE",
+)
+
+COLLECTOR_PATH_ATTRS = (
+    "TRACE_DIR", "MEMORY_SNAPSHOTS_FILE", "UNFLUSHED_FILE",
+)
+
+
 class TraceTestBase(unittest.TestCase):
-    """Base class that redirects all collector/flush file paths to a temp dir.
-
-    Subclasses may set class attributes to control temp-dir naming and
-    --keep-data snapshots:
-        TMP_PREFIX   -- mkdtemp prefix
-        OUTPUT_BASE  -- directory to copy test data into when --keep-data is set
-                        (None disables snapshotting even under --keep-data)
-    """
-
     TMP_PREFIX = "castflow_"
     OUTPUT_BASE = None
 
@@ -114,44 +111,54 @@ class TraceTestBase(unittest.TestCase):
         os.makedirs(self.traces_dir, exist_ok=True)
         self.config_dir = os.path.join(self.traces_dir, "config")
         os.makedirs(self.config_dir, exist_ok=True)
+        self.memory_dir = os.path.join(self.test_dir, ".castflow-runtime", "memory")
+        os.makedirs(self.memory_dir, exist_ok=True)
 
-        self._saved = {}
-        for attr in ["TRACE_DIR", "BUFFER_FILE", "TRACE_FILE", "WEIGHTS_FILE",
-                     "LIMITS_FILE", "PENDING_IDP_FILE", "PENDING_VALIDATED_FILE",
-                     "PENDING_PIPELINE_FILE", "NOTIFY_STATE_FILE", "TRACE_LOCK_FILE"]:
-            self._saved[attr] = getattr(flush, attr)
+        self._saved_flush = {}
+        for attr in FLUSH_PATH_ATTRS:
+            if hasattr(flush, attr):
+                self._saved_flush[attr] = getattr(flush, attr)
 
         flush.TRACE_DIR = self.traces_dir
-        flush.BUFFER_FILE = os.path.join(self.traces_dir, ".trace_buffer")
         flush.TRACE_FILE = os.path.join(self.traces_dir, "trace.md")
-        flush.WEIGHTS_FILE = os.path.join(self.traces_dir, "weights.json")
         flush.LIMITS_FILE = os.path.join(self.config_dir, "limits.json")
-        flush.PENDING_IDP_FILE = os.path.join(self.traces_dir, ".pending_idp.json")
-        flush.PENDING_VALIDATED_FILE = os.path.join(self.traces_dir, ".pending_validated.json")
-        flush.PENDING_PIPELINE_FILE = os.path.join(self.traces_dir, ".pending_pipeline_result.json")
-        flush.NOTIFY_STATE_FILE = os.path.join(self.traces_dir, ".notify_state.json")
+        flush.PENDING_VALIDATED_FILE = os.path.join(
+            self.traces_dir, ".pending_validated.json")
+        flush.NOTIFY_STATE_FILE = os.path.join(
+            self.traces_dir, ".notify_state.json")
         flush.TRACE_LOCK_FILE = os.path.join(self.traces_dir, ".trace_lock")
+        flush.MEMORY_SNAPSHOTS_FILE = os.path.join(
+            self.traces_dir, ".trace_memory_snapshots")
+        flush.TRACE_ERROR_LOG = os.path.join(self.traces_dir, ".trace_error.log")
+        if hasattr(flush, "UNFLUSHED_FILE"):
+            flush.UNFLUSHED_FILE = os.path.join(self.traces_dir, ".unflushed")
+        if hasattr(flush, "EVOLVE_NUDGE_FILE"):
+            flush.EVOLVE_NUDGE_FILE = os.path.join(
+                self.traces_dir, ".evolve_nudge")
 
-        self._saved_coll = {
-            "BUFFER_FILE": collector.BUFFER_FILE,
-            "PREV_EDITS_FILE": collector.PREV_EDITS_FILE,
-        }
-        collector.BUFFER_FILE = os.path.join(self.traces_dir, ".trace_buffer")
-        collector.PREV_EDITS_FILE = os.path.join(self.traces_dir, ".trace_prev_edits")
+        self._saved_coll = {}
+        for attr in COLLECTOR_PATH_ATTRS:
+            if hasattr(collector, attr):
+                self._saved_coll[attr] = getattr(collector, attr)
+        collector.TRACE_DIR = self.traces_dir
+        collector.MEMORY_SNAPSHOTS_FILE = os.path.join(
+            self.traces_dir, ".trace_memory_snapshots")
+        if hasattr(collector, "UNFLUSHED_FILE"):
+            collector.UNFLUSHED_FILE = os.path.join(
+                self.traces_dir, ".unflushed")
 
     def tearDown(self):
-        for attr, val in self._saved.items():
+        for attr, val in self._saved_flush.items():
             setattr(flush, attr, val)
         for attr, val in self._saved_coll.items():
             setattr(collector, attr, val)
-
         if KEEP_DATA and self.OUTPUT_BASE:
-            dest = os.path.join(self.OUTPUT_BASE,
-                                "{}__{}".format(type(self).__name__, self._testMethodName))
+            dest = os.path.join(
+                self.OUTPUT_BASE,
+                "{}__{}".format(type(self).__name__, self._testMethodName),
+            )
             shutil.copytree(self.test_dir, dest, ignore_dangling_symlinks=True)
         shutil.rmtree(self.test_dir, ignore_errors=True)
-
-    # ---- file helpers ----
 
     def write_trace(self, content):
         with open(flush.TRACE_FILE, "w", encoding="utf-8", newline="\n") as f:
@@ -163,18 +170,44 @@ class TraceTestBase(unittest.TestCase):
         with open(flush.TRACE_FILE, "r", encoding="utf-8") as f:
             return f.read()
 
-    def write_buffer(self, lines):
-        with open(flush.BUFFER_FILE, "w", encoding="utf-8", newline="\n") as f:
-            for line in lines:
-                f.write(line + "\n")
-
     def write_limits(self, overrides):
         data = dict(flush.DEFAULT_LIMITS)
         data.update(overrides)
-        with open(flush.LIMITS_FILE, "w", encoding="utf-8") as f:
+        with open(flush.LIMITS_FILE, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f)
 
-    # ---- trace-block parsing helpers ----
+    def write_memory_file(self, slug, mem_type, body, extra_dir=None,
+                          name=None, description=None, extra_front=None,
+                          omit_name=False, raw=None):
+        folder = extra_dir or self.memory_dir
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, slug + ".md")
+        if raw is not None:
+            text = raw
+        else:
+            lines = ["---"]
+            if not omit_name:
+                lines.append("name: {}".format(name if name is not None else slug))
+            if mem_type is not None:
+                lines.append("type: {}".format(mem_type))
+            desc = description if description is not None else slug
+            lines.append("description: {}".format(desc))
+            if extra_front:
+                lines.extend(extra_front)
+            lines.append("---")
+            lines.append("")
+            lines.append(body)
+            lines.append("")
+            text = "\n".join(lines)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        return path
+
+    def write_snapshots_store(self, snapshots):
+        store = {"snapshots": snapshots, "dropped": 0}
+        with open(flush.MEMORY_SNAPSHOTS_FILE, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(store, f)
+        return store
 
     def count_blocks(self, content=None):
         if content is None:
@@ -184,20 +217,10 @@ class TraceTestBase(unittest.TestCase):
     def count_pending(self, content=None):
         if content is None:
             content = self.read_trace()
-        return len(re.findall(r"<!-- TRACE status:pending\b", content))
-
-    def get_all_blocks(self, content=None):
-        if content is None:
-            content = self.read_trace()
-        return re.findall(r"<!-- TRACE[^>]*-->.*?<!-- /TRACE -->", content, re.DOTALL)
-
-    def get_field(self, block, field):
-        m = re.search(r"^" + re.escape(field) + r":\s*(.+)$", block, re.MULTILINE)
-        return m.group(1).strip() if m else ""
+        return flush.count_pending_entries(content)
 
 
 def make_output_base(subdir):
-    """Resolve and reset a test-output directory under this folder, if --keep-data."""
     base = os.path.join(_HARNESS_DIR, "test-output", subdir)
     if KEEP_DATA:
         if os.path.isdir(base):

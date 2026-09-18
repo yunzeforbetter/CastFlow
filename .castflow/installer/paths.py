@@ -16,28 +16,23 @@ def find_project_root(explicit_root=None):
     """Locate the project root directory.
 
     Search strategy:
-    1. Explicit --project-root argument (trusted if given)
-    2. Walk up from script location looking for .claude/
-    3. If not found, use the harness parent's parent as project root
-       and create .claude/ there
+    1. Explicit --project-root
+    2. Walk up from cwd for .castflow-runtime/ then .git
+    3. cwd (never harness.parent.parent — that planted files outside the repo)
     """
     if explicit_root:
         return os.path.abspath(explicit_root)
 
-    harness_dir = find_harness_dir()
-    start = os.path.dirname(harness_dir)
-
+    start = os.path.abspath(os.getcwd())
     candidate = start
-    for _ in range(10):
-        if os.path.isdir(os.path.join(candidate, CLAUDE)):
+    for _ in range(12):
+        if os.path.isdir(os.path.join(candidate, ".castflow-runtime")):
+            return candidate
+        if os.path.isdir(os.path.join(candidate, ".git")) or os.path.isfile(
+                os.path.join(candidate, ".git")):
             return candidate
         parent = os.path.dirname(candidate)
         if parent == candidate:
             break
         candidate = parent
-
-    project_root = os.path.dirname(start)
-    os.makedirs(os.path.join(project_root, CLAUDE), exist_ok=True)
-    print("  [CREATE] {}/ (first bootstrap)".format(
-        os.path.join(project_root, CLAUDE)))
-    return project_root
+    return start
