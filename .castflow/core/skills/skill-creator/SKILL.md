@@ -1,11 +1,21 @@
 ---
 name: skill-creator
-description: new skill create skill edit skill rewrite skill skill eval benchmark skill YAML frontmatter description trigger tuning skill quality skill iter ITERATION_GUIDE NOT bootstrap
+description: >
+  Create or rewrite CastFlow catalog skills. Use when the user says
+  castflow generate skills. NOT origin-evolve.
 ---
 
 # Skill Creator
 
 A skill for creating new skills and iteratively improving them.
+
+## CastFlow catalog
+
+For `castflow generate skills`, queue items, or `programmer-*-skill` in this repo: follow `SKILL_ITERATION.md` only. Copy name plus a short description (module name/id, one NOT). Do not fill a domain template or README. **ignore** this bullet later that says to make descriptions pushy — false recall against sibling modules is worse than a miss. Do not run Description Optimization. Write the four role files; do not start the eval loop.
+
+If the task is `castflow generate skills`, a queue item, or `programmer-*-skill`: follow this section, write the four role files, then **stop**. Do not continue into Creating a skill, Description Optimization, or the eval loop.
+
+## Freeform skills (not CastFlow catalog)
 
 At a high level, the process of creating a skill goes like this:
 
@@ -25,7 +35,7 @@ On the other hand, maybe they already have a draft of the skill. In this case yo
 
 Of course, you should always be flexible and if the user is like "I don't need to run a bunch of evaluations, just vibe with me", you can do that instead.
 
-Then after the skill is done (but again, the order is flexible), you can also run the skill description improver, which we have a whole separate script for, to optimize the triggering of the skill.
+Then after a freeform (non-catalog) skill is done (but again, the order is flexible), you can also run the skill description improver. Skip that improver for CastFlow catalog / programmer-*-skill.
 
 Cool? Cool.
 
@@ -64,7 +74,7 @@ Check available MCPs - if useful for research (searching docs, finding similar s
 Based on the user interview, fill in these components:
 
 - **name**: Skill identifier
-- **description**: When to trigger, what it does. This is the primary triggering mechanism - include both what the skill does AND specific contexts for when to use it. All "when to use" info goes here, not in the body. Note: currently Claude has a tendency to "undertrigger" skills -- to not use them when they'd be useful. To combat this, please make the skill descriptions a little bit "pushy". So for instance, instead of "How to build a simple fast dashboard to display internal Anthropic data.", you might write "How to build a simple fast dashboard to display internal Anthropic data. Make sure to use this skill whenever the user mentions dashboards, data visualization, internal metrics, or wants to display any kind of company data, even if they don't explicitly ask for a 'dashboard.'"
+- **description**: WHAT the skill does + WHEN to use it, in 1-3 short sentences (always-on metadata). For CastFlow catalog / `programmer-*-skill`, follow `SKILL_ITERATION.md` (module name/id + one NOT). Do not write synonym lists, "whenever the user mentions...", or "even if they don't ask". False recall against sibling modules is worse than a miss. Do not run Description Optimization on catalog skills.
 - **compatibility**: Required tools, dependencies (optional, rarely needed)
 - **the rest of the skill :)**
 
@@ -332,7 +342,9 @@ This is optional, requires subagents, and most users won't need it. The human re
 
 ## Description Optimization
 
-The description field in SKILL.md frontmatter is the primary mechanism that determines whether Claude invokes a skill. After creating or improving a skill, offer to optimize the description for better triggering accuracy.
+Skip this entire section for CastFlow catalog / `programmer-*-skill` / `castflow generate skills`. Those follow `SKILL_ITERATION.md` and must not run `run_loop.py`.
+
+The description field in SKILL.md frontmatter is the primary mechanism that determines whether Claude invokes a skill. After creating or improving a **freeform** (non-catalog) skill, offer to optimize the description for better triggering accuracy.
 
 ### Step 1: Generate trigger eval queries
 
@@ -391,7 +403,7 @@ Use the model ID from your system prompt (the one powering the current session) 
 
 While it runs, periodically tail the output to give the user updates on which iteration it's on and what the scores look like.
 
-This handles the full optimization loop automatically. It splits the eval set into 60% train and 40% held-out test, evaluates the current description (running each query 3 times to get a reliable trigger rate), then calls Claude with extended thinking to propose improvements based on what failed. It re-evaluates each new description on both train and test, iterating up to 5 times. When it's done, it opens an HTML report in the browser showing the results per iteration and returns JSON with `best_description` — selected by test score rather than train score to avoid overfitting.
+This handles the full optimization loop automatically. It splits the eval set into 60% train and 40% held-out test, evaluates the current description (running each query 3 times to get a reliable trigger rate), then calls Claude to propose improvements based on what failed. It re-evaluates each new description on both train and test, iterating up to 5 times. When it's done, it opens an HTML report in the browser showing the results per iteration and returns JSON with `best_description` — selected by test score rather than train score to avoid overfitting.
 
 ### How skill triggering works
 
@@ -435,6 +447,11 @@ In Claude.ai, the core workflow is the same (draft → test → review → impro
 
 **Packaging**: The `package_skill.py` script works anywhere with Python and a filesystem. On Claude.ai, you can run it and the user can download the resulting `.skill` file.
 
+**Updating an existing skill**: The user might be asking you to update an existing skill, not create a new one. In this case:
+- **Preserve the original name.** Note the skill's directory name and `name` frontmatter field -- use them unchanged. E.g., if the installed skill is `research-helper`, output `research-helper.skill` (not `research-helper-v2`).
+- **Copy to a writeable location before editing.** The installed skill path may be read-only. Copy to `/tmp/skill-name/`, edit there, and package from the copy.
+- **If packaging manually, stage in `/tmp/` first**, then copy to the output directory -- direct writes may fail due to permissions.
+
 ---
 
 ## Cowork-Specific Instructions
@@ -447,6 +464,7 @@ If you're in Cowork, the main things to know are:
 - Feedback works differently: since there's no running server, the viewer's "Submit All Reviews" button will download `feedback.json` as a file. You can then read it from there (you may have to request access first).
 - Packaging works — `package_skill.py` just needs Python and a filesystem.
 - Description optimization (`run_loop.py` / `run_eval.py`) should work in Cowork just fine since it uses `claude -p` via subprocess, not a browser, but please save it until you've fully finished making the skill and the user agrees it's in good shape.
+- **Updating an existing skill**: The user might be asking you to update an existing skill, not create a new one. Follow the update guidance in the claude.ai section above.
 
 ---
 

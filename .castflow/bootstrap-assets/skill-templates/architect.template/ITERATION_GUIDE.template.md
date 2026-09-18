@@ -1,60 +1,18 @@
-# ITERATION_GUIDE - Architect-Skill 迭代指南
+# ITERATION_GUIDE - Architect-Skill
 
-## Skill 定位
+格式、体积、职责隔离见 SKILL_ITERATION.md，不要把那份表抄到这里。
 
-本Skill的核心职责：
-1. 维护项目的架构约束规则库
-2. 提供设计模式参考库
-3. 为其他Skill提供架构信息查询
-4. 确保所有系统设计遵守基础架构约束
+### Rule 1：新约束
 
-目标用户：所有需要做架构决策的开发者和AI助手
+触发：项目出现新的强制分层、基类或隔离规则。
+文件：SKILL_MEMORY.md。先核对是否与现有规则冲突。
 
----
+### Rule 2：新的已验证模式
 
-## 迭代规则
-
-### Rule 1：新约束发现
-触发条件：项目中发现新的强制约束（如新的基类要求、新的隔离规则）
-优先级：High
-文件：SKILL_MEMORY.md
-检查清单：
-  - [ ] 约束是否明确（能用检查清单验证）
-  - [ ] 是否与现有规则冲突
-  - [ ] 检查清单是否可执行
-
-### Rule 2：新设计模式
-触发条件：项目中出现新的经过验证的设计模式
-优先级：Medium
-文件：EXAMPLES.md
-检查清单：
-  - [ ] 代码是否完整可编译
-  - [ ] 项目参考是否真实存在
-  - [ ] 何时使用的说明是否清晰
+触发：仓库里出现经过验证、调用时会照着抄的设计模式。
+文件：EXAMPLES.md。代码从项目复制，路径必须能 grep 到。
 
 ### Rule 3：职责变化
-触发条件：architect-skill的职责范围发生变化
-优先级：High
-文件：SKILL.md + ITERATION_GUIDE.md
-检查清单：
-  - [ ] 新职责是否与其他Skill重叠
-  - [ ] 快速查询表是否更新
 
-### Rule 4：SKILL_MEMORY 容量治理
-触发条件：SKILL_MEMORY.md 字数超过推荐范围（1500字），或 origin-evolve 提出新规则
-优先级：High
-文件：SKILL_MEMORY.md
-规范：遵循 SKILL_ITERATION.md 的 SKILL_MEMORY 容量治理规范（Append/Merge/Retire 操作）
-
----
-
-## 文件职责
-
-| 文件 | 何时修改 | 禁止内容 |
-|-----|--------|--------|
-| SKILL.md | 职责变化时 | 代码示例、规则定义 |
-| EXAMPLES.md | 新模式出现时 | 规则定义、日期 |
-| SKILL_MEMORY.md | 发现新约束时 | 日期、版本、过程记录 |
-| ITERATION_GUIDE.md | 定位变化时 | 日期、版本、检查记录 |
-
----
+触发：architect-skill 与 programmer / debug / profiler 的边界变了。
+文件：SKILL.md 的 Yield 与职责。

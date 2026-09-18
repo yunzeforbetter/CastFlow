@@ -10,21 +10,19 @@
 
 **检查清单**：
 - [ ] 是否检查了 CLAUDE.md 是否已存在？
-- [ ] 是否检查了 .claude/skills/ 下是否有同名 skill？
-- [ ] 是否检查了 .claude/agents/ 下是否有同名 agent？
+- [ ] 是否检查了 `.castflow-runtime/skills/` 下是否有同名 skill？（不要只看适配器镜像）
 - [ ] 已有文件是否跳过或提示用户？
 
 ---
 
 ### 规则 2：生成文件必须符合 SKILL_ITERATION.md
 
-**定义**：所有生成的 Skill 文件必须通过 SKILL_ITERATION.md 的规范检查。
+**定义**：四角色文件按 `SKILL_ITERATION.md` 写。机器检查跑 `python .castflow/manager.py validate`，不要再跑文档里的 bash 剧本（已删除）。
 
 **检查清单**：
-- [ ] 每个 skill 目录恰好 4 个 .md 文件？
-- [ ] SKILL.md 有 YAML 元数据（name + description）？
-- [ ] 无 Emoji 和特殊符号？
-- [ ] 无日期/版本标记？
+- [ ] 四角色文件齐全？附件仅在有链路用途时存在，且无无用 markdown？
+- [ ] SKILL.md description 短、专名触发、一句 NOT（非关键词堆砌、非 pushy 扩词）？
+- [ ] `python .castflow/manager.py validate` 通过？
 
 ---
 
@@ -48,56 +46,48 @@
 
 ---
 
-### 规则 5：Phase 0 语言询问门禁（最高优先级）
+### 规则 5：冷启动走 GUI，禁止 AI 代跑装架（最高优先级）
 
-**定义**：bootstrap-skill 触发后，主 agent 的**第一条对外消息必须是 Phase 0 语言询问**——使用 SKILL.md 给定的标准话术，列出 5 个语言选项。在用户回复前，禁止做任何项目扫描、文件读取、文件写入。
+**定义**：bootstrap-skill 触发后，主 agent **不得**自己执行 seed，也 **不得**再做 Phase 0 语言询问（语言在 GUI 里选）。第一条对外消息必须是：请用户双击 `castflow.bat`（或 `python .castflow/manager.py launch`），在浏览器里完成配置并点「开始冷启动」。
 
-**违反此规则视为执行失败**，无论生成结果质量如何。
+**违反此规则视为执行失败**（包括：代跑 manager.py seed、先问语言再动手）。未勾选时禁止自己扫目录列模块；勾选并粘贴提示词后，读取提示词给出的文件并按文件执行。
 
 **强制顺序**：
-1. **Phase 0**：发出语言询问 -> 等待用户回复 -> 归一化为 ISO 639-1 代码 -> 回显确认（"已选 English (en)，开始扫描..."）
-2. **Phase 1**：项目扫描（技术栈、命名规范、模块）
-3. **Phase 2**：可选 Skill 确认（debug / profiler 一条消息内列完，一次回复；architect 固定生成、不询问）
-4. **Phase 3**：命名规范与框架规则（单独一条消息，须在 Phase 2 之后）
-5. **Phase 4**：写 `cf_manifest.json` 与 `content/claude/`，并执行**仅** `python .castflow/bootstrap.py`（安装器 Phase A 装架，拷核心与模板；**不**用脚本生成 project 级 skill 正文）
-6. **Phase 5**：装架后 `skill-creator` 可加载。主 agent 一段手话：任务 + 语言 + 实值占位符；**必读**按 `.castflow/core/skills/SKILL_ITERATION.md` 中「必读资料栈」（源在 `.castflow/core/`、`bootstrap-assets/`，非手搓 `.claude/` 路径当「源」）。产出仍在**项目** `.claude/skills/<name>/`；**不**枚举四文件名；**禁止** `bootstrap.py` 代写 project skill
-7. **Phase 6**：`bootstrap.py --validate` 与清理 `bootstrap-output/`（验证可用脚本）
-
-**交互频次约束**（减少用户点击负担）：
-- Phase 2 **不允许**逐个 skill 提问；可选 skill（debug/profiler）必须在一条消息内列完让用户一次回复
-- 违反示例：先问 "debug 要吗？" 等回复 -> 再问 "profiler 要吗？" 等回复（每多一次来回都是一次不必要的用户中断）
+1. **GUI**：`castflow.bat` / `manager.py launch` → 用户选语言/适配器/进化 → 开启冷启动（只拷文件）。
+2. **未勾选扫描生成**：不要扫项目，不要写 programmer skill，没有交接提示词。
+3. **勾选并粘贴了提示词**：默认是 `/goal 读取并按照 .castflow-runtime/skills/MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md 执行`。`/goal` 启动长任务；读取该文件并按文件执行。禁止扫描 CastFlow / `.castflow` / `.castflow-runtime` / 适配器树，禁止把框架 skill 放进多选。禁止 Python scan，禁止扫描账本状态机（`STATE.yaml` 等）。勾选后只落临时生成队列 `.castflow-runtime/_skill-gen-queue/`（一次一个 skill，全部完成后删除），禁止写适配器镜像。
+4. **进化**：只通过 `manager.py evolve on|off` 或 UI 开关。
 
 **门禁规则**：
-- Phase 0 未完成 -> 不得进入 Phase 1
-- Phase 2 或 Phase 3 未确认 -> 不得进入 Phase 4
-- 不得在任何用户确认与 manifest 落盘之前执行 `bootstrap.py` 的**装架**；Phase 4 的 `python .castflow/bootstrap.py` 须在 manifest 与 `content/claude/` 就绪后执行
-- 冷启动 Phase 5：须经 **子代理 + skill-creator** 在 `.claude/skills/` 下生成；`bootstrap.py` 仅做装架（与可选 `--claude-md-only` / `--templates-only`），不生成 project/模块 skill
+- 未完成 GUI 装架 -> 不得自己 seed
+- 用户没要求扫描生成 -> 不得扫树、不得写模块 skill
+- 用户要求扫描生成 -> 不得用「没有 .cs / Scripts / 每目录 3 文件」当拒绝理由
+- 扫描生成 -> 不得把 AI 框架（CastFlow / `.castflow` / `.castflow-runtime` / `.claude` 等）当模块选项
+- 生成必须走 skill-creator，禁止评测环，禁止写入镜像目录
 
 **唯一例外**（仍需主 agent 显式说明）：
-- 用户在触发指令同一句话已指定语言：复述确认（"已识别语言：English (en)，确认继续？"）后再进入 Phase 1
-- 核心更新模式且 `bootstrap-output/cf_manifest.json` 已存在：直接复用 manifest.language，但需告知用户"复用已有配置 language=xxx"
+- 用户在触发指令同一句话已指定语言：复述确认后再 seed
+- 已有 `.castflow-runtime/config.json`：复用 language，告知用户
 
 **检查清单**：
-- [ ] 主 agent 触发后的**第一条消息**是否是语言询问？（不是"开始扫描"、不是 Phase 1 输出）
-- [ ] 询问话术是否包含了 5 个选项（zh/en/ja/ko/其他）？
-- [ ] 用户回答是否归一化为 ISO 639-1 代码？（"用英文" -> `en`，不是 `用英文`）
-- [ ] 归一化后是否给用户回显确认？
-- [ ] 是否等待了 Phase 2、Phase 3 各自的用户回应？
-- [ ] cf_manifest.json 写入时 language 字段是否为 ISO 代码？
+- [ ] 第一条对外消息是否是语言询问？
+- [ ] 是否列出 zh/en/ja/ko/其他？
+- [ ] 语言是否归一化为 ISO 639-1？
+- [ ] 未勾选时是否避免了自己列模块？勾选后是否走扫描->多选->落地队列->清上下文->一次一个生成，而不是 Python scan 或并行子代理？
 
 ---
 
-### 规则 6：并行 agent 独立性
+### 规则 6：一次只生成一个 skill
 
-**定义**：Phase 5 的每个子任务（子代理 + skill-creator）必须完全独立，不依赖其它并行任务的产出。
+**定义**：生成 skill 同一时刻只允许 1 个。两条路径不要并行、不要混在同一回合。
+
+1. **模块 skill（粘贴 `/goal`）**：按 `MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md`。勾选后落 `.castflow-runtime/_skill-gen-queue/`，一次只读一张 `status: pending` 卡，写完 validate/sync 后标 `done`，清上下文，再读下一张。全部完成后删除该目录。
+2. **architect / debug / profiler（GUI JSON 队列或 `castflow generate skills`）**：只处理队列第一项 queued，写完即停。下一轮再取下一项。
 
 **检查清单**：
-- [ ] 每个子任务是否只产出一个 skill 根目录？（如 architect 只动 `.claude/skills/architect-skill/`，不覆盖其它 skill）
-- [ ] 各子任务是否不依赖其它子任务输出目录中的内容？
-- [ ] 多个子任务之间是否无强顺序依赖？
-- [ ] 单个子任务失败是否不阻断其它子任务（若可并行）？
-
-**原因**：独立性是并行执行的前提。如果 agent 之间有依赖，就必须串行执行，失去并行优势。
+- [ ] 本回合是否只写一个 skill 根目录？
+- [ ] `/goal` 路径是否从 yaml 卡读，而不是凭记忆或 JSON catalog？
+- [ ] 是否禁止并行生成子代理？
 
 ---
 
@@ -106,8 +96,8 @@
 **定义**：启子代理时，**传给子代理的那一段话**里必须带齐信息，**不可**假设子代理能自动看到主会话全文。子代理将按手话用 **skill-creator** 执行；**具体产出文件名与结构不写在手话里**——以子代理**必读**的 `SKILL_ITERATION.md` 为准。
 
 **手话必含**（可一段写清）：
-- 任务、技术栈、代码根、**产出 skill 根目录**（如 `项目/.claude/skills/architect-skill/`，只到目录）
-- 必读：按 `SKILL_ITERATION` 必读栈开读；文件在 **harness** `.castflow/core/`、`.castflow/bootstrap-assets/` 等（装架后项目内有 `.claude/` 同步副本，以栈为准）
+- 任务、技术栈、代码根、**产出 skill 根目录**（如 `项目/.castflow-runtime/skills/architect-skill/`，只到目录）
+- 必读：`SKILL_ITERATION.md`。模块 skill 不要读域 README / `*.template.md`。architect/debug/profiler 的 YAML 召回句只取对应 `SKILL.template.md`
 - 语言（`{LANGUAGE}` 实值化）
 
 **检查清单**：
@@ -115,7 +105,7 @@
 - [ ] 必读是否按 `SKILL_ITERATION` 栈（harness `.castflow/...`）而非臆造路径？
 - [ ] 手话里**未**罗列四 md 文件名？
 - [ ] `{LANGUAGE}` 等占位符是否已换实值？
-- [ ] 子代理是否不依赖其它并行子任务的中间文件？
+- [ ] 是否只开了一个生成子代理，并等它结束后才开下一个？
 
 **原因**：子代理为独立上下文；自包含手话是 skill-creator 正确起动的输入。
 
@@ -123,22 +113,21 @@
 
 ### 规则 8：文件写入必须用 Write 工具（禁止 shell 管道）
 
-**定义**：所有 `bootstrap-output/content/**/*.md` 文件、`bootstrap-output/cf_manifest.json`、CLAUDE.md 草稿等的写入，必须使用 AI 内置的 Write/Edit 工具直接写入，**严禁使用 shell + python pipe / cat heredoc / echo 重定向 / cmd /c "type ..." 等任何形式的命令行写文件**。
+**定义**：skill 四角色文件、队列 yaml、CLAUDE.md 草稿等的写入，必须使用 AI 内置的 Write/Edit 工具直接写入，**严禁使用 shell + python pipe / cat heredoc / echo 重定向 / cmd /c "type ..." 等任何形式的命令行写文件**。
 
 **原因**：
 1. Cursor 对每个 shell 命令都会弹审批对话框，10 个 md 文件就要点 10 次审批，用户体验极差
 2. shell 写入存在编码、引号转义、换行符等多种坑，Write 工具无这些问题
 3. shell 写入的内容不在 Cursor 的 diff 视图中显示，用户无法预览
 
-**冷启动中推荐的 shell/装配调用**（须符合 Phase 4/6）：
-- `python .castflow/bootstrap.py`（Phase A 装架，拷核心与模板；**唯一**应在冷启动里为「装架」而跑的主命令；**无** `--skill` 等易混淆参数）
-- `python .castflow/bootstrap.py --validate`（验收）
-- 可选：`--claude-md-only` 或 `--templates-only` 仅做 Phase A 子步；project/模块 skill 由 Phase 5 子代理经 **skill-creator** 落盘
-- `mkdir ...`（仅在确需建目录时）
+**冷启动中推荐的 shell/装配调用**：
+- 装架走 GUI（`castflow.bat` / `manager.py launch`）。不要代跑 seed。
+- 写 skill 用 Write 工具落到 `.castflow-runtime/skills/<name>/`，再 `python .castflow/manager.py validate` 与 `sync`
+- 模块 skill 按 loop-engine 一次一个；不要并行子代理，不要写 `bootstrap-output/content/`
 
 **检查清单**：
-- [ ] 写 content/*.md 是否用了 Write 工具？
-- [ ] 写 cf_manifest.json 是否用了 Write 工具？
+- [ ] 写 `.castflow-runtime/skills/<name>/` 四角色文件是否用了 Write 工具？
+- [ ] 写 `_skill-gen-queue/` 是否用了 Write 工具？
 - [ ] 是否避免了 `python -c "open(...).write(...)"` 这种命令行写法？
 - [ ] 是否避免了 `cat <<EOF > file` 这种 heredoc 写法？
 
@@ -169,7 +158,13 @@
 
 **现象**：把每个子目录都识别为独立模块，导致生成大量碎片化的 skill 和 agent。
 
-**防护**：模块应该是有独立职责的顶层功能单元。子模块、工具类不应独立成 skill。建议 3-8 个模块为宜。
+**防护**：模块定义见 `.castflow/core/rules/module-catalog.md`。用户要求全库扫描时按功能归类，不要按每个子目录拆 skill。工具类不应独立成 skill。建议 3-8 个模块。
+
+### 陷阱 1b：把 AI 框架扫成模块
+
+**现象**：多选框里出现 CastFlow、installer、manager、hooks、bootstrap-skill、skill-creator、origin-evolve 等选项。
+
+**防护**：粗扫前先跳过 `CastFlow/` `.castflow/` `.castflow-runtime/` `.claude/` `.agents/` `.cursor/` `.grok/` 和根 `bootstrap-skill/`。框架 skill 已经装架，不要再生成 programmer skill。扫描范围只剩用户项目的业务脚本。
 
 ### 陷阱 2：命名规范检测不准
 
@@ -181,7 +176,7 @@
 
 **现象**：模板中的代码示例部分没有从项目中提取真实代码，只有占位注释。
 
-**防护**：Phase 5 经 skill-creator 产出的 `EXAMPLES.md`（名以 `SKILL_ITERATION` 为准）中，须用 Grep/Read 从项目拉至少 3 个真实代码示例。若无法提取，在示例中标注 TODO 并告知用户。
+**防护**：生成的 `EXAMPLES.md` 须用 Grep/Read 从该模块脚本拉真实代码。若无法提取，在示例中标注 TODO 并告知用户。不要读域 README 凑例子。
 
 ### 陷阱 4：核心文件更新时覆盖了项目定制
 

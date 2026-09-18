@@ -1,51 +1,13 @@
-# ITERATION_GUIDE - Debug-Skill 迭代指南
+# ITERATION_GUIDE - Debug-Skill
 
-## Skill 定位
-
-本Skill的核心职责：
-1. 系统地验证代码在边界场景下的正确性
-2. 提供结构化的边界检查清单
-3. 生成包含定位信息和修复建议的报告
-4. 支持多种检查深度（Deep/Focused/Quick）
-
-目标用户：需要做代码质量检查的开发者和AI助手
-
----
-
-## 迭代规则
+格式、体积、职责隔离见 SKILL_ITERATION.md，不要把那份表抄到这里。
 
 ### Rule 1：新检查项
-触发条件：发现新的边界条件类型需要加入清单
-优先级：High
-文件：SKILL.md（检查清单）
-检查清单：
-  - [ ] 新检查项是否有明确的判定标准
-  - [ ] 是否归入了正确的 Category
-  - [ ] EXAMPLES.md 中是否有对应示例
+
+触发：出现新的边界条件类型，且有明确判定标准。
+文件：SKILL.md 检查清单（归入正确 Category）；热路径场景补 EXAMPLES.md。
 
 ### Rule 2：项目特定检查
-触发条件：项目技术栈有特殊的边界条件需求
-优先级：Medium
-文件：SKILL.md（项目特定检查项）
-检查清单：
-  - [ ] 是否与通用检查项重复
-  - [ ] 是否有项目中的真实案例
 
-### Rule 3：SKILL_MEMORY 容量治理
-触发条件：SKILL_MEMORY.md 字数超过推荐范围（1500字），或 origin-evolve 提出新规则
-优先级：High
-文件：SKILL_MEMORY.md
-规范：遵循 SKILL_ITERATION.md 的 SKILL_MEMORY 容量治理规范（Append/Merge/Retire 操作）
-
----
-
-## 文件职责
-
-| 文件 | 何时修改 | 禁止内容 |
-|-----|--------|--------|
-| SKILL.md | 检查清单变化时 | 代码示例、规则定义 |
-| EXAMPLES.md | 新检查场景出现时 | 规则定义、日期 |
-| SKILL_MEMORY.md | 发现新约束时 | 日期、版本、过程记录 |
-| ITERATION_GUIDE.md | 定位变化时 | 日期、版本、检查记录 |
-
----
+触发：本仓库技术栈有通用清单盖不住的边界。
+文件：SKILL.md 项目特定段。与通用项重复则不写。

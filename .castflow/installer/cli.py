@@ -16,7 +16,7 @@ from .manifest import (
     get_manifest_path,
     resolve_manifest_path,
 )
-from .generate import generate_all, run_phase_a_subset, generate_agent
+from .generate import generate_all, run_phase_a_subset
 from .validate import validate_all
 
 
@@ -32,22 +32,11 @@ def main():
         "--dry-run", action="store_true",
         help="Preview operations without writing files",
     )
-    phase_a_group = parser.add_mutually_exclusive_group()
-    phase_a_group.add_argument(
+    parser.add_argument(
         "--claude-md-only", action="store_true",
         help=(
             "Phase A subset: merge project root CLAUDE.md only (no .claude/ core copy)."
         ),
-    )
-    phase_a_group.add_argument(
-        "--templates-only", action="store_true",
-        help=(
-            "Phase A subset: copy runtime templates to .claude/templates/ only."
-        ),
-    )
-    parser.add_argument(
-        "--agent", type=str, default=None,
-        help="Generate a programmer-agent for a module",
     )
     parser.add_argument(
         "--project-root", type=str, default=None,
@@ -146,22 +135,13 @@ def main():
 
     cleanup_legacy_bak(project_root, args.dry_run)
 
-    if args.agent:
-        print("\n=== Agent generation: programmer-{}-agent ===".format(args.agent))
-        generate_agent(project_root, manifest, args.agent, args.dry_run,
-                       backup_session)
-    elif args.claude_md_only:
+    if args.claude_md_only:
         run_phase_a_subset(
             project_root, manifest, "claude_md", args.dry_run, backup_session,
             harness_merge_choice=args.claude_md_harness,
         )
-    elif args.templates_only:
-        run_phase_a_subset(
-            project_root, manifest, "templates", args.dry_run, backup_session,
-            harness_merge_choice=args.claude_md_harness,
-        )
     else:
-        print("\n=== CastFlow scaffold (Phase A: .claude/ + CLAUDE.md + templates) ===")
+        print("\n=== CastFlow scaffold (Phase A: .claude/ + CLAUDE.md) ===")
         generate_all(
             project_root, manifest, args.dry_run, backup_session,
             harness_merge_choice=args.claude_md_harness,

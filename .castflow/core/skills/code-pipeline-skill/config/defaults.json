@@ -1,4 +1,0 @@
-{
-  "execution_steps": ["Step1", "Step3", "Step4", "Step5", "Step9"],
-  "context_retention": "Cleanup"
-}

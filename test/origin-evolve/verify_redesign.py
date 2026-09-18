@@ -121,13 +121,14 @@ def attribute(
     # Step 1: module-list resolution
     if len(proposal.modules) == 1:
         m = proposal.modules[0]
-        target_by_module = index.module_to_skill.get(m, ".claude/rules/")
+        target_by_module = index.module_to_skill.get(
+            m, ".castflow-runtime/rules/cross-cutting.md")
     else:
         parent = common_parent(proposal.modules)
         if parent and parent in index.parent_to_skill:
             target_by_module = index.parent_to_skill[parent]
         else:
-            target_by_module = ".claude/rules/"
+            target_by_module = ".castflow-runtime/rules/cross-cutting.md"
 
     # Step 2: anchor-evidence cross-check (excluding generic anchors)
     significant = proposal.anchors - GENERIC_ANCHORS
@@ -568,7 +569,8 @@ def main() -> int:
     print("  - Non-zero `avg_within_drift` confirms drift overlap exists and")
     print("    Step 1 will surface it for AI to merge in Step 2.")
     print("  - Non-zero cross-skill counts confirm shared-symbol risk exists")
-    print("    and Step 1 will flag it for the AI to route to .claude/rules/.")
+    print("    and Step 1 will flag it for the AI to route to "
+          ".castflow-runtime/rules/cross-cutting.md.")
     print("  - These are *signals for the AI*, not bugs in the spec.")
 
     print()

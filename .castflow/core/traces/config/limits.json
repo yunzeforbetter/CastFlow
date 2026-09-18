@@ -6,7 +6,7 @@
   "keep_recent_n": 20,
   "passive_trigger_threshold": 10,
   "passive_trigger_min_new": 5,
-  "pipeline_pending_expire_days": 7,
   "validated_uncertain_expire_days": 14,
-  "processed_expire_days": 30
+  "processed_expire_days": 30,
+  "waiting_expire_days": 21
 }

@@ -7,7 +7,7 @@
 | 配置 | `config/limits.json` | trace-flush 的压缩/通知/过期阈值（运行时可改，无需重启） |
 | 配置 | `config/hooks.config.json` | trace-collector 的 memory 目录匹配正则（适配 autoMemoryDirectory 重定向） |
 | 数据 | `trace.md` | hook 自动累积的 memory 快照账本，由 origin-evolve 消费 |
-| 状态 | `.trace_memory_snapshots` / `.trace_lock` / `.pending_pipeline_result.json` / `.trace_error.log` | hook 内部状态文件，不要手动编辑 |
+| 状态 | `.trace_memory_snapshots` / `.trace_lock` / `.trace_error.log` | hook 内部状态文件，不要手动编辑 |
 
 修改 `config/limits.json` 或 `config/hooks.config.json` 后立即生效。
 
@@ -16,16 +16,16 @@
 ## 机制概览
 
 ```
-模型写 auto-memory (~/.claude/projects/<slug>/memory/*.md)
+模型写 `.castflow-runtime/memory/*.md`（第一段 frontmatter）
    │  PostToolUse: Write/Edit
    ▼
-trace-collector: 命中 memory 路径 → 读全文 → type==user 排除 → 按 slug 留存 .trace_memory_snapshots
-   │  Stop
+trace-collector: 围栏解析 → 合法 type+name → quality → .trace_memory_snapshots（runtime 赢 inbound）
+   │  Stop（有 .trace_lock 则整段 no-op）
    ▼
-trace-flush: 有快照才写 trace.md（纯代码会话不产生条目）；快照以 <!-- MEMORY --> 子块嵌入
+trace-flush: 有快照才写 trace.md；MEMORY 子块带 skill/anchors/quality；gate_hint=任一 ok feedback
    │  git
    ▼
-origin-evolve: 从 <!-- MEMORY --> 快照蒸馏出 skill 规则
+origin-evolve: 从 <!-- MEMORY --> 蒸馏；eligible 不含 validated 授权
 ```
 
 **代码编辑不再采集。** 只有 `feedback`/`project`/`reference` 类型的 memory 被快照；`user` 类型（个人画像）被过滤，不进 git。
@@ -53,8 +53,7 @@ origin-evolve: 从 <!-- MEMORY --> 快照蒸馏出 skill 规则
 |------|--------|------|
 | `timestamp` | hook | trace 写入时刻（ISO8601 UTC） |
 | `type` | hook | 快照主导类型（`feedback` > `project` > `reference`） |
-| `validated` | hook | 用户/pipeline 验证信号：`_` / `true` / `false` / `pending-pipeline` / `invalid` |
-| `pipeline_run_id` | hook | code-pipeline 运行标记（可选） |
+| `validated` | hook | 用户验证信号：`_` / `true` / `false` / `invalid` |
 | `memory_snapshots` | hook | 嵌入的 MEMORY 子块数量 |
 
 ### MEMORY 子块
@@ -76,7 +75,6 @@ description: <memory 的 description>
 timestamp: 2026-07-03T13:00:00Z
 type: feedback
 validated: _
-pipeline_run_id: _
 memory_snapshots: 1
 <!-- MEMORY slug:observablelist-ordered-insert type:feedback -->
 description: ObservableList 有序插入必须用 Insert 不能用 Add
@@ -87,14 +85,6 @@ description: ObservableList 有序插入必须用 Insert 不能用 Add
 ```
 
 > 旧 schema:1-3 条目可能仍携带已退役字段（`score`/`modules`/`correction`/`mode`/`lesson` 等）。origin-evolve 读到时不报错，但不依赖它们；这些条目会随 compaction 龄期自然淘汰。
-
----
-
-## 复合组件 own 的 pending state
-
-- `.pending_pipeline_result.json` 属于 `code-pipeline` own 的 runtime state
-- 由 `trace-flush.py` 消费并回填 `validated` 字段
-- `result=GO-WITH-CAUTION` + `finalized=false` → 保留 `pending-pipeline` 直到最终 verdict
 
 ---
 
@@ -109,7 +99,6 @@ description: ObservableList 有序插入必须用 Insert 不能用 Add
 | `keep_recent_n` | 20 | Level 3 溢出时始终保留最近 N 条 |
 | `passive_trigger_threshold` | 10 | pending 条目达到此值允许通知 |
 | `passive_trigger_min_new` | 5 | 距上次通知后新增数达到此值才通知 |
-| `pipeline_pending_expire_days` | 7 | pending-pipeline 超时标记 invalid |
 | `validated_uncertain_expire_days` | 14 | validated:_ 超时标记 expired |
 | `processed_expire_days` | 30 | PROCESSED 审计行过期清理 |
 
