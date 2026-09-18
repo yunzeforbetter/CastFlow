@@ -3,8 +3,9 @@
 import os
 import re
 
-from .io_ops import read_file
-from .paths import CLAUDE
+def _read_file(path):
+    with open(path, "r", encoding="utf-8-sig") as f:
+        return f.read()
 
 EMOJI_CHARS = set(
     "\u274c\u2705\u2b50\U0001f4cb\U0001f534\U0001f7e1\U0001f7e2"
@@ -231,7 +232,7 @@ def validate_skill_dir(skill_path):
 
     file_contents = {}
     for fname in EXPECTED_MD:
-        file_contents[fname] = read_file(os.path.join(skill_path, fname))
+        file_contents[fname] = _read_file(os.path.join(skill_path, fname))
 
     skill_content = file_contents["SKILL.md"]
     if not ("name:" in skill_content[:500] and "description:" in skill_content[:500]):
@@ -282,7 +283,7 @@ def validate_skill_dir(skill_path):
 
 def _skills_roots(project_root):
     runtime = os.path.join(project_root, ".castflow-runtime", "skills")
-    mirrored = os.path.join(project_root, CLAUDE, "skills")
+    mirrored = os.path.join(project_root, ".claude", "skills")
     roots = []
     if os.path.isdir(runtime):
         roots.append(runtime)

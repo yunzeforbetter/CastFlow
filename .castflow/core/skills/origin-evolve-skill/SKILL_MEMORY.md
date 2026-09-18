@@ -17,7 +17,7 @@ Self-check: would the proposal still hold if you removed the cited evidence? If 
 ### Rule 2: Attribution Decision Tree
 
 **Target** (in priority order):
-1. Whitelisted `skill:` on the MEMORY subblock (runtime skill dir with SKILL.md, not origin-evolve-skill / skill-creator / bootstrap-skill) -> that skill
+1. Whitelisted `skill:` on the MEMORY subblock (runtime skill dir with SKILL.md, not origin-evolve-skill / skill-creator / goal-loop-creator) -> that skill
 2. Else anchors hit exactly one project skill's existing Anchors -> that skill
 3. Steps 1 and 2 both hit and disagree -> user pick (still a single skill write)
 4. Anchors hit two or more different project skills -> `.castflow-runtime/rules/cross-cutting.md`

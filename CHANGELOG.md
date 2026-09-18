@@ -79,6 +79,7 @@
 - `.castflow/core/skills/skill-forge/`。创建走 skill-creator；冷启动禁止评测环。
 - `.castflow/core/CLAUDE.template.md`、`.castflow/installer/placeholders.py`。
 - bootstrap CLI：`--skill`、`--strict-content`、Phase B。
+- `.castflow/bootstrap.py` 以及 installer 的 1.x Phase A 入口（`cli.py` / `generate.py` / `backup.py` / `manifest.py` / `hook_config.py` / `claude_merge.py` / `templates.py` / `io_ops.py` / `paths.py`）。校验只留 `installer/validate.py`，由 `manager.py validate` 调用。
 - 向 `.grok/skills` / `.cursor/skills` 写入 CastFlow skill。
 - `.castflow/bootstrap-assets/skill-templates/`（architect/debug/profiler 域模板）。召回句内联进 `SKILL_ITERATION.md`。
 - 顶层 `bootstrap-skill/`。冷启动只走 `castflow.bat` / `manager.py launch`。
@@ -96,7 +97,7 @@
 
 1. `git pull` 后在目标项目跑 `python .castflow-runtime/manager.py update-framework`（或 GUI 框架页）。框架源仍在 CastFlow 仓；项目只有 `.castflow-runtime/`。
 2. 项目 skill 正文应在 `.castflow-runtime/skills/`。若只存在于适配器树，先拷进 runtime 再 sync。
-3. 不要再调用 `code_pipeline` / `manager.py scan` / `bootstrap.py --skill`。
+3. 不要再调用 `code_pipeline` / `manager.py scan` / `bootstrap.py`。
 4. 纠正请写 `.castflow-runtime/memory/`（`type: feedback`），不要指望改代码行数触发进化。
 5. 旧 trace（schema 1–3）可留着，evolve 忽略退役字段，compaction 会自然淘汰骨架。
 6. 若曾提交 `.claude/skills` 等投影，下一次 sync 会从索引移除，工作树联接保留。

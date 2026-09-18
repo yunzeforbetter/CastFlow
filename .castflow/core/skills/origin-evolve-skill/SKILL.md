@@ -14,8 +14,8 @@ Trigger: `origin evolve` (or the same intent). Never run unprompted.
 
 ## Yield
 
-- Install / scan / UI -> **bootstrap-skill**
-- Create a new module skill -> **bootstrap-skill** (pasted `/goal` loop-engine prompt)
+- Install / UI -> `castflow.bat` / `manager.py launch` (not a skill)
+- Create a new module skill -> pasted `/goal` loop-engine prompt
 - Requirement to a runnable long task -> **goal-loop-creator**
 - Feature work in a module -> that **programmer-*-skill**
 

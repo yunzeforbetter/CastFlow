@@ -826,7 +826,7 @@ def sync(project_root, config=None, dry_run=False):
 
 
 def seed(project_root, dry_run=False):
-    """Minimal first-run: runtime layout + bootstrap-skill discovery + short rules."""
+    """Minimal first-run: runtime layout + core files + discovery projections."""
     from .config import save_config, load_config
     from .paths import (
         ensure_runtime_layout,

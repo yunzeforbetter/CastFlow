@@ -100,8 +100,9 @@ corresponding state and input fingerprint are updated.
 **User intent**: Run or resume a package that already has `RUN_PROMPT.md`.
 
 Do not rebuild. Point the user at `HANDOFF.md` and the current run pointer.
-Creating a module skill from a pasted `/goal` scan prompt is **bootstrap-skill**
-(loop engine), not this Skill. `castflow generate skills` is **skill-creator**.
+Creating a module skill from a pasted `/goal` scan prompt follows
+`MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md`, not this Skill.
+`castflow generate skills` is **skill-creator**.
 
 **Project reference**: `.castflow/core/skills/skill-creator/SKILL.md`
 

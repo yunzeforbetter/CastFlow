@@ -104,9 +104,9 @@ Skill 不会每次全量入上下文。按 **T1-PREPARE / T2-EXECUTE / T3-FEEDBA
 
 ### 3. 按模块 skill 工作
 
-跨模块需求直接调用已生成的 `programmer-<id>-skill`（以及 architect / debug / profiler）。`code-pipeline-skill` 已退役。
+跨模块需求直接调用已生成的 `programmer-<id>-skill`。需要架构边界、排障或热路径时再点名 `architect-skill` / `debug-skill` / `profiler-skill`（向导不再勾选这三类）。`code-pipeline-skill` 已退役。
 
-生成纪律：勾选后把短卡落到 `.castflow-runtime/_skill-gen-queue/`，一次只写一个 programmer skill，validate/sync 成功后标 `done` 再清上下文。并行生成会把上下文挤薄。architect / debug / profiler 走 GUI JSON 队列，同样一次一个。
+生成纪律：勾选扫描后把短卡落到 `.castflow-runtime/_skill-gen-queue/`，一次只写一个 programmer skill，validate/sync 成功后标 `done` 再清上下文。并行生成会把上下文挤薄。增量同样走 loop-engine，或对 AI 说 `castflow generate skills`（skill-creator 一次写一个然后停）。
 
 ### 4. 自我进化：零额外动作采集 + 人在回路
 
@@ -130,16 +130,13 @@ CastFlow/
 ├── castflow.bat                           # Windows 冷启动：文件夹选择器 + GUI
 │
 ├── .castflow/                             # 框架源码（装架后休眠，随 git pull 更新）
-│   ├── bootstrap.py                       # 薄包装，委托 installer/（高级 / 兼容入口）
 │   ├── manager.py                         # 【主入口】launch / setup / seed / sync / skills …
 │   ├── manager/                           # 冷启动、投影、队列、进化开关、stdlib HTTP 控制台
 │   │   ├── cli.py / setup.py / adapters.py / skills.py / catalog.py
 │   │   ├── evolution.py / queue.py / config.py / paths.py / pick_dir.py
+│   │   ├── bundle.py                      # seed：manager/installer → runtime，并写项目 castflow.bat
 │   │   └── ui/server.py + static/index.html
-│   ├── installer/                         # 装架引擎（纯 Python 3.6+，零依赖）
-│   │   ├── cli.py / paths.py / backup.py / io_ops.py / templates.py
-│   │   ├── hook_config.py / claude_merge.py / validate.py
-│   │   ├── manifest.py / generate.py
+│   ├── installer/                         # validate.py；随 seed 拷进 runtime
 │   └── core/                              # 被 seed 同步进 runtime 的核心
 │       ├── skills/
 │       │   ├── GLOBAL_SKILL_MEMORY.md     # T1 运行时三协议
@@ -164,7 +161,7 @@ CastFlow/
     ├── run_all.py
     ├── manager/                           # seed/sync/retire、gitignore、向导
     ├── hooks/                             # 快照采集、homology、compaction、365 天
-    ├── bootstrap/                         # installer 单元测试
+    ├── bootstrap/                         # validate.py 四件套形状（test_validate.py）
     ├── skills/                            # GLOBAL_SKILL_MEMORY 契约
     └── origin-evolve/                     # 规范确定性暴力验证
 ```
@@ -174,21 +171,23 @@ CastFlow/
 ```
 项目根目录/
 ├── CLAUDE.md / AGENTS.md                  # 框架段（ROOT_RULES）+ 项目段
-├── castflow.bat                           # 打开 runtime 管理器
+├── castflow.bat                           # 打开 runtime 管理器（seed 写入，不是框架仓那份）
 ├── .castflow-runtime/                     # 项目里唯一的 CastFlow 目录
-│   ├── manager.py / manager/ / installer/ # 控制台、sync、validate
-│   ├── hooks/                             # trace-collector / trace-flush
+│   ├── manager.py / manager/ / installer/ # 控制台、sync、validate（bundle 从框架拷入）
+│   ├── hooks/                             # trace-collector / trace-flush / _homology
 │   ├── skills/                            # 【真源】全量 skill 清单（可提交）
 │   ├── memory/                            # 跨工具 feedback / project / reference
 │   ├── traces/                            # trace.md 账本 + config
 │   ├── protocols/ / rules/                # 含 module-catalog.md
-│   ├── templates/ROOT_RULES.template.md
+│   ├── templates/ROOT_RULES.template.md   # 扁平拷贝（源在 core/templates/root/）
 │   ├── config.json                        # 适配器、进化开关
-│   └── skills-disabled.json               # 本机停用名单（gitignore，不进仓库）
+│   ├── skills-disabled.json               # 本机停用名单（gitignore，不进仓库）
+│   └── _skill-gen-queue/                  # 勾选扫描后 AI 落的短卡（生成完删除）
 ├── .claude/skills/                        # 发现镜像（gitignore，勿手改）
 ├── .agents/skills/                        # Codex 发现镜像（gitignore）
 ├── .claude/settings.json                  # Claude hook（增量合并）
 ├── .cursor/hooks.json                     # Cursor hook（无 .cursor/skills 树）
+├── .grok/hooks/castflow.json              # Grok hook（无 .grok/skills 树）
 └── CastFlow/                              # 可选：submodule；也可放在工程外（框架源，不是项目真源）
 ```
 
@@ -224,7 +223,7 @@ CastFlow\castflow.bat
 
 ### 步骤 3 — 为模块生成 Skill
 
-冷启动勾选并粘贴 `/goal` 后：AI 按逻辑功能划分 → 宿主多选 → 短卡进 `_skill-gen-queue/` → 一次写一个 `programmer-*-skill`。architect / debug / profiler 之后用 `castflow generate skills`（JSON 队列一次一个）。禁止并行。规则见 `SKILL_ITERATION.md`。写入 runtime，再 sync。
+冷启动勾选并粘贴 `/goal` 后：AI 按逻辑功能划分 → 宿主多选 → 短卡进 `_skill-gen-queue/` → 一次写一个 `programmer-*-skill`。禁止并行。规则见 `SKILL_ITERATION.md`。写入 runtime，再 sync。需要 architect / debug / profiler 时再点名生成（YAML 召回句在 `SKILL_ITERATION.md`），不要等向导列出它们。
 
 日常增量：
 
@@ -279,29 +278,19 @@ python .castflow-runtime/manager.py update-framework
 | `cli.py` | launch / setup / unseed / seed / sync / skills / retire / activate / update / evolve / queue / handoff / flush / homology / validate / status / update-framework / ui |
 | `setup.py` | 向导与无界面冷启动；文件夹选择器；工厂仓拒绝 seed |
 | `adapters.py` | runtime ↔ `.claude/skills` + `.agents/skills`；gitignore 托管；清兼容残留 |
-| `skills.py` | 清单、退役状态、从源刷新 |
-| `catalog.py` / `queue.py` | 模块表与生成队列 |
+| `skills.py` | 清单、本机停用（`skills-disabled.json`）、从源刷新 |
+| `bundle.py` | seed 把 `manager.py` / `manager/` / `installer/` 拷进 runtime，并写项目根 `castflow.bat` |
+| `catalog.py` / `queue.py` | 控制台队列状态；模块发现主路径是 AI 的 `_skill-gen-queue/`，不是 Python 扫描 |
 | `evolution.py` | 进化开关：卸 hook 与 origin-evolve 投影 |
 | `ui/` | stdlib HTTP 控制台（`127.0.0.1`） |
 
-### `.castflow/installer/` — 装架引擎（高级）
+### `.castflow/installer/` — 随 seed 拷进 runtime（validate）
 
-`bootstrap.py` 是薄包装。日常请走 manager。installer 仍负责 CLAUDE.md 三策略合并、BackupSession、`validate` 实现。
+只剩 `validate.py`。`manager.py validate` 调它。1.x 的 `bootstrap.py` / Phase A / manifest / `.claude/.backups` 已删除。
 
 | 模块 | 作用 |
 |------|------|
-| `cli.py` | `--claude-md-only` / `--init-manifest` / `--language` / `--claude-md-harness` 1/2/3 / `--project-root` / 备份开关 |
-| `paths.py` | 项目根与 harness 解耦（submodule 任意深度） |
-| `backup.py` | `.claude/.backups/<timestamp>/`，LRU 默认 3 次 |
-| `io_ops.py` | `safe_write` / `safe_copy_file` / `safe_copy_dir` |
-| `templates.py` | `{{PLACEHOLDER}}` + `<!-- if:tech -->` |
-| `hook_config.py` | Cursor / Claude hook 幂等合并 |
-| `claude_merge.py` | 1=换模板 / 2=保留 / 3=增量（非 TTY 默认 3） |
 | `validate.py` | 无 emoji / 无日期 / 无残留 `{{` `}}` / description 形状 / 字数 warning |
-| `manifest.py` | `bootstrap-output/cf_manifest.json` |
-| `generate.py` | Phase A：核心文件 + 根规则（**不**写项目 skill 正文） |
-
-已移除：`--skill`、`--templates-only`、`--agent`、`--strict-content`、Phase B。
 
 ### `.castflow/core/` — seed 进 runtime 的内容
 
@@ -422,7 +411,7 @@ Step 5 写入 runtime + PROCESSED 行 + sync；finally 丢锁
 |--------|------|
 | 冷启动 | 双击 `castflow.bat` |
 | 粘贴的 `/goal` 扫描提示词 | 按 loop-engine：programmer-*，一次一个 |
-| `castflow generate skills` | architect/debug/profiler：JSON 队列写一个然后停 |
+| `castflow generate skills` | skill-creator：一次写一个（队列项 / programmer / 点名的 architect·debug·profiler）然后停 |
 | 生成 loop / `/goal` 长任务 / 需求转长任务 | **goal-loop-creator**：编译 Goal Loop Package，不执行 `/goal` |
 | `origin evolve` | 蒸馏 trace（进化开启时） |
 
@@ -450,22 +439,6 @@ python .castflow-runtime/manager.py flush              # 无 Stop hook 时手动
 python .castflow-runtime/manager.py homology           # stdin JSON → 连通分量
 python .castflow-runtime/manager.py validate
 python .castflow-runtime/manager.py status
-```
-
-### bootstrap.py（高级）
-
-```bash
-python .castflow/bootstrap.py                  # Phase A
-python .castflow/bootstrap.py --dry-run
-python .castflow/bootstrap.py --validate
-python .castflow/bootstrap.py --claude-md-only
-python .castflow/bootstrap.py --project-root /path
-python .castflow/bootstrap.py --claude-md-harness 3
-python .castflow/bootstrap.py --init-manifest --language zh
-python .castflow/bootstrap.py --no-backup
-python .castflow/bootstrap.py --backup-keep 5
-python .castflow/bootstrap.py --clean-backups
-
 python .castflow/core/hooks/trace-flush.py --selftest
 ```
 
@@ -495,15 +468,11 @@ cd CastFlow && git pull
 python .castflow-runtime/manager.py update-framework
 ```
 
-覆盖已有文件前，`merge_mode: full` 会把原件拷到：
+只刷新框架 skill 与核心文件（hooks、根规则模板、`SKILL_ITERATION` 等），**不覆盖** `programmer-*-skill` 等项目 skill。`CLAUDE.md` 项目段完全保留。
 
-```
-.claude/.backups/<YYYY-MM-DD_HH-MM-SS>/
-```
+`update-framework` **不会**写入 `.claude/.backups/`（1.x 安装器已删除）。
 
-保留相对路径，回滚用 `robocopy` / `rsync` 拷回。默认最近 3 次。首次用新版会清理旧 `.bak` 散文件，并把 `.backups/` 写入 `.claude/.gitignore`。
-
-装架级回退：GUI「回退并重新冷启动」或 `manager.py unseed`（不删工程源码）。
+装架级回退：GUI「回退并重新冷启动」或 `python .castflow-runtime/manager.py unseed`（卸 runtime、投影、项目里的 `castflow.bat`，不删工程源码）。然后重新双击框架仓的 `castflow.bat`。
 
 ---
 
@@ -520,7 +489,8 @@ py -m unittest discover -s test -p "test_*.py" -t .
 py test/hooks/test_evolution.py
 py test/hooks/test_homology.py
 py test/hooks/test_365day_simulation.py --keep-data
-py test/bootstrap/test_bootstrap.py
+py test/bootstrap/test_validate.py
+py test/manager/test_setup.py
 py test/origin-evolve/verify_redesign.py
 
 # macOS / Linux：py 换成 python3

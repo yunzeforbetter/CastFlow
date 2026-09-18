@@ -233,8 +233,8 @@ def restore(project_root, name):
 def update_skill(project_root, name):
     """Refresh a named skill from its source of truth into the runtime store.
 
-    Core skills come from CastFlow harness core; bootstrap-skill from the
-    top-level bootstrap-skill pack; project skills already live in runtime.
+    Core skills come from CastFlow harness core; project skills already live
+    in runtime.
     """
     if not name or not str(name).strip():
         return {"ok": False, "error": "missing skill name"}

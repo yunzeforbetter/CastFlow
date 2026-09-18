@@ -277,6 +277,11 @@ class TestHarnessDropsProvenDeadFiles(unittest.TestCase):
             harness, "core", "CLAUDE.template.md")))
         self.assertFalse(os.path.isfile(os.path.join(
             harness, "installer", "placeholders.py")))
+        self.assertFalse(os.path.isfile(os.path.join(harness, "bootstrap.py")))
+        self.assertFalse(os.path.isfile(os.path.join(
+            harness, "installer", "cli.py")))
+        self.assertFalse(os.path.isfile(os.path.join(
+            harness, "installer", "generate.py")))
         text = adapters._render_root_rules(True)
         self.assertIn("ROOT_RULES.template.md", text)
         self.assertIn(".castflow-runtime/skills/", text)
@@ -286,13 +291,6 @@ class TestHarnessDropsProvenDeadFiles(unittest.TestCase):
         for cmd in ("launch", "seed", "sync", "validate", "ui"):
             self.assertIn("manager.py " + cmd, USAGE)
         self.assertNotIn("manager.py scan", USAGE)
-
-    def test_bootstrap_wrapper_does_not_advertise_scan(self):
-        path = os.path.join(find_harness_dir(), "bootstrap.py")
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        self.assertNotIn("manager.py scan", text)
-        self.assertIn("manager.py launch", text)
 
 
 class TestSkillRecallDescriptions(unittest.TestCase):
@@ -335,20 +333,16 @@ class TestSkillRecallDescriptions(unittest.TestCase):
         self.assertNotIn("skill-forge", creator)
         self.assertIn("castflow generate skills", creator.lower())
 
-    def test_templates(self):
+    def test_no_removed_template_trees(self):
         iteration = self._read(
             ".castflow", "core", "skills", "SKILL_ITERATION.md")
         self.assertIn("Use when the user names", iteration)
         self.assertIn("NOT other programmer-*-skill", iteration)
         self.assertNotIn("programmer.template", iteration)
         self.assertNotIn("bootstrap-assets", iteration)
-        self.assertIn("architect-skill", iteration)
-        self.assertIn("which layer a change belongs in", iteration)
-        self.assertIn("null, race, or crash", iteration)
-        self.assertIn("hot path is slow", iteration)
-        assets = os.path.join(
-            self.ROOT, ".castflow", "bootstrap-assets")
-        self.assertFalse(os.path.isdir(assets), assets)
+        self.assertFalse(os.path.isdir(os.path.join(
+            self.ROOT, ".castflow", "bootstrap-assets")))
+        self.assertFalse(os.path.isdir(os.path.join(self.ROOT, "bootstrap-skill")))
 
 
 class TestSkillIterationMetaSpec(unittest.TestCase):
