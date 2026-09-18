@@ -24,6 +24,7 @@ CORE_FILE_COPIES = [
 CORE_DIR_COPIES = [
     ("core/skills/skill-creator", "skills/skill-creator"),
     ("core/skills/origin-evolve-skill", "skills/origin-evolve-skill"),
+    ("core/skills/goal-loop-creator", "skills/goal-loop-creator"),
     ("core/hooks", "hooks"),
 ]
 

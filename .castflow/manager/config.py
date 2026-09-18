@@ -17,11 +17,6 @@ DEFAULT_CONFIG = {
         "codex": True,
         "cursor": True,
     },
-    "optional_skills": {
-        "architect": True,
-        "debug": False,
-        "profiler": False,
-    },
     "generate_skills": False,
     "generate_prompt": "",
     "inbound_memory": {

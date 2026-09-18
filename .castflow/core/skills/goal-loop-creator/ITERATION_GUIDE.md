@@ -11,11 +11,13 @@
 
 ## Positioning
 
-This Skill compiles user-aligned requirements into a resumable Goal Loop
-Package. It serves users who need a multi-step task with durable state,
-explicit boundaries, and observable acceptance. It does not replace the
-external goal runner, skill-creator, or a host scheduler. It is an independent
-builder: it authors `RUN_PROMPT.md` and does not wrap another skill.
+This Skill is CastFlow's **long-task conversion system**. It compiles
+user-aligned requirements into a resumable Goal Loop Package that an
+external runner can execute under loop-engine ideas: one-pass 系统功能,
+not a phase-gated skeleton. The builder interviews unclear docs and data
+until mastery and encodes 边界处理. It does not replace the external goal
+runner, skill-creator, or a host scheduler. It authors `RUN_PROMPT.md`
+and does not wrap another skill.
 
 ## Iteration rules
 
@@ -69,22 +71,26 @@ Checks:
 - Keep `/goal` invocation text in the handoff, not in the runner logic.
 - Provide a serial or manual fallback when it is safe; otherwise block.
 
-### Rule 4: Keep the runner prompt small
+### Rule 4: Keep generated runner-facing text dense
 
-Trigger: the prompt starts repeating schemas, project context, asset contents,
-or phase instructions that belong in package files.
+Trigger: the always-read bundle dumps enums, protocols, skill bodies, schema
+copies, or 1:1 REQUIREMENTS/ACCEPTANCE clones; or the package tells the
+runner to halt after one phase without delivering the named 系统功能.
 
-Priority: Medium.
+Priority: High.
 
-File: `SKILL.md` and `EXAMPLES.md` for loading guidance; `SKILL_MEMORY.md` for
-the prompt-bloat trap.
+File: `SKILL.md` for work-order sections and load policy; `EXAMPLES.md` for
+good-vs-bad package shape; `SKILL_MEMORY.md` for Rule 7, Pitfall 2, and
+Pitfall 6.
 
 Checks:
 
-- Move stable detail to a referenced package file.
-- Keep the runner's read, act, verify, checkpoint, and stop contract intact.
-- Confirm that a fresh runner can locate every required reference.
+- `RUN_PROMPT.md` is the only always-read contract; satellites load on demand.
+- Do not refill context by moving dumps into always-read GOAL/CONTEXT/YAML.
+- Required images have a 必读 path; missing is a blocker, not optional OSS.
+- Do not emit a phase-gated skeleton.
 - Do not import another skill file as the runner prompt.
+- A thin feature list is a seed, not the quality bar.
 
 ## File responsibilities
 
@@ -108,6 +114,14 @@ Checks:
 5. Host honesty: the package never claims an unavailable capability or an
    unperformed check.
 6. Independence: `RUN_PROMPT.md` is authored by this Skill.
+7. One-pass delivery: runner `DONE` requires the named 系统功能 with
+   evidence; a gap list is not success.
+8. Density: always-read text leaves model capacity for code; no architecture
+   dumps. Required labeled screens are must-read.
+9. Interview mastery: unclear docs/data stay `open` until answered; the
+   builder keeps asking across turns; `READY` is blocked while they remain.
+10. 边界 coverage: every listed edge has a 处理方案 and a matching 验收
+    scene; happy-path-only 验收 fails.
 
 ## Maintenance procedure
 

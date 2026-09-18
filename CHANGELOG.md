@@ -43,18 +43,18 @@
 
 - **管理器与 GUI**：`.castflow/manager.py` + `manager/`。`launch` / `setup` / `unseed` / `update-framework` / `seed` / `sync` / `skills` / `retire` / `activate` / `update` / `evolve` / `queue` / `handoff` / `flush` / `homology` / `validate` / `status` / `ui`。stdlib HTTP 控制台：未装架四步向导，装架后「框架 / Skills / 队列」。
 - **`castflow.bat`**：纯 ASCII（避免 cmd.exe 代码页拆中文）；文件夹选择器；CastFlow 不必住在工程里；跨盘 hook 写绝对路径。
-- **`.castflow-runtime/`**：skill / memory / traces / protocols / config 的项目侧真源。`skills-state.json` 记住退役，后续 sync 遵守且不复活。
+- **`.castflow-runtime/`**：目标项目里唯一的 CastFlow 目录。skill / memory / traces / protocols / config 真源，加上 hooks、manager、`module-catalog.md`。不再 vendor 一份 `.castflow/`。`skills-state.json` 记住退役，后续 sync 遵守且不复活。
 - **模块 skill loop-engine**：`MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md` + `rules/module-catalog.md`。勾选后默认提示词一行：`/goal 读取并按照 …MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md 执行`。
-- **`unseed`**：卸 runtime 与投影，不删工程源码，不删仓库里的 `.castflow/`。
+- **`unseed`**：卸 runtime 与投影（含项目里的 manager），不删工程源码。CastFlow 仓的 `.castflow/` 不动。
 - **homology**：`core/hooks/_homology.py` 与 `manager.py homology`（stdin JSON → 连通分量）。
-- **`goal-loop-creator`**：可移植 Goal Loop 包的作者 skill（INTAKE→HANDOFF），产物在 `loop-engine/packages/`，不进 skill 真源。
+- **`goal-loop-creator` 升为核心 skill（长任务转换系统）**：冷启动自动 seed 并在向导/Skills 页标注。把需求编译成 AI 可跑的 loop-engine 长任务包（Goal Loop Package，INTAKE→HANDOFF）。产物在 `loop-engine/packages/`，不进 skill 真源，不执行 `/goal`。
 - **投影 gitignore**：sync 在项目根写入稳定块，忽略 `.claude/skills/` `.agents/skills/` `.grok/skills/` `.cursor/skills/` 整目录；已跟踪路径 `git rm --cached`。
 - **工厂仓保护**：对 CastFlow 仓库本身 seed/sync/setup 拒绝，并删除误留的 runtime / 适配器树 / 根 CLAUDE.md。
 - **description 形状检查**：`validate.py` 限制长度（programmer 280 / 其它 240）、`NOT` 最多一次、拒绝 `when-to-use` 等额外 YAML 键、拒绝 pushy 扩词。
 
 ### Changed
 
-- **冷启动主路径** = GUI（拷文件），不是 bootstrap-skill 代跑。bootstrap-skill 只交接。
+- **冷启动主路径** = GUI（拷文件）。`bootstrap-skill` 已删除；下次 sync / 打开 manager 会清掉已装项目残留。
 - **Skill 发现**只投影 Claude + Codex。Grok/Cursor 扫这两处；sync 清掉 `.grok/skills` / `.cursor/skills` 里的 CastFlow 副本。Hook JSON 与 evolve-reminder 仍按适配器开关写。
 - **模块发现**改为会话内 AI 流程（粗扫 → 多选必须停 → 落卡 → 一次一个）。GUI 不再列出脚本扫描结果。
 - **日常工作**改为直接调用模块 skill。生成写入 runtime，禁止写适配器镜像。
@@ -66,6 +66,8 @@
 - **根规则**只从 `ROOT_RULES.template.md` 注入 `CLAUDE.md` / `AGENTS.md`。
 - **控制台**：未装架只显示向导；装架后三页。框架页「从 CastFlow 源更新并同步」= `update-framework`。
 - **测试布局**：hooks 测试在 `test/hooks/`；新增 `test/manager/`、`test/hooks/test_homology.py`、`test/skills/`；入口 `test/run_all.py`。
+- **目标项目只留 `.castflow-runtime/`**：冷启动把 manager、hooks、`module-catalog.md`、ROOT_RULES 模板写入 runtime，不再 vendor `.castflow/`。项目命令是 `python .castflow-runtime/manager.py`。
+- **Skill 停用是本机名单**：`.castflow-runtime/skills-disabled.json`（gitignore）。未列入则激活。打开 manager 自动刷新投影。
 
 ### Removed
 
@@ -78,6 +80,8 @@
 - `.castflow/core/CLAUDE.template.md`、`.castflow/installer/placeholders.py`。
 - bootstrap CLI：`--skill`、`--strict-content`、Phase B。
 - 向 `.grok/skills` / `.cursor/skills` 写入 CastFlow skill。
+- `.castflow/bootstrap-assets/skill-templates/`（architect/debug/profiler 域模板）。召回句内联进 `SKILL_ITERATION.md`。
+- 顶层 `bootstrap-skill/`。冷启动只走 `castflow.bat` / `manager.py launch`。
 
 ### Fixed
 
@@ -90,7 +94,7 @@
 
 ### 升级注意（1.x → 2.0）
 
-1. `git pull` 后在目标项目跑 `python .castflow/manager.py update-framework`（或 GUI 框架页）。
+1. `git pull` 后在目标项目跑 `python .castflow-runtime/manager.py update-framework`（或 GUI 框架页）。框架源仍在 CastFlow 仓；项目只有 `.castflow-runtime/`。
 2. 项目 skill 正文应在 `.castflow-runtime/skills/`。若只存在于适配器树，先拷进 runtime 再 sync。
 3. 不要再调用 `code_pipeline` / `manager.py scan` / `bootstrap.py --skill`。
 4. 纠正请写 `.castflow-runtime/memory/`（`type: feedback`），不要指望改代码行数触发进化。

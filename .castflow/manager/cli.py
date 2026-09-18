@@ -20,10 +20,11 @@ USAGE = """
 CastFlow manager
 
   castflow.bat                          # Windows: guided cold-start wizard
-  python .castflow/manager.py launch    # same GUI (any OS)
+  python .castflow/manager.py launch    # CastFlow checkout: same GUI (any OS)
+  python .castflow-runtime/manager.py   # seeded project: ui / sync / validate / ...
   python .castflow/manager.py setup     # headless: config + seed + sync
   python .castflow/manager.py unseed    # remove runtime/projections; wizard can run again
-  python .castflow/manager.py seed      # runtime + bootstrap-skill on Claude/.agents discovery paths
+  python .castflow/manager.py seed      # runtime + core skills on Claude/.agents discovery paths
   python .castflow/manager.py ui        # visual console (127.0.0.1)
   python .castflow/manager.py skills    # list inventoried runtime skills
   python .castflow/manager.py retire NAME
@@ -54,7 +55,7 @@ def cmd_seed(project_root, args):
         print(exc)
         return 2
     print("Runtime: {}".format(runtime_dir(project_root)))
-    print("Seed complete. Next: python .castflow/manager.py ui")
+    print("Seed complete. Next: python .castflow-runtime/manager.py ui")
     if args.verbose:
         _print_json(report)
     return 0
@@ -76,10 +77,12 @@ def cmd_skills(project_root, args):
     if not items:
         print("No skills in runtime store. Run: python .castflow/manager.py seed")
         return 0
-    print("{:28} {:12} {}".format("NAME", "KIND", "STATUS"))
+    print("{:28} {:12} {:8} {}".format("NAME", "KIND", "STATUS", "ROLE"))
     for item in items:
         status = "retired" if item.get("retired") else "active"
-        print("{:28} {:12} {}".format(item["name"], item["kind"], status))
+        role = item.get("role") or ""
+        print("{:28} {:12} {:8} {}".format(
+            item["name"], item["kind"], status, role))
     print("{} skill(s)".format(len(items)))
     return 0
 
@@ -89,8 +92,8 @@ def cmd_retire(project_root, args):
     if not result.get("ok"):
         print("retire failed: {}".format(result.get("error") or "unknown error"))
         return 2
-    adapters.sync(project_root)
-    print("Retired {} and synced.".format(args.name))
+    adapters.refresh_projections(project_root)
+    print("Disabled {} on this machine and refreshed projections.".format(args.name))
     if args.verbose:
         _print_json(result)
     return 0
@@ -101,8 +104,8 @@ def cmd_activate(project_root, args):
     if not result.get("ok"):
         print("activate failed: {}".format(result.get("error") or "unknown error"))
         return 2
-    adapters.sync(project_root)
-    print("Activated {} and synced.".format(args.name))
+    adapters.refresh_projections(project_root)
+    print("Enabled {} on this machine and refreshed projections.".format(args.name))
     if args.verbose:
         _print_json(result)
     return 0
@@ -149,14 +152,15 @@ def cmd_handoff(project_root, args):
 
 def cmd_flush(project_root, args):
     import subprocess
-    from .paths import find_harness_dir
-    script = os.path.join(find_harness_dir(), "core", "hooks", "trace-flush.py")
+    from .paths import hooks_dir_for
+    script = os.path.join(hooks_dir_for(project_root), "trace-flush.py")
     return subprocess.call([sys.executable, script], cwd=project_root)
 
 
 def cmd_homology(project_root, args):
     """Batch homology CLI. Reads JSON items on stdin, prints clusters."""
-    hooks = os.path.join(find_harness_dir(), "core", "hooks")
+    from .paths import hooks_dir_for
+    hooks = hooks_dir_for(project_root)
     if hooks not in sys.path:
         sys.path.insert(0, hooks)
     import _homology

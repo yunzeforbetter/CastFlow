@@ -66,22 +66,22 @@ S2 未得到用户勾选结果前，禁止写 skill、禁止落队列文件、�
 |---|---|
 | AI 框架仓 | `CastFlow/`（submodule、嵌套拷贝、误把框架当项目根） |
 | 装架源 | `.castflow/`（installer、manager、core、hooks、templates） |
-| 运行时 skill | `.castflow-runtime/`（已有 bootstrap / skill-creator / origin-evolve 等） |
+| 运行时 | `.castflow-runtime/`（整棵忽略：skills、memory、traces、队列。不要按 skill 名列举） |
 | 宿主适配器 | `.claude/` `.agents/` `.cursor/` `.grok/` |
-| 框架入口 | 根目录 `bootstrap-skill/`、`castflow.bat` |
+| 框架入口 | 根目录 `castflow.bat` |
 | 依赖与生成物 | `Library/` `Temp/` `node_modules/` `vendor/` `.git/` `Packages/` 及同类生成物 |
 
-路径任一段是上表名字，整棵子树都不是扫描范围。不要为 `bootstrap-skill`、`skill-creator`、`origin-evolve-skill`、`goal-loop-creator`、`architect-skill`、`debug-skill`、`profiler-skill` 再生成 programmer skill。
+路径任一段是上表名字，整棵子树都不是扫描范围。`.castflow-runtime/` 里已经装好的 skill 不是模块，不要再为它们生成 `programmer-*-skill`。不要维护一份 skill 名排除名单。
 
 清单文件只看文件名，不把 JSON/YAML/TOML 资产当模块源码深读。HTML/CSS/Markdown/图片不是脚本。全部非脚本资产目录同样排除。
 
-模块划分合同见 `.castflow/core/rules/module-catalog.md`（装架后也可读 `.castflow-runtime` 下的副本）。优先 3-8 个可生成模块。
+模块划分合同见 `.castflow-runtime/rules/module-catalog.md`。优先 3-8 个可生成模块。
 
 ## S1 粗扫划分
 
 主代理自己扫。不要为了「角色隔离」冷启动一堆子代理。仓库极大时最多把脚本树切成 2-3 块并行看入口，汇总仍由主代理完成。S1 的有限并行只用于看入口，禁止在扫描阶段开始写 skill。
 
-先列项目根目录，认出并跳过 AI 框架树（`CastFlow/` `.castflow/` `.castflow-runtime/` `.claude/` `.agents/` `.cursor/` `.grok/` 以及根 `bootstrap-skill/`）。只在剩下的业务脚本树上继续。不要因为框架里有大量 `.py` 就把 installer / manager / hooks 当成项目模块。
+先列项目根目录，认出并跳过 AI 框架树（`CastFlow/` `.castflow/` `.castflow-runtime/` `.claude/` `.agents/` `.cursor/` `.grok/`）。只在剩下的业务脚本树上继续。不要因为框架里有大量 `.py` 就把 installer / manager / hooks 当成项目模块。
 
 再看包清单和脚本入口，识别语言与项目类型，再按**逻辑功能**归类，而不是一级目录。
 
@@ -198,8 +198,8 @@ suggested_skill: programmer-<id>-skill
 1. 列出 `.castflow-runtime/_skill-gen-queue/`。没有 pending 卡则进入 S5。
 2. 只打开编号最小的 `status: pending` 文件。不要打开其它卡，不要打开 `status: done` 的卡。
 3. 此时才读生成规范：
-   - `.castflow-runtime/skills/SKILL_ITERATION.md`（或框架源 `.castflow/core/skills/SKILL_ITERATION.md`）
-   - 入口 skill：`skill-creator` 的 **CastFlow catalog** 路径（四角色文件、禁止评测环）。只按 catalog 段写 description；禁止用 skill-creator 后文自由创作的 pushy 扩词和 Description Optimization。不要读 programmer 域模板。
+   - `.castflow-runtime/skills/SKILL_ITERATION.md`
+   - 入口 skill：`skill-creator` 的 **CastFlow catalog** 路径（四角色文件、禁止评测环）。只按 catalog 段写 description；禁止用 skill-creator 后文自由创作的 pushy 扩词和 Description Optimization。不要读域模板。
 4. 只为这一张卡生成一个 `programmer-<id>-skill`。侦察范围锁在该卡 `scope_paths` / `script_dirs` 内的脚本。禁止回头 Grep 全树，禁止再打开未选模块。
 5. 写入：
 
@@ -213,11 +213,11 @@ suggested_skill: programmer-<id>-skill
 
 禁止写入 `.claude/skills`、`.agents/skills`、`.grok/skills`、`.cursor/skills`。
 
-6. 这个 skill 写完后立刻 `python .castflow/manager.py validate`，通过后再 `python .castflow/manager.py sync`。validate 未通过：不要改 `status`，停下告诉用户。
+6. 这个 skill 写完后立刻 `python .castflow-runtime/manager.py validate`，通过后再 `python .castflow-runtime/manager.py sync`。validate 未通过：不要改 `status`，停下告诉用户。
 7. validate 与 sync 都成功后，只把该卡的 `status: pending` 改成 `status: done`。不要改其它字段，不要重写整张卡。
 8. 清上下文：丢掉刚写的四角色正文、该模块源码片段、`SKILL_ITERATION.md` 正文。保留队列目录路径。然后回到第 1 步。
 
-可选：为当前这一张卡开 **一个** 新子代理，手话只含该卡正文、代码根、产出目录、必读 `SKILL_ITERATION.md`。子代理不得假设能看到主会话扫描过程。必须等它写完、主代理完成 validate/sync/标记/清上下文之后，才允许开下一个。不要读域 README 或 `*.template.md`。没有子代理时主代理按同样节奏自己写。
+可选：为当前这一张卡开 **一个** 新子代理，手话只含该卡正文、代码根、产出目录、必读 `SKILL_ITERATION.md`。子代理不得假设能看到主会话扫描过程。必须等它写完、主代理完成 validate/sync/标记/清上下文之后，才允许开下一个。不要读 `*.template.md`。没有子代理时主代理按同样节奏自己写。
 
 聊天里最多一行状态，例如「正在写 programmer-<id>-skill（2/5）」。不要把卡内容或源码贴进主回复。
 
@@ -234,7 +234,7 @@ suggested_skill: programmer-<id>-skill
 
 全部卡都是 `status: done`，且对应 skill 已 validate、sync 之后：删除整个 `.castflow-runtime/_skill-gen-queue/` 目录（含所有 yaml）。不要留空目录，不要把队列文件拷进 skill 目录。
 
-然后停止。本流程只写 `programmer-*-skill`。architect / debug / profiler 若 GUI 勾了，等 S5 之后再走 GUI JSON 队列（`castflow generate skills` 一次一个）。禁止和本流程并行开子代理。
+然后停止。本流程只写 `programmer-*-skill`。禁止和本流程并行开子代理。
 
 ## 禁止
 

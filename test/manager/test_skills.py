@@ -31,7 +31,7 @@ _CASTFLOW = os.path.normpath(os.path.join(
 sys.path.insert(0, _CASTFLOW)
 
 from manager import adapters, config, skills
-from manager.paths import runtime_dir, bootstrap_skill_src
+from manager.paths import runtime_dir
 from manager.cli import main as manager_main
 from manager.ui.server import STATIC_DIR, _state, make_handler
 
@@ -93,25 +93,33 @@ class TestInventoryAfterSeed(TmpProject):
         self.assertTrue(os.path.isdir(runtime_skills))
         items = skills.inventory(self.root)
         names = set(i["name"] for i in items)
-        self.assertIn("bootstrap-skill", names)
+        self.assertNotIn("bootstrap-skill", names)
         self.assertIn("skill-creator", names)
         self.assertIn("origin-evolve-skill", names)
+        self.assertIn("goal-loop-creator", names)
         self.assertNotIn("skill-forge", names)
         by_name = dict((i["name"], i) for i in items)
-        self.assertEqual(by_name["bootstrap-skill"]["kind"], "bootstrap")
         self.assertEqual(by_name["skill-creator"]["kind"], "core")
+        self.assertEqual(by_name["goal-loop-creator"]["kind"], "core")
+        self.assertIn("长任务转换系统", by_name["goal-loop-creator"].get("role") or "")
+        self.assertTrue(os.path.isdir(os.path.join(
+            runtime_skills, "goal-loop-creator")))
         self.assertFalse(by_name["skill-creator"]["retired"])
-        self.assertTrue(os.path.isdir(os.path.join(runtime_skills, "bootstrap-skill")))
         self.assertTrue(os.path.isdir(os.path.join(runtime_skills, "skill-creator")))
         self.assertTrue(os.path.isfile(os.path.join(
             runtime_skills, "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md")))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "castflow.bat")))
         self.assertTrue(os.path.isfile(os.path.join(
-            self.root, ".castflow", "manager.py")))
+            runtime_dir(self.root), "manager.py")))
         self.assertTrue(os.path.isfile(os.path.join(
-            self.root, ".castflow", "manager", "ui", "static", "index.html")))
+            runtime_dir(self.root), "manager", "ui", "static", "index.html")))
+        self.assertTrue(os.path.isfile(os.path.join(
+            runtime_dir(self.root), "hooks", "trace-collector.py")))
+        self.assertTrue(os.path.isfile(os.path.join(
+            runtime_dir(self.root), "rules", "module-catalog.md")))
+        self.assertFalse(os.path.isdir(os.path.join(self.root, ".castflow")))
         bat = _read(os.path.join(self.root, "castflow.bat"))
-        self.assertIn(".castflow\\manager.py", bat)
+        self.assertIn(".castflow-runtime\\manager.py", bat)
         self.assertIn(" ui", bat)
 
 
@@ -140,7 +148,7 @@ class TestRetireSync(TmpProject):
                 "{} still has retired {}".format(key, name),
             )
             # Other skills still projected.
-            self.assertTrue(os.path.isdir(os.path.join(dest, "bootstrap-skill")))
+            self.assertTrue(os.path.isdir(os.path.join(dest, "goal-loop-creator")))
 
         adapters.sync(self.root)
         for key, dest in _enabled_discovery_dirs(self.root):
@@ -157,6 +165,38 @@ class TestRetireSync(TmpProject):
         adapters.sync(self.root)
         for key, dest in _enabled_discovery_dirs(self.root):
             _assert_skill_md_layout(self, os.path.join(dest, name))
+
+    def test_disable_list_is_local_file_and_new_skills_default_active(self):
+        self.assertEqual(manager_main(["--project-root", self.root, "seed"]), 0)
+        name = "skill-creator"
+        self.assertEqual(
+            manager_main(["--project-root", self.root, "retire", name]), 0)
+        disabled_path = os.path.join(
+            runtime_dir(self.root), "skills-disabled.json")
+        self.assertTrue(os.path.isfile(disabled_path))
+        data = json.loads(_read(disabled_path))
+        self.assertIn(name, data.get("disabled") or [])
+        self.assertFalse(os.path.isfile(os.path.join(
+            runtime_dir(self.root), "skills-state.json")))
+        gitignore = _read(os.path.join(self.root, ".gitignore"))
+        self.assertIn(".castflow-runtime/skills-disabled.json", gitignore)
+
+        new_name = "programmer-billing-skill"
+        _write(
+            os.path.join(runtime_dir(self.root), "skills", new_name, "SKILL.md"),
+            "---\nname: programmer-billing-skill\ndescription: "
+            "Change billing. Use when the user names billing. "
+            "NOT other programmer-*-skill.\n---\n\n# billing\n",
+        )
+        adapters.refresh_projections(self.root)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".claude", "skills", new_name, "SKILL.md")))
+        self.assertNotIn(new_name, skills.retired_names(self.root))
+
+        shutil.rmtree(os.path.join(runtime_dir(self.root), "skills", new_name))
+        adapters.refresh_projections(self.root)
+        self.assertFalse(os.path.isdir(os.path.join(
+            self.root, ".claude", "skills", new_name)))
 
     def test_retire_unknown_skill_fails(self):
         manager_main(["--project-root", self.root, "seed"])
@@ -217,9 +257,9 @@ class TestCursorAdapter(TmpProject):
     def test_cursor_and_grok_do_not_get_skill_trees(self):
         manager_main(["--project-root", self.root, "seed"])
         self.assertFalse(os.path.isdir(_compat_skill_path(
-            self.root, "cursor", "bootstrap-skill")))
+            self.root, "cursor", "skill-creator")))
         self.assertFalse(os.path.isdir(_compat_skill_path(
-            self.root, "grok", "bootstrap-skill")))
+            self.root, "grok", "skill-creator")))
         for key in adapters.SKILL_DISCOVERY_ADAPTERS:
             rel = adapters.ADAPTER_SKILL_DIRS[key]
             _assert_skill_md_layout(
@@ -239,7 +279,7 @@ class TestCursorAdapter(TmpProject):
         for key in adapters.SKILL_DISCOVERY_ADAPTERS:
             rel = adapters.ADAPTER_SKILL_DIRS[key]
             _assert_skill_md_layout(
-                self, os.path.join(other, rel, "bootstrap-skill"))
+                self, os.path.join(other, rel, "skill-creator"))
 
     def test_disabled_adapter_not_written(self):
         cfg = config.load_config(self.root)
@@ -265,14 +305,14 @@ class TestCliLaunch(TmpProject):
         rc = manager_main(["--project-root", self.root, "skills"])
         self.assertEqual(rc, 0)
 
-        rc = manager_main(["--project-root", self.root, "retire", "bootstrap-skill"])
+        rc = manager_main(["--project-root", self.root, "retire", "origin-evolve-skill"])
         self.assertEqual(rc, 0)
         rc = manager_main(["--project-root", self.root, "sync"])
         self.assertEqual(rc, 0)
         for key, dest in _enabled_discovery_dirs(self.root):
-            self.assertFalse(os.path.isdir(os.path.join(dest, "bootstrap-skill")))
+            self.assertFalse(os.path.isdir(os.path.join(dest, "origin-evolve-skill")))
         self.assertTrue(os.path.isdir(os.path.join(
-            runtime_dir(self.root), "skills", "bootstrap-skill")))
+            runtime_dir(self.root), "skills", "origin-evolve-skill")))
 
         rc = manager_main(["--project-root", self.root, "update", "skill-creator"])
         self.assertEqual(rc, 0)
@@ -306,14 +346,19 @@ class TestConsoleSurface(TmpProject):
         self.assertIn("doActivate", html)
         self.assertIn("doUpdate", html)
         self.assertIn("doSync", html)
-        self.assertIn("castflow.bat", html)
+        self.assertIn("skills-disabled.json", html)
+        self.assertIn("goal-loop-creator", html)
+        self.assertIn("长任务转换系统", html)
+        self.assertIn(".castflow-runtime/", html)
+        self.assertIn("含 manager / hooks", html)
+        self.assertNotIn("也不删项目里的", html)
 
     def test_state_includes_inventory(self):
         manager_main(["--project-root", self.root, "seed"])
         state = _state(self.root)
         names = [i["name"] for i in state["skills"]]
         self.assertIn("skill-creator", names)
-        self.assertIn("bootstrap-skill", names)
+        self.assertIn("goal-loop-creator", names)
         skills.retire(self.root, "skill-creator")
         state = _state(self.root)
         by_name = dict((i["name"], i) for i in state["skills"])
@@ -382,11 +427,12 @@ class TestConsoleHttp(TmpProject):
             self.root, ".cursor", "skills", "skill-creator")))
 
         status, state = self._json(
-            "POST", "/api/skills/update", {"name": "bootstrap-skill"})
+            "POST", "/api/skills/update", {"name": "goal-loop-creator"})
         self.assertEqual(status, 200)
-        src = os.path.join(bootstrap_skill_src(), "SKILL.md")
+        src = os.path.join(
+            _CASTFLOW, "core", "skills", "goal-loop-creator", "SKILL.md")
         dst = os.path.join(
-            runtime_dir(self.root), "skills", "bootstrap-skill", "SKILL.md")
+            runtime_dir(self.root), "skills", "goal-loop-creator", "SKILL.md")
         self.assertEqual(_read(dst), _read(src))
 
 
@@ -398,16 +444,16 @@ class TestOption4Projection(TmpProject):
         )
         for host in ("grok", "cursor"):
             path = os.path.join(
-                _compat_skill_path(self.root, host, "bootstrap-skill"), "SKILL.md")
+                _compat_skill_path(self.root, host, "skill-creator"), "SKILL.md")
             _write(path, leftover)
             self.assertTrue(os.path.isfile(path))
         adapters.sync(self.root)
         self.assertFalse(os.path.isdir(_compat_skill_path(
-            self.root, "grok", "bootstrap-skill")))
+            self.root, "grok", "skill-creator")))
         self.assertFalse(os.path.isdir(_compat_skill_path(
-            self.root, "cursor", "bootstrap-skill")))
+            self.root, "cursor", "skill-creator")))
         _assert_skill_md_layout(self, os.path.join(
-            self.root, ".claude", "skills", "bootstrap-skill"))
+            self.root, ".claude", "skills", "skill-creator"))
 
     def test_new_runtime_skill_reaches_claude_and_agents_only(self):
         manager_main(["--project-root", self.root, "seed"])

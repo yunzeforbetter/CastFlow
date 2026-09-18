@@ -1,8 +1,8 @@
-"""Runtime skill inventory, retire flags, and update-from-source.
+"""Runtime skill inventory, local disable flags, and update-from-source.
 
 Canonical store is `.castflow-runtime/skills/`. Adapter trees are mirrors.
-Retire never deletes the runtime copy; sync skips retired names and removes
-them from enabled adapter skill directories.
+Disable never deletes the runtime copy; projection skips disabled names.
+The disable list is local (gitignored). Skills not in that file are active.
 """
 
 from __future__ import print_function
@@ -12,27 +12,34 @@ import os
 import shutil
 
 from .paths import (
-    bootstrap_skill_src,
     ensure_runtime_layout,
     find_harness_dir,
+    resolve_factory_harness,
     runtime_dir,
     runtime_path,
 )
 
 STATE_VERSION = 1
 
-BOOTSTRAP_SKILL_NAME = "bootstrap-skill"
-
 # Seeded from harness `.castflow/core/skills/`.
 CORE_SKILL_DIRS = (
     "origin-evolve-skill",
     "skill-creator",
+    "goal-loop-creator",
 )
+
+# Shown in cold-start / Skills console. Keep short; hosts scan description too.
+CORE_SKILL_ROLES = {
+    "skill-creator": "catalog 四件套生成",
+    "origin-evolve-skill": "自我进化：把 memory 快照蒸馏成规则",
+    "goal-loop-creator": "长任务转换系统：把需求转成 AI 可跑的 loop-engine 长任务",
+}
 
 # Harness-level retire: never project, strip from runtime on sync.
 HARNESS_RETIRED_SKILL_NAMES = (
     "code-pipeline-skill",
     "skill-forge",
+    "bootstrap-skill",
 )
 
 
@@ -46,7 +53,10 @@ def _normalize_state(data):
         return state
     retired = []
     seen = set()
-    for name in data.get("retired") or []:
+    raw = data.get("disabled")
+    if raw is None:
+        raw = data.get("retired")
+    for name in raw or []:
         name = str(name).strip()
         if not name or name in seen:
             continue
@@ -72,11 +82,26 @@ def load_state(project_root):
 def save_state(project_root, state):
     ensure_runtime_layout(project_root)
     path = runtime_path(project_root, "skills")
-    payload = _normalize_state(state)
+    normalized = _normalize_state(state)
+    payload = {
+        "version": STATE_VERSION,
+        "disabled": list(normalized.get("retired") or []),
+    }
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
         f.write("\n")
-    return payload
+    return normalized
+
+
+def prune_missing_disabled(project_root):
+    """Drop disable entries whose skill folder is gone. No-op if unchanged."""
+    present = set(item["name"] for item in inventory(project_root))
+    state = load_state(project_root)
+    kept = [name for name in (state.get("retired") or []) if name in present]
+    if kept == list(state.get("retired") or []):
+        return state
+    state["retired"] = kept
+    return save_state(project_root, state)
 
 
 def retired_names(project_root):
@@ -90,7 +115,10 @@ def is_retired(project_root, name):
     return name in retired_names(project_root)
 
 
-def core_skills_src():
+def core_skills_src(project_root=None):
+    factory = resolve_factory_harness(project_root)
+    if factory:
+        return os.path.join(factory, "core", "skills")
     return os.path.join(find_harness_dir(), "core", "skills")
 
 
@@ -99,9 +127,9 @@ def _is_skill_dir(path):
 
 
 def skill_kind(name, project_root=None):
-    if name == BOOTSTRAP_SKILL_NAME:
-        return "bootstrap"
-    core_dir = os.path.join(core_skills_src(), name)
+    if name in CORE_SKILL_DIRS:
+        return "core"
+    core_dir = os.path.join(core_skills_src(project_root), name)
     if _is_skill_dir(core_dir):
         return "core"
     return "project"
@@ -109,11 +137,11 @@ def skill_kind(name, project_root=None):
 
 def source_dir_for(name, project_root):
     kind = skill_kind(name, project_root)
-    if kind == "bootstrap":
-        return bootstrap_skill_src()
+    runtime_skill = os.path.join(runtime_dir(project_root), "skills", name)
     if kind == "core":
-        return os.path.join(core_skills_src(), name)
-    return os.path.join(runtime_dir(project_root), "skills", name)
+        src = os.path.join(core_skills_src(project_root), name)
+        return src if os.path.isdir(src) else runtime_skill
+    return runtime_skill
 
 
 def runtime_skill_dir(project_root, name):
@@ -137,11 +165,13 @@ def inventory(project_root):
             continue
         kind = skill_kind(name, project_root)
         src = source_dir_for(name, project_root)
-        family = "framework" if kind in ("core", "bootstrap") else "project"
+        family = "framework" if kind == "core" else "project"
+        role = CORE_SKILL_ROLES.get(name, "")
         items.append({
             "name": name,
             "kind": kind,
             "family": family,
+            "role": role,
             "retired": name in retired,
             "runtime_path": path.replace("\\", "/"),
             "source_path": src.replace("\\", "/"),
@@ -158,9 +188,9 @@ def get_skill(project_root, name):
 
 
 def retire(project_root, name):
-    """Mark a named skill retired. Does not delete the runtime copy.
+    """Disable a skill on this machine only. Does not delete the runtime copy.
 
-    Projection removal happens on the next sync.
+    Projection removal happens on the next projection refresh / sync.
     """
     if not name or not str(name).strip():
         return {"ok": False, "error": "missing skill name"}

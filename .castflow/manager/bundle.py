@@ -1,17 +1,22 @@
-"""Copy the skill manager into a target project so it can run without the factory."""
+"""Copy the skill manager into `.castflow-runtime/` so the project is one folder."""
 
 from __future__ import print_function
 
 import os
 import shutil
 
-from .paths import factory_root, find_harness_dir, is_factory_root
+from .paths import (
+    factory_root,
+    find_harness_dir,
+    is_factory_root,
+    runtime_dir,
+    _rmtree_nofollow,
+)
 
 COPY_NAMES = (
     "manager.py",
     "manager",
-    "core",
-    "bootstrap-assets",
+    "installer",
 )
 
 SKIP_DIR_NAMES = ("__pycache__",)
@@ -26,10 +31,11 @@ set PYTHONIOENCODING=utf-8
 set PYTHONUTF8=1
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\\" set "ROOT=%ROOT:~0,-1%"
-set "MANAGER=%ROOT%\\.castflow\\manager.py"
+set "MANAGER=%ROOT%\\.castflow-runtime\\manager.py"
 if not exist "%MANAGER%" (
     echo CastFlow manager not found:
     echo   %MANAGER%
+    echo Run the CastFlow checkout castflow.bat to cold-start this project.
     pause
     exit /b 1
 )
@@ -81,18 +87,40 @@ def _copy_tree(src, dst):
     return count
 
 
+def remove_stale_project_harness(project_root):
+    """Drop a leftover vendored `<project>/.castflow/` (not the factory checkout)."""
+    dest = os.path.join(project_root, ".castflow")
+    if not os.path.lexists(dest):
+        return False
+    try:
+        if os.path.samefile(dest, find_harness_dir()):
+            return False
+    except OSError:
+        pass
+    from .paths import is_factory_checkout
+    if is_factory_checkout(project_root):
+        return False
+    _rmtree_nofollow(dest)
+    return True
+
+
 def install_project_manager(project_root, dry_run=False):
-    """Vendor manager + hooks into `<project>/.castflow/` and write `castflow.bat`."""
+    """Vendor manager + validate into `<project>/.castflow-runtime/` and write `castflow.bat`."""
     if is_factory_root(project_root):
         return {"ok": False, "skipped": "factory"}
     harness = find_harness_dir()
-    dest_root = os.path.join(project_root, ".castflow")
-    if os.path.normcase(os.path.abspath(dest_root)) == os.path.normcase(
-            os.path.abspath(harness)):
+    dest_root = runtime_dir(project_root)
+    try:
+        same = os.path.normcase(os.path.abspath(dest_root)) == os.path.normcase(
+            os.path.abspath(harness))
+    except OSError:
+        same = False
+    if same:
         return {"ok": False, "skipped": "same-harness"}
     copied = []
     if not dry_run:
         os.makedirs(dest_root, exist_ok=True)
+        remove_stale_project_harness(project_root)
     for name in COPY_NAMES:
         src = os.path.join(harness, name)
         if not os.path.exists(src):

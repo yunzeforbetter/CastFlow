@@ -18,10 +18,10 @@ Host auto-injects this file and the matched skill `SKILL.md`.
 ## CastFlow commands
 
 - Pasted `/goal` scan prompt — follow `MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md`: land `_skill-gen-queue/`, one programmer skill at a time, mark done, compact, delete the queue. No parallel generate subagents.
+- Requirement to a runnable long task — **goal-loop-creator** (长任务转换系统). Compile a loop-engine Goal Loop Package under `loop-engine/packages/`. Do not invoke `/goal` in that skill.
 - `castflow generate skills` — JSON queue for architect/debug/profiler only: write one, then stop. Do not mix with the `/goal` loop in the same turn.
-- `castflow.bat` / `python .castflow/manager.py launch` — GUI cold start (config + seed) and visual console.
-- `python .castflow/manager.py ui` — visual console (skills, evolution, adapters, queue).
-- `python .castflow/manager.py sync` — project runtime skills to `.claude/skills` and `.agents/skills` (Grok/Cursor scan those; no extra skill trees).
+- `castflow.bat` / `python .castflow-runtime/manager.py ui` — visual console (skills, evolution, adapters, queue). First install: CastFlow checkout `castflow.bat`.
+- `python .castflow-runtime/manager.py sync` — project runtime skills to `.claude/skills` and `.agents/skills` (Grok/Cursor scan those; no extra skill trees).
 
 <!-- if:evolution -->
 ## Experience capture (evolution plugin ON)
@@ -30,9 +30,9 @@ On rework, correction, or a hard constraint, write a markdown file under `.castf
 
 Daily sessions must not Read `.castflow-runtime/traces/trace.md` or `.castflow-runtime/memory/`. Reminders may Read `.castflow-runtime/traces/.unflushed` and `.evolve_nudge` only.
 
-Then run `python .castflow/manager.py flush` if your host has no Stop hook (Codex). Distill later with `origin evolve`. Never edit `.castflow-runtime/traces/trace.md` by hand.
+Then run `python .castflow-runtime/manager.py flush` if your host has no Stop hook (Codex). Distill later with `origin evolve`. Never edit `.castflow-runtime/traces/trace.md` by hand.
 
-If `.unflushed` exists, suggest `python .castflow/manager.py flush` then `origin evolve`. If only `.evolve_nudge` exists, suggest `origin evolve`.
+If `.unflushed` exists, suggest `python .castflow-runtime/manager.py flush` then `origin evolve`. If only `.evolve_nudge` exists, suggest `origin evolve`.
 <!-- endif:evolution -->
 
 <!-- if:no-evolution -->

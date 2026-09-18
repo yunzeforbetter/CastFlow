@@ -47,15 +47,15 @@ class TestEndToEnd(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertTrue(os.path.isfile(runtime_path(self.root, "config")))
         self.assertTrue(os.path.isdir(os.path.join(
-            self.root, ".agents", "skills", "bootstrap-skill")))
+            self.root, ".agents", "skills", "skill-creator")))
         self.assertTrue(os.path.isdir(os.path.join(
             self.root, ".claude", "skills", "skill-creator")))
         self.assertTrue(os.path.isfile(os.path.join(
-            self.root, ".claude", "skills", "bootstrap-skill", "SKILL.md")))
+            self.root, ".claude", "skills", "skill-creator", "SKILL.md")))
         self.assertFalse(os.path.isdir(os.path.join(
-            self.root, ".cursor", "skills", "bootstrap-skill")))
+            self.root, ".cursor", "skills", "skill-creator")))
         self.assertFalse(os.path.isdir(os.path.join(
-            self.root, ".grok", "skills", "bootstrap-skill")))
+            self.root, ".grok", "skills", "skill-creator")))
         self.assertFalse(os.path.isdir(os.path.join(
             self.root, ".cursor", "skills", "skill-creator")))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "AGENTS.md")))
@@ -65,19 +65,9 @@ class TestEndToEnd(unittest.TestCase):
         rc = manager_main(["--project-root", self.root, "queue"])
         self.assertEqual(rc, 0)
         q = queue.load_queue(self.root)
-        kinds = [i["kind"] for i in q["items"]]
-        self.assertEqual(kinds[0], "core")
-        self.assertEqual(q["items"][0]["id"], "architect")
-        self.assertEqual(
-            [i["id"] for i in q["items"] if i["kind"] == "module"], [])
+        self.assertEqual(q.get("items") or [], [])
         text = queue.build_handoff(self.root)
-        self.assertIn("skill-creator", text)
-        self.assertIn(".castflow-runtime/skills", text)
-        self.assertIn("architect-skill", text)
-        self.assertIn("SKILL_ITERATION.md", text)
-        self.assertIn("SKILL.template.md", text)
-        self.assertNotIn("README.md", text)
-        self.assertIn("禁止并行", text)
+        self.assertEqual(text, "")
 
         rc = manager_main(["--project-root", self.root, "sync"])
         self.assertEqual(rc, 0)
