@@ -68,7 +68,7 @@ S2 未得到用户勾选结果前，禁止写 skill、禁止落队列文件、�
 | 装架源 | `.castflow/`（installer、manager、core、hooks、templates） |
 | 运行时 | `.castflow-runtime/`（整棵忽略：skills、memory、traces、队列。不要按 skill 名列举） |
 | 宿主适配器 | `.claude/` `.agents/` `.cursor/` `.grok/` |
-| 框架入口 | 根目录 `castflow.bat` |
+| 框架入口 | 根目录 `castflow.bat` `castflow.sh` `castflow.command` |
 | 依赖与生成物 | `Library/` `Temp/` `node_modules/` `vendor/` `.git/` `Packages/` 及同类生成物 |
 
 路径任一段是上表名字，整棵子树都不是扫描范围。`.castflow-runtime/` 里已经装好的 skill 不是模块，不要再为它们生成 `programmer-*-skill`。不要维护一份 skill 名排除名单。

@@ -163,6 +163,8 @@ class TestColdStart(TmpProject):
         self.assertTrue(report.get("ok"))
         self.assertFalse(setup.is_seeded(self.root))
         self.assertFalse(os.path.isdir(runtime_dir(self.root)))
+        for name in ("castflow.bat", "castflow.sh", "castflow.command"):
+            self.assertFalse(os.path.isfile(os.path.join(self.root, name)))
         self.assertFalse(os.path.isdir(os.path.join(
             self.root, ".claude", "skills", "skill-creator")))
         again = setup.cold_start(self.root, {
@@ -305,6 +307,33 @@ class TestBatLauncher(unittest.TestCase):
         self.assertIn("optional", setup.LAUNCH_GUIDE.lower())
         self.assertIn("[1]", setup.LAUNCH_GUIDE)
         self.assertIn("[4]", setup.LAUNCH_GUIDE)
+
+    def test_posix_launchers_invoke_manager_launch(self):
+        sh = os.path.join(_REPO, "castflow.sh")
+        command = os.path.join(_REPO, "castflow.command")
+        self.assertTrue(os.path.isfile(sh))
+        self.assertTrue(os.path.isfile(command))
+        text = _read(sh)
+        wrapper = _read(command)
+        self.assertTrue(text.startswith("#!/usr/bin/env bash"))
+        with open(sh, "rb") as f:
+            self.assertNotIn(b"\r", f.read())
+        with open(command, "rb") as f:
+            self.assertNotIn(b"\r", f.read())
+        try:
+            text.encode("ascii")
+            wrapper.encode("ascii")
+        except UnicodeEncodeError:
+            self.fail("POSIX launchers must stay ASCII")
+        self.assertIn(".castflow/manager.py", text)
+        self.assertIn("launch", text)
+        self.assertIn("--from-harness", text)
+        self.assertIn("python3", text)
+        self.assertIn("castflow.sh", wrapper)
+        from manager.pick_dir import darwin_choose_folder_script
+        script = darwin_choose_folder_script("/tmp", 'Select "folder"')
+        self.assertIn("choose folder", script)
+        self.assertIn('Select \\"folder\\"', script)
 
 
 class TestSetupConsole(TmpProject):
@@ -477,6 +506,8 @@ class TestLoopEnginePrompt(unittest.TestCase):
             ".grok/",
             "禁止出现在多选",
             "castflow.bat",
+            "castflow.sh",
+            "castflow.command",
             "整棵忽略",
             "不要按 skill 名列举",
             "_skill-gen-queue",

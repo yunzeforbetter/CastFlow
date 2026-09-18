@@ -109,6 +109,8 @@ class TestInventoryAfterSeed(TmpProject):
         self.assertTrue(os.path.isfile(os.path.join(
             runtime_skills, "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md")))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "castflow.bat")))
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "castflow.sh")))
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "castflow.command")))
         self.assertTrue(os.path.isfile(os.path.join(
             runtime_dir(self.root), "manager.py")))
         self.assertTrue(os.path.isfile(os.path.join(
@@ -121,6 +123,11 @@ class TestInventoryAfterSeed(TmpProject):
         bat = _read(os.path.join(self.root, "castflow.bat"))
         self.assertIn(".castflow-runtime\\manager.py", bat)
         self.assertIn(" ui", bat)
+        sh = _read(os.path.join(self.root, "castflow.sh"))
+        self.assertIn(".castflow-runtime/manager.py", sh)
+        self.assertIn(" ui", sh)
+        self.assertNotIn("\r", sh)
+        self.assertTrue(sh.startswith("#!/usr/bin/env bash"))
 
 
 class TestRetireSync(TmpProject):
