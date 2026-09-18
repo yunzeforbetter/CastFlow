@@ -1,6 +1,6 @@
 """Brute-force verification of the redesigned origin-evolve spec.
 
-Location: CastFlow/_eval/ (outside .castflow/, NOT shipped by bootstrap.py).
+Location: CastFlow/test/origin-evolve/ (outside .castflow/, not shipped).
 
 Verifies the deterministic claims in:
 - core/skills/origin-evolve-skill/SKILL.md       (Step 1 diagnostics, attribution)

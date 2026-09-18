@@ -290,7 +290,7 @@ def build_parser():
     parser.add_argument("--verbose", "-v", action="store_true")
     sub = parser.add_subparsers(dest="cmd")
 
-    sub.add_parser("seed", help="Create runtime and project bootstrap-skill")
+    sub.add_parser("seed", help="Create runtime and project core files")
     sub.add_parser("sync", help="Project non-retired skills and hooks to adapter trees")
     sub.add_parser("skills", help="List inventoried runtime skills")
     p_ret = sub.add_parser("retire", help="Retire a skill (excluded from later sync)")

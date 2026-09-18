@@ -22,9 +22,9 @@ description: >
 ## Yield
 
 - Package already has `RUN_PROMPT.md` -> run that package; do not rebuild here
-- Pasted `/goal` module scan -> **bootstrap-skill** (loop engine)
+- Pasted `/goal` module scan -> follow `MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md`
 - `castflow generate skills` or one catalog module -> **skill-creator**, one then stop
-- Install, seed, GUI -> **bootstrap-skill**
+- Install, seed, GUI -> `castflow.bat` / `manager.py launch` (not a skill)
 - Distill traces -> **origin-evolve-skill**
 - Feature work -> that **programmer-*-skill**
 
