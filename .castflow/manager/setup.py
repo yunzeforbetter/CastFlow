@@ -310,8 +310,9 @@ def unseed(project_root):
     """Remove CastFlow runtime + projections so cold start can run again.
 
     Does not delete project source. Drops leftover vendored `.castflow/` and
-    project `castflow.bat` (manager lives in runtime). Root CLAUDE.md /
-    AGENTS.md keep a non-stub project section.
+    project launchers (`castflow.bat` / `castflow.sh` / `castflow.command`;
+    manager lives in runtime). Root CLAUDE.md / AGENTS.md keep a non-stub
+    project section.
     """
     from .paths import reject_factory_runtime
 
@@ -358,12 +359,10 @@ def unseed(project_root):
     rdir = runtime_dir(project_root)
     if _remove_path(rdir):
         removed.append(rdir.replace("\\", "/"))
-    from .bundle import remove_stale_project_harness
+    from .bundle import remove_project_launchers, remove_stale_project_harness
     if remove_stale_project_harness(project_root):
         removed.append(os.path.join(project_root, ".castflow").replace("\\", "/"))
-    bat = os.path.join(project_root, "castflow.bat")
-    if os.path.isfile(bat) and _remove_path(bat):
-        removed.append(bat.replace("\\", "/"))
+    removed.extend(remove_project_launchers(project_root))
     return {
         "ok": True,
         "seeded": is_seeded(project_root),

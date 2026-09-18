@@ -20,6 +20,7 @@ USAGE = """
 CastFlow manager
 
   castflow.bat                          # Windows: guided cold-start wizard
+  ./castflow.sh                         # macOS / Linux: same wizard (or double-click castflow.command)
   python .castflow/manager.py launch    # CastFlow checkout: same GUI (any OS)
   python .castflow-runtime/manager.py   # seeded project: ui / sync / validate / ...
   python .castflow/manager.py setup     # headless: config + seed + sync
@@ -38,7 +39,7 @@ CastFlow manager
   python .castflow/manager.py homology  # batch connected-component homology (stdin JSON)
   python .castflow/manager.py validate  # four-file check on runtime skills
 
-Cold start is the GUI (castflow.bat / launch), not an AI conversation.
+Cold start is the GUI (castflow.bat / castflow.sh / launch), not an AI conversation.
 Steps: configure -> optional scan/generate prompt -> 开启冷启动 (copy files) -> if checked, paste prompt.
 Framework update refreshes CastFlow source skills and core files; it never overwrites project skills.
 """
@@ -315,7 +316,7 @@ def build_parser():
     p_launch.add_argument("--no-browser", action="store_true")
     p_launch.add_argument(
         "--from-harness", default=None,
-        help="CastFlow checkout dir (set by castflow.bat) to resolve submodule vs clone",
+        help="CastFlow checkout dir (set by castflow.bat / castflow.sh) to resolve submodule vs clone",
     )
     p_launch.add_argument(
         "--no-picker", action="store_true",

@@ -82,6 +82,7 @@ AI 助手进入大型项目常见的四种失控：
 
 ```bash
 CastFlow\castflow.bat                 # Windows：打印说明后打开向导（可先选工程目录）
+./castflow.sh                         # macOS / Linux：同上（Finder 可双击 castflow.command）
 python .castflow/manager.py launch    # 同上（任意 OS；在 CastFlow 仓里跑）
 python .castflow/manager.py setup     # 无界面：config + seed + sync
 python .castflow/manager.py unseed    # 卸下运行时和投影，再走一遍向导
@@ -128,13 +129,14 @@ CastFlow/
 ├── CHANGELOG.md                           # 2.0 对照 1.x + 完整变更
 ├── LICENSE                                # MIT
 ├── castflow.bat                           # Windows 冷启动：文件夹选择器 + GUI
+├── castflow.sh / castflow.command         # macOS / Linux 冷启动（.command = Finder 双击）
 │
 ├── .castflow/                             # 框架源码（装架后休眠，随 git pull 更新）
 │   ├── manager.py                         # 【主入口】launch / setup / seed / sync / skills …
 │   ├── manager/                           # 冷启动、投影、队列、进化开关、stdlib HTTP 控制台
 │   │   ├── cli.py / setup.py / adapters.py / skills.py / catalog.py
 │   │   ├── evolution.py / queue.py / config.py / paths.py / pick_dir.py
-│   │   ├── bundle.py                      # seed：manager/installer → runtime，并写项目 castflow.bat
+│   │   ├── bundle.py                      # seed：manager/installer → runtime，并写项目 launchers
 │   │   └── ui/server.py + static/index.html
 │   ├── installer/                         # validate.py；随 seed 拷进 runtime
 │   └── core/                              # 被 seed 同步进 runtime 的核心
@@ -171,7 +173,7 @@ CastFlow/
 ```
 项目根目录/
 ├── CLAUDE.md / AGENTS.md                  # 框架段（ROOT_RULES）+ 项目段
-├── castflow.bat                           # 打开 runtime 管理器（seed 写入，不是框架仓那份）
+├── castflow.bat / castflow.sh / .command  # 打开 runtime 管理器（seed 写入，不是框架仓那份）
 ├── .castflow-runtime/                     # 项目里唯一的 CastFlow 目录
 │   ├── manager.py / manager/ / installer/ # 控制台、sync、validate（bundle 从框架拷入）
 │   ├── hooks/                             # trace-collector / trace-flush / _homology
@@ -201,13 +203,15 @@ CastFlow/
 git submodule add https://github.com/yunzeforbetter/CastFlow.git
 ```
 
-CastFlow 与 `.claude` 同级最省事，但不是必须。克隆到任意目录再双击 `castflow.bat`，用文件夹对话框指向游戏/应用工程即可。
+CastFlow 与 `.claude` 同级最省事，但不是必须。克隆到任意目录再打开启动器，用文件夹对话框指向游戏/应用工程即可。
 
-### 步骤 2 — 冷启动（双击 bat）
+### 步骤 2 — 冷启动（打开启动器）
 
 ```bash
-CastFlow\castflow.bat
-# 或: python CastFlow/.castflow/manager.py launch
+CastFlow\castflow.bat                  # Windows：双击
+chmod +x castflow.sh castflow.command  # macOS / Linux：首次
+./castflow.sh                          # 终端；Finder 双击 castflow.command
+# 或: python3 CastFlow/.castflow/manager.py launch
 ```
 
 | 步 | 动作 | 结果 |
@@ -219,7 +223,7 @@ CastFlow\castflow.bat
 
 装架后控制台三页：**框架**（从源更新并同步）/ **Skills**（retire / activate / update / sync）/ **队列**。勾选错了用「回退并重新冷启动」，不必手删文件。
 
-冷启动请双击 `castflow.bat`，不要让 AI 代跑 seed。
+冷启动请打开启动器（Windows 双击 `castflow.bat`，macOS 双击 `castflow.command` 或跑 `./castflow.sh`），不要让 AI 代跑 seed。
 
 ### 步骤 3 — 为模块生成 Skill
 
@@ -279,7 +283,7 @@ python .castflow-runtime/manager.py update-framework
 | `setup.py` | 向导与无界面冷启动；文件夹选择器；工厂仓拒绝 seed |
 | `adapters.py` | runtime ↔ `.claude/skills` + `.agents/skills`；gitignore 托管；清兼容残留 |
 | `skills.py` | 清单、本机停用（`skills-disabled.json`）、从源刷新 |
-| `bundle.py` | seed 把 `manager.py` / `manager/` / `installer/` 拷进 runtime，并写项目根 `castflow.bat` |
+| `bundle.py` | seed 把 `manager.py` / `manager/` / `installer/` 拷进 runtime，并写项目根 `castflow.bat` / `castflow.sh` / `castflow.command` |
 | `catalog.py` / `queue.py` | 控制台队列状态；模块发现主路径是 AI 的 `_skill-gen-queue/`，不是 Python 扫描 |
 | `evolution.py` | 进化开关：卸 hook 与 origin-evolve 投影 |
 | `ui/` | stdlib HTTP 控制台（`127.0.0.1`） |
@@ -409,7 +413,7 @@ Step 5 写入 runtime + PROCESSED 行 + sync；finally 丢锁
 
 | 触发词 | 动作 |
 |--------|------|
-| 冷启动 | 双击 `castflow.bat` |
+| 冷启动 | 打开启动器（`castflow.bat` / `castflow.sh` / `castflow.command`） |
 | 粘贴的 `/goal` 扫描提示词 | 按 loop-engine：programmer-*，一次一个 |
 | `castflow generate skills` | skill-creator：一次写一个（队列项 / programmer / 点名的 architect·debug·profiler）然后停 |
 | 生成 loop / `/goal` 长任务 / 需求转长任务 | **goal-loop-creator**：编译 Goal Loop Package，不执行 `/goal` |
@@ -420,7 +424,8 @@ Step 5 写入 runtime + PROCESSED 行 + sync；finally 丢锁
 CastFlow 仓里用 `.castflow/manager.py`。已装架的目标项目只有 `.castflow-runtime/`，用下面第二条。
 
 ```bash
-CastFlow\castflow.bat
+CastFlow\castflow.bat                          # Windows
+./castflow.sh                                  # macOS / Linux（或双击 castflow.command）
 python .castflow/manager.py launch             # CastFlow 仓：向导
 python .castflow-runtime/manager.py ui         # 目标项目：控制台
 python .castflow/manager.py setup              # 无界面 seed+sync（仓内 + --project-root）
@@ -442,7 +447,7 @@ python .castflow-runtime/manager.py status
 python .castflow/core/hooks/trace-flush.py --selftest
 ```
 
-若 `python` 无效果，检查 PATH，或用 `py -3`。
+若 `python` 无效果：Windows 检查 PATH 或用 `py -3`；macOS 用 `python3`（python.org 或 `brew install python`）。Finder 双击 `.command` 时启动器会补上 Homebrew / python.org 的 PATH。macOS 文件夹选择器走系统对话框，不依赖 tkinter。
 
 ### 文件归属
 
@@ -472,7 +477,7 @@ python .castflow-runtime/manager.py update-framework
 
 `update-framework` **不会**写入 `.claude/.backups/`（1.x 安装器已删除）。
 
-装架级回退：GUI「回退并重新冷启动」或 `python .castflow-runtime/manager.py unseed`（卸 runtime、投影、项目里的 `castflow.bat`，不删工程源码）。然后重新双击框架仓的 `castflow.bat`。
+装架级回退：GUI「回退并重新冷启动」或 `python .castflow-runtime/manager.py unseed`（卸 runtime、投影、项目里的启动器，不删工程源码）。然后重新打开框架仓的启动器。
 
 ---
 

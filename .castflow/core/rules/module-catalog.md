@@ -49,7 +49,7 @@ Never a module (do not walk, do not list, do not generate `programmer-*-skill`):
 - `.castflow-runtime/` (the project's only CastFlow tree: skills, hooks, manager.
   Skip the whole tree. Do not list skill names. Anything already there is not a product module.)
 - `.claude/` `.agents/` `.cursor/` `.grok/` (adapter discovery / projection)
-- root `castflow.bat`
+- root `castflow.bat` / `castflow.sh` / `castflow.command`
 
 The scan target is the user's product/game/app scripts. CastFlow is the
 installer, not a product module. Path segments matching the names above

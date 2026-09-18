@@ -4,6 +4,23 @@
 
 ---
 
+## 2.1.0 — 2026-09-18
+
+**macOS 冷启动与 Windows 对齐。** 框架仓和已装架项目都可以在 Mac 上打开向导 / 控制台，不必再绕路只跑 `python … launch`。
+
+### Added
+
+- **`castflow.sh` / `castflow.command`**：POSIX 启动器。终端跑 `./castflow.sh`；Finder 双击 `castflow.command`。补上 Homebrew / python.org / pyenv 的 PATH（Finder 启动时 PATH 很短）。
+- **seed 写入三份启动器**：项目根同时有 `castflow.bat`、`castflow.sh`、`castflow.command`，同一仓库 Windows / Mac 都能打开。`unseed` 一并卸掉。
+- **macOS 文件夹选择器**：`pick_dir.py` 优先 `osascript` 系统对话框，不依赖 tkinter / `python-tk`。
+- **`.gitattributes`**：`.sh` / `.command` 固定 LF，避免 Windows 检出把 shebang 写成 `bash\\r`。
+
+### Changed
+
+- 文档与 loop-engine 排除名单把 Mac 启动器和 `castflow.bat` 同等对待。
+
+---
+
 ## 2.0.0 — 2026-09-18
 
 **CastFlow 2.0：从「对话装架 + 9 步流水线 + 给编辑打分」升级为「GUI 操作系统 + 一份 skill 真源 + memory 账本」。**

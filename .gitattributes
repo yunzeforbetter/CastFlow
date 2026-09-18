@@ -1,0 +1,6 @@
+# Launchers must keep native line endings. A CRLF shebang breaks bash on macOS.
+castflow.sh       text eol=lf
+castflow.command  text eol=lf
+*.sh              text eol=lf
+castflow.bat      text eol=crlf
+*.bat             text eol=crlf
