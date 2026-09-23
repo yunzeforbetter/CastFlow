@@ -8,180 +8,214 @@ description: >
 
 # SKILL_ITERATION.md
 
-Skill 文件长什么样。只在 **T4-MAINTAIN**（创建或改 skill 自身结构）加载。怎么调用 skill 去写代码，见 `GLOBAL_SKILL_MEMORY.md` 和项目 `CLAUDE.md`，不在这里。
+Shape of a skill file. Load only at **T4-MAINTAIN** (create a skill, or change its structure). Calling a skill to write code is `GLOBAL_SKILL_MEMORY.md` and the project `CLAUDE.md`, not here.
 
-写入 `.castflow-runtime/skills/<name>/`。不要写适配器镜像。`python .castflow-runtime/manager.py sync` 只投影到 `.claude/skills` 和 `.agents/skills`；不要创建 `.grok/skills` 或 `.cursor/skills`（那两棵是兼容残留，sync 会清掉以免重复扫描）。
+Write the skill under `.castflow-runtime/skills/<name>/`. Do not write adapter mirrors. `python .castflow-runtime/manager.py sync` projects only `.claude/skills` and `.agents/skills`. Do not create `.grok/skills` or `.cursor/skills` (compatibility residue; sync deletes them so they are not scanned twice).
 
-模块 `programmer-*-skill` 只按本文件写，不要套域 README 或 `*.template.md`。architect / debug / profiler 的 YAML 召回句见下文，正文仍按本文件。四角色文件里只要同时出现 `{{` 和 `}}`，validate 就当残留占位符 fail（规则是朴素子串，不是 token 形状）。示例代码若源文件含这对括号，改写成不触发的写法。
+A `programmer-*-skill` follows this file only. No domain README, no `*.template.md`. Architect / debug / profiler recall sentences are below; their bodies still follow this file. If one role file contains both `{{` and `}}`, validate fails it as a leftover placeholder. The check is a raw substring, not a token shape. If copied sample code contains that pair, rewrite the sample.
 
-编排文档只传 skill 名、范围、路径，不要抄本文件。
+An orchestration doc passes a skill name, a scope, and paths. It does not copy this file.
 
-本文件约束 **catalog / 模块 skill 的四角色文件**。Agent、本文件、自由形态 skill 的评测附件各有自己的形状。
+This file constrains **catalog and module skills**. Agents, this file, and freeform eval attachments have their own shapes.
 
-机器检查：`python .castflow-runtime/manager.py validate`。缺四角色文件的目录 skip。description 形状错误、同一文件里同时有 `{{` 和 `}}`、emoji、多余 `.md` 是 **error**。体积超上限是 **warning**，不是再开文件的许可。
+Check: `python .castflow-runtime/manager.py validate`. A directory is a catalog skill when it has `SKILL.md` and every markdown file is one of `SKILL.md`, `EXAMPLES.md`, `SKILL_MEMORY.md`, `ITERATION_GUIDE.md`, or when a catalog skill also contains another markdown file. Missing optional role files are not errors and the directory is not skipped. A present role file that is empty or only headings is an **error**. Another markdown file on that catalog skill is an **error**. A non-markdown attachment with no pointer from a present role file is an **error**. Bad description shape, `{{` plus `}}` in one file, or emoji is an **error**. A directory whose markdown is outside that set (no `SKILL.md`, or only nested markdown such as skill-creator) is skipped, not failed. Over the size cap is a **warning**, not permission to open another file.
+
+## Prose language
+
+Generated skill prose uses the cold-start choice. Read `language` on the queue card, otherwise `.castflow-runtime/config.json` key `language`. Missing, empty, or `en` means English. `zh` means Chinese. Any other code means that language. Default is English. Do not switch because repo comments are in another language, or because this file is English.
+
+Code, paths, symbols, YAML keys, `Anchors`, `Related`, `[RETIRED]`, and the single description token `NOT` stay as written here.
+
+When `language` is `zh`, descriptive sentences and these labels are Chinese:
+
+- programmer description: the cold-start sentence in the next section. Still `len(compact) <= 280`. The trigger is still the module id.
+- other skills: spoken when-to-use with `当用户`, plus one `NOT` or one `让位`. `len(compact) <= 240`.
+- architect: `本仓库的架构约束与分层。当用户问改动属于哪一层，或是否违反架构。NOT 模块 API 写法 (programmer-*-skill)。`
+- debug: `本仓库的边界与失败检查。当用户在查空引用、竞态或崩溃。NOT 模块 API 写法 (programmer-*-skill)。`
+- profiler: `本仓库热路径性能复查。当用户说热路径慢、卡顿或在分配。NOT 功能错误 (debug-skill)。`
+- EXAMPLES labels: `场景`, `代码`, `项目参考`. MEMORY labels: `规则`, `定义`, `检查清单`, `陷阱`, `现象`, `防护`.
+
+English (`en`, the default) uses the formulas and labels in the sections below.
+
+For any other code, write the body in that language. The description must still contain `Use when` or `当用户`, and exactly one `NOT`. `validate` only recognizes those tokens. Do not invent a third when-phrase.
+
+## Cold start is the thin pass
+
+Cold start and a later edit use these same slots. Cold start is weaker only in coverage, not in the recall sentence.
+
+Cold start is the queue batch, or `coldstart --skill`. Write `SKILL.md` and stop. No eval loop. No description optimization. The scanner's display name is not a trigger: it is often a hot type. Do not create `SKILL_MEMORY.md` or `ITERATION_GUIDE.md` to fill a quota.
+
+- English description: `Change <id> in this repo. Use when the user names <id>. NOT <one neighbor id>.` Do not write `Change <id> (<id>)`. Repeating the id in parentheses does not replace a display name. No neighbor you can name: `NOT work outside <id>.` That sentence includes the id, so it is not one shared yield.
+- Chinese description: `改本仓库的 <id>。当用户点名 <id>。NOT <邻居 id>。` No neighbor: `NOT <id> 以外的工作。`
+- Do not share one NOT sentence across skills. Do not write `NOT other programmer-*-skill`. Do not write `NOT a different module` or `NOT 另一个模块`.
+- EXAMPLES: write `EXAMPLES.md` only when this pass opened at least one live call site, and record every live call site it found. Three live ones are enough. Do not pad with a declaration, an empty enum, or a protocol send. Fewer than three real entries means fewer examples, not invented ones. Zero live entries means do not write `EXAMPLES.md` and do not invent a hot path.
+- MEMORY: do not write `SKILL_MEMORY.md` on the cold-start pass. A later append creates it only for a constraint that was actually seen.
+- Prose language is the card `language`, otherwise config. Missing means English.
+
+A later edit, outside that batch, may put a real display name back: `Change <display> (<id>) in this repo. Use when the user names <display> or <id>. NOT <one neighbor id>.` Only when that display name is not a generic type and is not the same string as the id. It may add real rules and more live examples. Same caps, still one `NOT`, still no eval loop for a catalog skill. Do not put Object, String, UI, Item, Config, or KeyValuePair in the description.
 
 ---
 
-## 标准形状
+## Standard shape
 
-四个角色文件必须有。默认只写这四份。任何额外 `.md`（含 `references/` 子目录）都会 validate fail。
+Four role slots, not a quota. `SKILL.md` is the only file every catalog skill has. A one-sentence skill is `SKILL.md` alone: the recall sentence is the description, and the body does not need the other three files. Write another role file only when it has a real job. Do not create an empty file, a heading-only file, or a second case file.
 
-| 文件 | 写什么 | 不要写 |
-|------|--------|--------|
-| `SKILL.md` | 我是谁、何时用、让位给谁、去哪读 | 用法教程、规则全文、迭代日志 |
-| `EXAMPLES.md` | 调用时几乎每次照着抄的热路径 | 规范定义、模块全集、第二份案例库 |
-| `SKILL_MEMORY.md` | 不可协商的约束和陷阱 | 日期、版本、过程记录、代码 fence |
-| `ITERATION_GUIDE.md` | **本** skill 何时改哪个文件 | 本文件的职责表/禁区复读、检查记录 |
+Any extra `.md`, including under `references/`, fails validate once the directory is a catalog skill. Cases stay in `EXAMPLES.md` or one short fence in `SKILL.md`. A case does not get its own file. Scripts, schemas, and data files are the only extensions. A later evolution append creates `SKILL_MEMORY.md` only when a real constraint exists.
 
-附件只在链路真用得上时才加，且必须是非 markdown：`scripts/`（确定性步骤）和该 skill 会读的 schema / config / json / 查找表。每个附件在四角色文件之一写明何时读、何时跑。没有指针 = 无用文件。
+| File | Write | Do not write |
+|------|--------|--------------|
+| `SKILL.md` | Who, when, who it yields to, where to read next | A tutorial, the full rules, an iteration log |
+| `EXAMPLES.md` | Hot paths copied on almost every call | A spec, the module catalog, a second case library |
+| `SKILL_MEMORY.md` | Non-negotiable constraints and traps | Dates, versions, process notes, code fences |
+| `ITERATION_GUIDE.md` | When **this** skill edits which file | A reprint of this table, a check log |
 
-不要生成 ANALYSIS / TEMP / TODO / SUMMARY，不要为躲体积另开 markdown。
+An attachment only if the path uses it, and only if it is not markdown: `scripts/` for a deterministic step, or a schema / config / json / lookup table this skill reads. Those are the only extensions. One present role file names the file when it says when to read it or when to run it. No pointer means the file is dead, and validate fails it. Do not add `references/*.md` or a README of cases.
+
+Do not emit ANALYSIS, TEMP, TODO, or SUMMARY. Do not open another markdown file to dodge the cap.
 
 ---
 
 ## SKILL.md
 
-宿主匹配后**整份进上下文**，写短。长文说明职责已经混了。
+Once the host matches, the **whole file is in context**. Keep it to one screen. A long essay means the duties were mixed.
 
-**YAML**：仅 `name` + `description`。不要 `when-to-use` 或其它宿主不读的键，也不要往另外三个角色文件加 frontmatter。
+**YAML**: `name` and `description` only. No `when-to-use`, no other key the host ignores. No frontmatter on the other three files.
 
-`description` 是 always-on 召回句，不是说明书。公式：一句做什么 + `Use when` / `当用户` 具体意图 + **一句** `NOT` 到最容易误撞的 sibling。长度按空白折叠后的字符数算（与 `validate.py` `description_shape_errors` 的 `compact` 相同）。超上限是 error。漏召回好过误召回。
+`description` is the always-on recall sentence, not a manual. One sentence of what it does, then `Use when` plus the concrete intent, then **one** `NOT` aimed at the sibling it collides with most. Length is characters after whitespace collapse (the `compact` string in `description_shape_errors`). Over the cap is an error. A missed recall beats a false one.
 
-不要：同义词/口语清单、执行步骤、sibling 目录抄写、「即使没点名也要用」。
+Not in the description: synonyms, slang, steps, a sibling catalog, or "use this even if nobody named it."
 
-- 目录名匹配 `programmer-*-skill`：`Change <显示名> (<id>) in this repo. Use when the user names <显示名> or <id>. NOT other programmer-*-skill.` 禁止扩同义词、类/路径清单、额外让位目标。`len(compact) <= 280`。
-- 其它 skill：口语何时用 + 一句 `NOT`。`len(compact) <= 240`。
-- `architect-skill` / `debug-skill` / `profiler-skill` 用下面原句（可按项目微调 NOT 目标）：
+- Name matches `programmer-*-skill`: the cold-start sentence, or the later-edit sentence, from **Cold start is the thin pass**. No synonym list, no class or path list, no extra yield. `len(compact) <= 280`.
+- Other skills: spoken when-to-use, one `NOT`. `len(compact) <= 240`.
+- `architect-skill` / `debug-skill` / `profiler-skill` use these sentences (tune only the NOT target):
   - architect: `Project architecture constraints and layering. Use when the user asks which layer a change belongs in, or whether it violates architecture. NOT module API how-to (programmer-*-skill).`
   - debug: `Boundary and failure inspection for this repo. Use when diagnosing null, race, or crash failures. NOT module API how-to (programmer-*-skill).`
   - profiler: `Hot-path performance review for this repo. Use when a hot path is slow, hitching, or allocating. NOT functional bugs (debug-skill).`
 
-两种都禁止关键词堆砌。禁止 pushy 扩词（命中即 error）：`even if they` / `even if the user`、`whenever the user mentions`、`make sure to use this skill whenever`、`即使没` / `即使不` / `即使用户没`。正文可以多写让位；description 里 `NOT` 这个词最多出现一次。
+No keyword piles. Pushy expansion is an error: `even if they` / `even if the user`, `whenever the user mentions`, `make sure to use this skill whenever`, `即使没` / `即使不` / `即使用户没`. The body may name more yields. `NOT` appears at most once in the description.
 
-正文顺序：一句定位 -> Yield -> 有几条职责写几条 -> 导航到另外三文件。有附件再加一行何时读/跑。模块 skill 可以再写本模块真实类型和邻模块，仍然不是教程。
+Body order: one positioning sentence, Yield, as many duties as exist, then a link to each role file that exists. Do not link a file you did not write. An attachment gets one line for when to read or run it. A module skill may name its real types and neighbors. That is still not a tutorial.
 
-短公式或流程图可以用一个 fence。可粘贴的用法放到 EXAMPLES。
+One fence for a short formula. Pasteable usage goes in EXAMPLES.
 
 ---
 
 ## EXAMPLES.md
 
-只留最热、最直接、会改生成行为的真实用法，大约 3-8 条。宁可 3 条有人用，不要 15 条没人读。超体积时删或合并**本文件**。
+Only hot, direct usages that change what is generated. About 3-8. Three that are used beat fifteen that are not. Over the cap: delete or merge **in this file**.
 
-每条至少有：一句话场景、从仓库复制的代码、能 grep 到的路径或符号。import/using 给到能看懂调用即可，不要编 API。推荐结构：
+Each entry: one-sentence scene, code copied from the repo, a path or symbol that greps. Imports only need to make the call readable. Do not invent an API.
 
 ```markdown
-## 示例N：简明标题
+## Example N: short title
 
-场景
-[什么时候照这个抄]
+Scene
+[when to copy this]
 
-代码
-[从项目复制的片段]
+Code
+[fragment copied from the project]
 
-项目参考
-[真实路径或符号]
+Project reference
+[real path or symbol]
 ```
 
-陷阱只写真会踩的。
+A trap only if someone will actually hit it.
 
 ---
 
 ## SKILL_MEMORY.md
 
-硬性规则 + 常见陷阱。有几条写几条，不要凑数。origin-evolve 读写的就是这个文件。本文件禁止代码 fence。
-
-推荐条目：
+Hard rules and common traps. As many as exist. Do not pad, and do not create this file until one exists. origin-evolve reads and writes this file. The first Append of a real constraint creates `SKILL_MEMORY.md` when it is absent. An empty file is not that append. No code fences.
 
 ```markdown
-### 规则N：名称
+### Rule N: name
 
 Anchors: [class:Building/BuildingManager, method:Building/BuildingFunc:OnUpgrade]
-Related: 规则X、陷阱Y
+Related: Rule X, Pitfall Y
 
-定义
-[禁止或要求什么]
+Definition
+[forbidden or required]
 
-检查清单
-- [ ] 能当场核对的项
+Check list
+- [ ] checkable on the spot
 ```
 
 ```markdown
-### 陷阱N：名称
+### Pitfall N: name
 
 Anchors: [pattern:EventArgs.Create]
-Related: 规则X
+Related: Rule X
 
-现象
-[症状]
+Symptom
+[what it looks like]
 
-防护
-[怎么避免]
+Guard
+[how to avoid it]
 ```
 
-一条一个约束。检查清单只在需要逐步核对时写。
+One constraint per entry. A check list only when the rule is verified step by step.
 
-**Anchors**：钉住的代码符号。扩展格式 `[kind:path-hint:symbol]`，kind 为 `class` / `method` / `field` / `api` / `pattern`（无前缀视为 `class`）。旧格式 `[BuildingManager, OnUpgrade]` 仍有效，新写入优先扩展格式。origin-evolve 写入必须同时带 `Anchors:` 和 `Related:`。T4 只有在规则完全没有可 grep 符号时才可以省 Anchors；绑代码或还要给 evolve 接着 Merge 的条目，必须带扩展 Anchors 和 Related（空 Anchors 的 Jaccard 恒为 0，evolve 会当成新条目重复 Append）。
+**Anchors** pin code symbols. Extended form `[kind:path-hint:symbol]`. Kind is `class`, `method`, `field`, `api`, or `pattern` (no prefix means `class`). Old form `[BuildingManager, OnUpgrade]` still counts. New writes use the extended form. An origin-evolve write carries both `Anchors:` and `Related:`. T4 may omit Anchors only when nothing greppable exists. An entry bound to code, or one evolve should Merge later, needs extended Anchors and Related. Empty Anchors have Jaccard 0, so evolve Appends a duplicate.
 
-**Related**：与本条相关的规则/陷阱编号。Merge / Retire 时连带审查。
+**Related** names the rules and pitfalls reviewed with this entry on Merge or Retire.
 
-**[RETIRED]**：写在标题文字前面，不删正文。加载时跳过；去掉标记即可恢复。
+**[RETIRED]** prefixes the heading. Do not delete the body. Loaders skip it. Remove the mark to restore it.
 
 ```markdown
-### [RETIRED] 规则N：名称
+### [RETIRED] Rule N: name
 ```
 
-**容量操作**（写入要用户确认）：
+Capacity writes need the user to confirm:
 
-| 操作 | T4 手动改 | origin-evolve 写入 |
-|------|-----------|-------------------|
-| Append | 与已有条目无语义重叠 | 无已有条目 Jaccard >= 0.5 |
-| Merge | 语义重叠或同一代码区域；给用户看 diff | Jaccard >= 0.5（`python .castflow-runtime/manager.py homology`）。本文件不另造阈值 |
-| Retire | grep 证明 Anchors 符号已不存在 | 同上 |
+| Operation | T4 by hand | origin-evolve write |
+|-----------|------------|---------------------|
+| Append | No semantic overlap with an existing entry | No existing entry at Jaccard >= 0.5 |
+| Merge | Same meaning or the same code region; show the diff | Jaccard >= 0.5 via `python .castflow-runtime/manager.py homology`. Do not invent another threshold here |
+| Retire | Grep shows the Anchors symbols are gone | Same as Merge |
 
-接近体积上限时先 Merge / Retire 再 Append。禁止另开规则文件。本文件的体积只认下面 `validate` 单位。origin-evolve 自己的词容量以那份 skill 为准，不要在这里换算成第二套数字。
+Near the cap, Merge or Retire before Append. Do not open a second rules file. Size is only the `validate` unit below. origin-evolve's word cap lives in that skill. Do not convert it into a second number here.
 
 ---
 
 ## ITERATION_GUIDE.md
 
-只写本 skill 特有的演进触发：什么变化改哪个文件、怎么确认改对了。不要复读本文件。不要把 SKILL.md 的职责再抄一遍当“定位”。质量指标只在有独特验收口径时写。
+Only this skill's triggers: which change edits which file, and how you know the edit is right. Do not create this file when those triggers are just the file names. Do not reprint this file. Do not paste SKILL.md duties back as "positioning." Quality measures only when this skill has its own acceptance bar.
 
 ---
 
-## 格式
+## Format
 
-- 不要 emoji，不要装饰性 Unicode（色块、星号、勾叉、Unicode 箭头）。ASCII `->`、标准 Markdown、`- [ ]`、`[RETIRED]` 可以。
-- `SKILL_MEMORY.md` / `ITERATION_GUIDE.md` 不要日期、`Updated`、`V2.0`、签名。
-- 引用的路径、类、方法必须在本次侦察范围内 Read / Grep 过。没打开源文件就不要写签名。
-
----
-
-## 体积
-
-目的是渐进披露：SKILL.md 始终在场，其余按需打开。不要凑字数，也不要拆文件躲检查。
-
-单位与 `validate.py` `_count_size_units` 相同：去空白、不计代码 fence 的字符。超了给 warning。
-
-| 文件 | 怎么算够 | 警告上限 |
-|------|----------|----------|
-| SKILL.md | 一屏简报 | 4000 |
-| EXAMPLES.md | 3-8 条热路径；代码可以长 | 14000 |
-| SKILL_MEMORY.md | 每条一个约束 | 9000 |
-| ITERATION_GUIDE.md | 只留本 skill 触发器 | 4500 |
-
-导航表：SKILL.md 指向另外三文件（有附件加一行）。EXAMPLES / MEMORY / GUIDE 条目多到需要跳转时再加目录；短文件不要为规范加空表。
+- No emoji. No decorative Unicode (blocks, stars, check marks, crosses, Unicode arrows). ASCII `->`, Markdown, `- [ ]`, and `[RETIRED]` are fine.
+- `SKILL_MEMORY.md` and `ITERATION_GUIDE.md`: no dates, no `Updated`, no `V2.0`, no signature.
+- A cited path, class, or method was Read or Grepped this pass. Do not write a signature you did not open.
 
 ---
 
-## 改哪个文件
+## Size
 
-| 情景 | SKILL.md | EXAMPLES.md | SKILL_MEMORY.md | ITERATION_GUIDE.md |
-|------|----------|-------------|-----------------|-------------------|
-| 新的热路径用法 | | 是 | 可能 | |
-| 新约束或陷阱 | | | 是 | |
-| 职责或触发变化 | 是 | 可能 | 可能 | 是 |
-| 框架 API 变了 | | 是 | 可能 | |
-| 用户纠正用法 | | 是 | 可能 | |
+SKILL.md stays loaded. The rest open on demand. Do not pad. Do not split files to dodge the check.
 
-写完跑 `python .castflow-runtime/manager.py validate`，再 `python .castflow-runtime/manager.py sync`。
+Unit matches `_count_size_units` in `validate.py`: non-whitespace characters outside code fences. Over the cap warns.
+
+| File | Enough | Warning cap |
+|------|--------|-------------|
+| SKILL.md | One screen | 4000 |
+| EXAMPLES.md | 3-8 hot paths; code may be long | 14000 |
+| SKILL_MEMORY.md | One constraint per entry | 9000 |
+| ITERATION_GUIDE.md | This skill's triggers only | 4500 |
+
+SKILL.md points at a role file only when that file exists, plus one line if an attachment exists. Add a contents table to EXAMPLES, MEMORY, or GUIDE only when the file needs jumps. A short file does not get an empty table. A missing role file does not get a stub so the table has a row.
+
+---
+
+## Which file
+
+| Situation | SKILL.md | EXAMPLES.md | SKILL_MEMORY.md | ITERATION_GUIDE.md |
+|-----------|----------|-------------|-----------------|-------------------|
+| New hot-path usage | | yes | maybe | |
+| New constraint or trap | | | yes | |
+| Duty or trigger changed | yes | maybe | maybe | yes |
+| Framework API changed | | yes | maybe | |
+| User corrected a usage | | yes | maybe | |
+
+Then `python .castflow-runtime/manager.py validate`, then `python .castflow-runtime/manager.py sync`.

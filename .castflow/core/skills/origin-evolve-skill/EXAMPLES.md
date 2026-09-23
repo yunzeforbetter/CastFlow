@@ -1,73 +1,52 @@
 # Origin Evolve - Examples
 
----
+These are proposal shapes for schema:4 memory snapshots. They are not a second copy of the rules.
 
-## Example 1: Correction Cluster + Complexity Concentration
+## Example 1: One ok feedback is enough to propose
 
-Three traces over a week show repeated edits to the same file.
-
-```
-Trace 12: correction:auto:minor  modules:[Building]  edit_count:8
-  -> BuildingFunc, OnDestroy cleanup added after initial omission
-Trace 23: correction:auto:major  modules:[Building]  edit_count:12
-  -> WorkerComponent timer cleanup iterated 4 times before correct
-Trace 29: correction:_           modules:[Building]  edit_count:14  file_count:1
-  -> BuildingUpgradeFunc.cs (same file in 3 traces with edit_count 9-14)
-```
-
-Two patterns, two proposals.
-
-```
-Pattern A: OnDestroy resource cleanup omission
-  Evidence:    Trace 12 + Trace 23 (correction signals on Subscribe/Timer cleanup)
-  Operation:   Append
-  Target:      programmer-building-skill/SKILL_MEMORY.md
-  Content:     "MonoBehaviour subclasses using Subscribe / AddTimer / LoadAsset
-                must implement OnDestroy with corresponding Unsubscribe / RemoveTimer / Release."
-  Anchors:     [Subscribe, Unsubscribe, AddTimer, RemoveTimer, LoadAsset, Release, OnDestroy]
-  Related:     Rule 5
-  Confidence:  0.9
-
-Pattern B: BuildingUpgradeFunc complexity concentration
-  Evidence:    Trace 12 + Trace 23 + Trace 29 (consistent high edit_count, low file_count)
-  Operation:   Append (or Merge into nearest BuildingFunc example)
-  Target:      programmer-building-skill/EXAMPLES.md
-  Content:     Representative subclass implementation with cleanup contract
-  Confidence:  0.82
-```
-
-Each proposal cites the exact trace timestamps. Step 4 surfaces both.
-
----
-
-## Example 2: Append vs Cross-Cutting Routing
-
-A proposal touches two modules with no common parent (Building under City, NPC under World). Per Rule 2, target is `.claude/rules/`, not either skill.
+A single `feedback` snapshot with `quality: ok` names a missing cleanup. Homology is not required for this type.
 
 ```markdown
-# Worker Slot Update Order
-
-When both building-system and npc-system modify WorkerSlot data
-in the same operation, building-side updates must complete before
-NPC-side reads or writes. This prevents data inconsistency where
-NPC logic reads stale worker assignment data.
-
-Affected scenarios:
-- Building upgrade changing worker capacity
-- Building destruction releasing workers
-- Worker reassignment during building state changes
+<!-- MEMORY skill:programmer-building-skill quality:ok -->
+BuildingFunc.OnDestroy drops the Subscribe but not the AddTimer.
+Anchors: Subscribe, AddTimer, OnDestroy
+<!-- /MEMORY -->
 ```
 
-Single-skill alternative (when both modules share a parent skill):
+```text
+Operation:   Append
+Target:      programmer-building-skill/SKILL_MEMORY.md
+Evidence:    that snapshot's timestamp
+Content:     MonoBehaviour subclasses that Subscribe, AddTimer, or LoadAsset
+             must OnDestroy with Unsubscribe, RemoveTimer, or Release.
+Anchors:     [method:Building/BuildingFunc:OnDestroy, pattern:AddTimer]
+Related:     Rule 5
+```
+
+A `project` or `reference` snapshot with the same text stays waiting until `manager.py homology` puts it in a component of size >= 2. Do not compute Jaccard by hand, and do not spawn one Python process per pair.
+
+## Example 2: Two skills, one cross-cutting file
+
+Anchors hit both `programmer-building-skill` and `programmer-npc-skill`, and the whitelisted `skill:` field does not pick one of them. Rule 2 step 4 applies. Write `.castflow-runtime/rules/cross-cutting.md`. Do not write `.claude/rules/`.
+
+```markdown
+# Worker slot update order
+
+When building-system and npc-system both change WorkerSlot in one operation,
+building-side updates finish before NPC-side reads or writes.
+```
+
+When both anchors hit exactly one project skill, write that skill instead:
 
 ```markdown
 ### Rule 6: OnDestroy resource cleanup
 
-Anchors: [Subscribe, Unsubscribe, AddTimer, RemoveTimer, LoadAsset, Release, OnDestroy]
+Anchors: [method:Building/BuildingFunc:OnDestroy, pattern:Subscribe, pattern:AddTimer]
 Related: Rule 5
 
-All MonoBehaviour subclasses that use Subscribe, AddTimer, or LoadAsset
-must implement OnDestroy with corresponding Unsubscribe, RemoveTimer, or Release.
+Definition
+A MonoBehaviour that uses Subscribe, AddTimer, or LoadAsset implements OnDestroy
+with Unsubscribe, RemoveTimer, or Release.
 
 Check list
 - [ ] Subscribe -> OnDestroy has Unsubscribe
@@ -75,77 +54,57 @@ Check list
 - [ ] LoadAsset -> OnDestroy has Release
 ```
 
-Required: every new SKILL_MEMORY entry has `Anchors:` and `Related:`.
+Every new SKILL_MEMORY entry has both `Anchors:` and `Related:`.
 
----
+## Example 3: Merge, and retire before the word cap
 
-## Example 3: Merge with Capacity Pressure (Append + Retire combined)
+The new pattern is the same code area as an existing rule. Homology reports Jaccard >= 0.5 against Rule 3, so this is a Merge, not an Append.
 
-Existing rule covers a subset of the new pattern.
-
-```
-Operation: Merge into existing Rule 3
+```text
+Operation: Merge into Rule 3
 Target:    programmer-building-skill/SKILL_MEMORY.md
 
 Diff:
   ### Rule 3: Resource cleanup in BuildingFunc
 
 - Anchors: [OnDestroy, Unsubscribe, RemoveTimer]
-+ Anchors: [OnDestroy, Unsubscribe, RemoveTimer, LoadAsset, Release]
++ Anchors: [method:Building/BuildingFunc:OnDestroy, pattern:Unsubscribe, pattern:RemoveTimer, pattern:LoadAsset, pattern:Release]
 
   Definition
-- BuildingFunc subclasses must clean up subscriptions and timers in OnDestroy.
-+ BuildingFunc subclasses must clean up subscriptions, timers, and loaded assets in OnDestroy.
+- BuildingFunc subclasses clean up subscriptions and timers in OnDestroy.
++ BuildingFunc subclasses clean up subscriptions, timers, and loaded assets in OnDestroy.
 
   Check list
-  - [ ] OnDestroy calls Unsubscribe for all events
-  - [ ] OnDestroy calls RemoveTimer for all timers
-+ - [ ] OnDestroy calls Release for all LoadAsset handles
-
-Rationale: same root cause, same code area; adding a separate rule would be redundant.
+  - [ ] OnDestroy calls Unsubscribe for every subscription
+  - [ ] OnDestroy calls RemoveTimer for every timer
++ - [ ] OnDestroy calls Release for every LoadAsset handle
 ```
 
-When the file is over the 2000-word capacity, retire an obsolete entry first:
+If the file is already near the 2000-word cap, retire an obsolete entry first:
 
-```
+```text
 Current: programmer-building-skill/SKILL_MEMORY.md = 1850 words
-Proposed new entry: ~150 words -> would hit 2000-word threshold
+Proposed merge delta: ~150 words, which would cross 2000
 
 Retire candidate - Rule 7: Building queue capacity check
   Anchors: [QueueCapacity, CheckQueueFull, MaxQueueSize]
-  grep results: all 3 anchors -> 0 matches (queue system refactored to IQueueManager)
-  Action: prepend [RETIRED] to heading; do NOT delete
+  grep: all 3 anchors -> 0 matches (queue moved to IQueueManager)
+  Action: prepend [RETIRED] to the heading. Do not delete the body.
   Effect: -120 effective words
 
-Combined: Retire Rule 7 (-120) + Append (+150) -> ~1880 words (within capacity)
+Combined: Retire Rule 7 (-120) + Merge (+150) -> about 1880 words
 ```
 
----
+Show that diff at Step 4. Do not write it before the user accepts.
 
-## Step 1 Diagnostic Output (Reference)
-
-The three counts surface attribution and merge errors carried over from previous evolutions.
-
-```
-[diagnostic]
-within-skill drift overlap pairs (Jaccard >= 0.5): 0
-cross-skill identical anchor sets:                 0
-cross-skill overlap pairs (Jaccard >= 0.5):        2
-  - programmer-building-skill rule#3 <-> programmer-ui-skill rule#5  (Jaccard 0.62)
-```
-
-Non-zero counts feed Step 2: in this case, propose either Merge into one skill (if anchor evidence is dominant) or move both rules to `.claude/rules/` (if genuinely cross-cutting). Step 4 user approval still required.
-
----
-
-## Rejection Format
-
-Every rejected proposal records its scope to prevent re-proposal:
+## Example 4: Rejection stops the same pattern
 
 ```markdown
 <!-- EVOLVE_REJECTION -->
 pattern: string-concatenation-rule
-reason: User considers it too aggressive for general code, only relevant in Update loops
-effect: Future proposals about string concat must be scoped to hot path contexts
+reason: User considers it too broad; it applies only inside Update loops
+effect: A later string-concat proposal must be scoped to a hot path
 <!-- /EVOLVE_REJECTION -->
 ```
+
+Read existing rejections before proposing. A rejected pattern is not proposed again outside the scope the rejection recorded.

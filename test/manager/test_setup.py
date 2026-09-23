@@ -128,19 +128,19 @@ class TestColdStart(TmpProject):
         self.assertEqual(
             scan_text,
             "/goal 读取并按照 .castflow-runtime/skills/"
-            "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md 执行",
+            "MODULE_MARK_SYSTEM_PROMPT.md 执行",
         )
         self.assertNotIn("\n", scan_text)
         copied = os.path.join(
             runtime_dir(self.root), "skills",
-            "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md")
+            "MODULE_MARK_SYSTEM_PROMPT.md")
         self.assertTrue(os.path.isfile(copied))
         copied_text = _read(copied)
         self.assertIn(".castflow-runtime/", copied_text)
-        self.assertIn("禁止出现在多选", copied_text)
+        self.assertIn("never in the multi-select", copied_text)
         self.assertIn("CastFlow/", copied_text)
         self.assertIn("_skill-gen-queue", copied_text)
-        self.assertIn("同一时刻只允许 1 个", copied_text)
+        self.assertIn("only 1 skill at a time", copied_text)
 
         custom = "只扫 src/billing，生成 programmer-billing-skill"
         report3 = setup.cold_start(self.root, {
@@ -176,7 +176,7 @@ class TestColdStart(TmpProject):
         again_text = again.get("handoff") or ""
         self.assertTrue(again_text.startswith("/goal "))
         self.assertIn(
-            ".castflow-runtime/skills/MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md",
+            ".castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md",
             again_text,
         )
         self.assertNotIn("\n", again_text)
@@ -336,6 +336,49 @@ class TestBatLauncher(unittest.TestCase):
         self.assertIn('Select \\"folder\\"', script)
 
 
+class TestJevModuleInstall(TmpProject):
+    def test_checkbox_syncs_module_and_keeps_key_out_of_git_config(self):
+        secret = "project-local-key-abc"
+        off = setup.cold_start(self.root, {"language": "zh", "jev_enabled": False})
+        self.assertFalse(off.get("jev_enabled"))
+        self.assertFalse(os.path.isdir(os.path.join(runtime_dir(self.root), "jev")))
+        report = setup.cold_start(self.root, {
+            "language": "zh",
+            "jev_enabled": True,
+            "jev_key": secret,
+        })
+        self.assertTrue(report.get("jev_enabled"))
+        module = os.path.join(runtime_dir(self.root), "jev")
+        self.assertTrue(os.path.isfile(os.path.join(module, "mark.py")))
+        self.assertTrue(os.path.isfile(os.path.join(module, "__init__.py")))
+        env_file = os.path.join(runtime_dir(self.root), "secrets.env")
+        from manager.envfile import get, set_key
+        self.assertEqual(get(self.root, "TYPESAFE_API_KEY"), secret)
+        self.assertTrue(set_key(self.root, "OTHER_API_KEY", "second-key-value"))
+        self.assertEqual(get(self.root, "TYPESAFE_API_KEY"), secret)
+        self.assertEqual(get(self.root, "OTHER_API_KEY"), "second-key-value")
+        with open(env_file, encoding="utf-8") as handle:
+            env_body = handle.read()
+        self.assertIn("TYPESAFE_API_KEY=" + secret, env_body)
+        self.assertIn("OTHER_API_KEY=second-key-value", env_body)
+        with open(os.path.join(runtime_dir(self.root), "config.json"), encoding="utf-8") as handle:
+            raw = handle.read()
+        self.assertNotIn(secret, raw)
+        self.assertNotIn("TYPESAFE_API_KEY", raw)
+        self.assertIn('"jev_enabled": true', raw)
+        gitignore = open(os.path.join(self.root, ".gitignore"), encoding="utf-8").read()
+        self.assertIn(".castflow-runtime/secrets.env", gitignore)
+        from manager import jevmark
+        cfg = jevmark.official_config({}, project_root=self.root)
+        self.assertIsNotNone(cfg)
+        self.assertNotIn(secret, repr(cfg))
+        self.assertNotIn(secret, json.dumps(cfg.public()))
+        gone = setup.cold_start(self.root, {"language": "zh", "jev_enabled": False})
+        self.assertFalse(gone.get("jev_enabled"))
+        self.assertFalse(os.path.isfile(os.path.join(module, "mark.py")))
+        self.assertEqual(get(self.root, "TYPESAFE_API_KEY"), secret)
+
+
 class TestSetupConsole(TmpProject):
     def test_page_has_setup_wizard(self):
         html = _read(os.path.join(STATIC_DIR, "index.html"))
@@ -349,13 +392,15 @@ class TestSetupConsole(TmpProject):
         self.assertIn("setup-lang", html)
         self.assertIn("setup-evo", html)
         self.assertIn("setup-scan-gen", html)
+        self.assertIn("setup-jev", html)
+        self.assertIn(".castflow-runtime/secrets.env", html)
         self.assertIn("扫描模块并生成 skill", html)
         self.assertIn("goal-loop-creator", html)
-        self.assertIn("长任务转换系统", html)
+        self.assertIn("long-task converter", html)
         self.assertIn("loop-engine", html)
         self.assertIn("setup-prompt", html)
         self.assertIn("留空", html)
-        self.assertIn("MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md", html)
+        self.assertIn("MODULE_MARK_SYSTEM_PROMPT.md", html)
         self.assertIn(".castflow-runtime/skills/", html)
         self.assertIn("写入", html)
         self.assertIn("不会再拷一份", html)
@@ -485,8 +530,8 @@ class TestSetupConsole(TmpProject):
         text = queue.build_handoff(empty, generate=True)
         self.assertEqual(
             text,
-            "/goal 读取并按照 .castflow-runtime/skills/"
-            "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md 执行",
+            "/goal Read and follow .castflow-runtime/skills/"
+            "MODULE_MARK_SYSTEM_PROMPT.md",
         )
         self.assertNotIn("\n", text)
 
@@ -495,7 +540,7 @@ class TestLoopEnginePrompt(unittest.TestCase):
     def test_prompt_and_catalog_exclude_ai_framework(self):
         prompt = _read(os.path.join(
             _CASTFLOW, "core", "skills",
-            "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md"))
+            "MODULE_MARK_SYSTEM_PROMPT.md"))
         for needle in (
             "CastFlow/",
             ".castflow/",
@@ -504,15 +549,15 @@ class TestLoopEnginePrompt(unittest.TestCase):
             ".agents/",
             ".cursor/",
             ".grok/",
-            "禁止出现在多选",
+            "never in the multi-select",
             "castflow.bat",
             "castflow.sh",
             "castflow.command",
-            "整棵忽略",
-            "不要按 skill 名列举",
+            "ignore the whole tree",
+            "Do not list by skill name",
             "_skill-gen-queue",
-            "同一时刻只允许 1 个",
-            "禁止并行",
+            "only 1 skill at a time",
+            "No parallel",
             "status: pending",
             "status: done",
         ):
@@ -529,8 +574,8 @@ class TestLoopEnginePrompt(unittest.TestCase):
     def test_catalog_generation_forbids_pushy_description(self):
         prompt = _read(os.path.join(
             _CASTFLOW, "core", "skills",
-            "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md"))
-        self.assertIn("误召回比漏召回更差", prompt)
+            "MODULE_MARK_SYSTEM_PROMPT.md"))
+        self.assertIn("a false recall is worse than a miss", prompt)
         self.assertIn("pushy", prompt)
         self.assertIn("manager.py validate", prompt)
         creator = _read(os.path.join(

@@ -30,9 +30,9 @@ CORE_SKILL_DIRS = (
 
 # Shown in cold-start / Skills console. Keep short; hosts scan description too.
 CORE_SKILL_ROLES = {
-    "skill-creator": "catalog 四件套生成",
-    "origin-evolve-skill": "自我进化：把 memory 快照蒸馏成规则",
-    "goal-loop-creator": "长任务转换系统：把需求转成 AI 可跑的 loop-engine 长任务",
+    "skill-creator": "catalog four-file writer; stops before the eval loop",
+    "origin-evolve-skill": "distills memory snapshots into approved skill rules",
+    "goal-loop-creator": "long-task converter: requirement to a runnable loop-engine package",
 }
 
 # Harness-level retire: never project, strip from runtime on sync.

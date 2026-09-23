@@ -23,9 +23,9 @@ _CEREMONY = (
 )
 
 _PROTOCOLS = (
-    "## 协议 1：项目 API 先证后用",
-    "## 协议 2：约束覆盖抄来的代码",
-    "## 协议 3：范围不够就先问",
+    "## Protocol 1: Prove a project API before use",
+    "## Protocol 2: Constraints beat copied code",
+    "## Protocol 3: If the scope is unclear, ask first",
 )
 
 
@@ -51,11 +51,11 @@ class GlobalSkillMemoryShippedText(unittest.TestCase):
     def test_three_jobs_still_present(self):
         g = self.global_text
         self.assertIn("EXAMPLES.md", g)
-        self.assertIn("源码定义", g)
-        self.assertIn("用户给出的参考位置", g)
-        self.assertIn("抄来的代码让位于约束", g)
-        self.assertIn("先收集，不写代码", g)
-        self.assertIn("不可逆", g)
+        self.assertIn("opened source definition", g)
+        self.assertIn("A location the user pointed at", g)
+        self.assertIn("Copied code yields to constraints", g)
+        self.assertIn("collect first; do not write code", g)
+        self.assertIn("Irreversible", g)
 
     def test_removed_rituals_absent(self):
         g = self.global_text

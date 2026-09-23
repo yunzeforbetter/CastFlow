@@ -2,7 +2,7 @@
 name: origin-evolve-skill
 description: >
   Distill trace.md memory snapshots into skill rules. Use when the user
-  says origin evolve, 沉淀规则, or evolve-reminder fired.
+  says origin evolve or an evolve-reminder fired.
   NOT generating new module skills (skill-creator).
 ---
 
@@ -15,7 +15,7 @@ Trigger: `origin evolve` (or the same intent). Never run unprompted.
 ## Yield
 
 - Install / UI -> `castflow.bat` / `manager.py launch` (not a skill)
-- Create a new module skill -> pasted `/goal` loop-engine prompt
+- Create a new module skill -> the pasted `/goal` prompt (`MODULE_MARK_SYSTEM_PROMPT.md`)
 - Requirement to a runnable long task -> **goal-loop-creator**
 - Feature work in a module -> that **programmer-*-skill**
 
@@ -59,7 +59,7 @@ Cluster MEMORY subblocks with one `manager.py homology` call. Priority among **e
 
 **Step 2.** Read each eligible `<!-- MEMORY -->`. Verify named APIs still exist. Dedup against the target SKILL_MEMORY.
 
-**Step 3.** Each proposal: Append / Merge / Retire, target skill+file, full text with Anchors and Related, evidence timestamps + slugs, risk. Capacity 2000 words (SKILL_MEMORY / cross-cutting). Retire needs grep proving anchors are gone. Attribution: (1) whitelisted `skill:` field (2) anchors hit exactly one project skill (3) 1 and 2 disagree -> user pick (4) anchors hit >=2 project skills -> `.castflow-runtime/rules/cross-cutting.md` (5) none -> do not write, leave waiting. Never write `.claude/rules/` business rules. Never write GLOBAL, CLAUDE.md, hooks, or this skill.
+**Step 3.** Each proposal: Append / Merge / Retire, target skill+file, full text with Anchors and Related, evidence timestamps + slugs, risk. Proposal sentences use `.castflow-runtime/config.json` `language` (missing or `en` is English, `zh` is Chinese). Keep the `Anchors:` and `Related:` labels. Capacity 2000 words (SKILL_MEMORY / cross-cutting). Retire needs grep proving anchors are gone. Attribution: (1) whitelisted `skill:` field (2) anchors hit exactly one project skill (3) 1 and 2 disagree -> user pick (4) anchors hit >=2 project skills -> `.castflow-runtime/rules/cross-cutting.md` (5) none -> do not write, leave waiting. Never write `.claude/rules/` business rules. Never write GLOBAL, CLAUDE.md, hooks, or this skill.
 
 **Step 4.** One proposal at a time. Rejection writes `EVOLVE_REJECTION`.
 

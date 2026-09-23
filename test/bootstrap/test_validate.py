@@ -274,6 +274,94 @@ class TestValidate(unittest.TestCase):
         self.assertFalse(skipped)
         self.assertTrue(any("too long" in e.lower() for e in errors))
 
+    def _write_only(self, name, files):
+        skill_dir = os.path.join(self.tmpdir, name)
+        os.makedirs(skill_dir, exist_ok=True)
+        for fname, content in files.items():
+            path = os.path.join(skill_dir, fname.replace("/", os.sep))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(content)
+        return skill_dir
+
+    def _recall_skill(self, body="Change the fixture when asked.\n"):
+        return (
+            "---\nname: test\ndescription: {}\n---\n\n{}".format(
+                VALID_DESCRIPTION, body
+            )
+        )
+
+    def test_one_file_catalog_case_passing(self):
+        skill_dir = self._write_only("one-file-skill", {
+            "SKILL.md": self._recall_skill(),
+        })
+        errors, _, skipped = validate_skill_dir(skill_dir)
+        print("one-file catalog case passing: skipped={} errors={}".format(
+            skipped, errors))
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+
+    def test_extra_markdown_case_failing_validation(self):
+        skill_dir = self._write_only("notes-skill", {
+            "SKILL.md": self._recall_skill(),
+            "NOTES.md": "# another case library\n\nDo not put cases here.\n",
+        })
+        errors, _, skipped = validate_skill_dir(skill_dir)
+        print("extra-markdown case failing validation: skipped={} errors={}".format(
+            skipped, errors))
+        self.assertFalse(skipped)
+        self.assertTrue(any("extra markdown" in e.lower() for e in errors))
+
+    def test_stub_case_failing_validation(self):
+        empty_dir = self._write_only("empty-role-skill", {
+            "SKILL.md": self._recall_skill(),
+            "EXAMPLES.md": "",
+        })
+        errors, _, skipped = validate_skill_dir(empty_dir)
+        print("stub case failing validation: skipped={} errors={}".format(
+            skipped, errors))
+        self.assertFalse(skipped)
+        self.assertTrue(any("heading-only" in e.lower() or "empty" in e.lower()
+                            for e in errors))
+        heading_dir = self._write_only("heading-role-skill", {
+            "SKILL.md": self._recall_skill(),
+            "SKILL_MEMORY.md": "# Rules\n\n## Still only a heading\n",
+        })
+        errors, _, skipped = validate_skill_dir(heading_dir)
+        self.assertFalse(skipped)
+        self.assertTrue(any("heading-only" in e.lower() for e in errors))
+
+    def test_unpointed_attachment_fails_and_pointer_passes(self):
+        missing = self._write_only("attach-skill", {
+            "SKILL.md": self._recall_skill(),
+            "scripts/lookup.json": "{}\n",
+        })
+        errors, _, skipped = validate_skill_dir(missing)
+        self.assertFalse(skipped)
+        self.assertTrue(any("no pointer" in e.lower() for e in errors))
+        pointed = self._write_only("attach-ok-skill", {
+            "SKILL.md": self._recall_skill(
+                "Run scripts/lookup.json when resolving a name.\n"
+            ),
+            "scripts/lookup.json": "{}\n",
+        })
+        errors, _, skipped = validate_skill_dir(pointed)
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+
+    def test_freeform_nested_markdown_stays_skipped(self):
+        skill_dir = self._write_only("skill-creator", {
+            "SKILL.md": self._recall_skill(),
+            "agents/grader.md": "# grader\n",
+            "references/schemas.md": "# schema\n",
+        })
+        _, _, skipped = validate_skill_dir(skill_dir)
+        self.assertTrue(skipped)
+        shipped = os.path.join(
+            _CASTFLOW_DIR, "core", "skills", "skill-creator")
+        _, _, skipped = validate_skill_dir(shipped)
+        self.assertTrue(skipped)
+
     def test_extra_yaml_key_fails_validate_skill_dir(self):
         skill_dir = self._create_skill(**{
             "SKILL.md": (

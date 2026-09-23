@@ -9,7 +9,7 @@ CONFIG_VERSION = 1
 
 DEFAULT_CONFIG = {
     "version": CONFIG_VERSION,
-    "language": "zh",
+    "language": "en",
     "evolution": {"enabled": True},
     "adapters": {
         "claude": True,
@@ -19,11 +19,22 @@ DEFAULT_CONFIG = {
     },
     "generate_skills": False,
     "generate_prompt": "",
+    "jev_enabled": False,
     "inbound_memory": {
         "claude_auto_memory": False,
         "grok_memory": False,
     },
 }
+
+
+def normalize_language(language):
+    """Cold-start language. Missing or en is English. zh stays Chinese."""
+    text = str(language or "").strip().lower().replace("_", "-")
+    if not text or text == "en" or text.startswith("en-"):
+        return "en"
+    if text in ("zh", "cn", "chinese") or text.startswith("zh-"):
+        return "zh"
+    return text.split("-", 1)[0]
 
 
 def default_config():
@@ -56,6 +67,8 @@ def load_config(project_root):
     except (json.JSONDecodeError, OSError):
         pass
     data["version"] = CONFIG_VERSION
+    data.pop("jev_key", None)
+    data.pop("TYPESAFE_API_KEY", None)
     return data
 
 
@@ -64,6 +77,8 @@ def save_config(project_root, config):
     path = runtime_path(project_root, "config")
     payload = _deep_merge(default_config(), config or {})
     payload["version"] = CONFIG_VERSION
+    payload.pop("jev_key", None)
+    payload.pop("TYPESAFE_API_KEY", None)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
         f.write("\n")

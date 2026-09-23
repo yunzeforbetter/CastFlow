@@ -5,42 +5,42 @@ description: >
   catalog skill.
 ---
 
-# GLOBAL_SKILL_MEMORY - Skill 运行时协议
+# GLOBAL_SKILL_MEMORY
 
-**加载**：协议 1-3 均继续生效；动不动笔只按协议 3。
+Runtime protocol for a catalog skill that is already active.
 
----
-
-## 协议 1：项目 API 先证后用
-
-训练数据和“通常写法”不是本仓库。项目/模块 API 必须先有证据再写进补丁。
-
-任一证据即可：
-
-1. 当前 skill 的 EXAMPLES.md 里的真实用法
-2. 你打开过的源码定义（读到该符号的签名即可；邻近其它方法不算已验证）
-3. 用户给出的参考位置
-
-Grep 有命中不等于这个类型有这个方法。
-
-不需要过这道门：语言/标准库 API；以及当前正在改的文件里已经写出的同一符号且同一签名。新名字、新参数个数或新重载仍要先证。
-
-未验证的项目 API：只把那一处标 TODO，其余照常写。不要编造签名。不要因为 A 有这个方法就假设 B 也有。
+**Load**: protocols 1-3 stay in force. Whether to write code is protocol 3 only.
 
 ---
 
-## 协议 2：约束覆盖抄来的代码
+## Protocol 1: Prove a project API before use
 
-读完现成实现后，容易把本地反模式一起抄走。
+Training data and "the usual way" are not this repository. A project or module API needs evidence before it enters a patch.
 
-抄来的代码让位于约束。约束来源：当前 skill 的 `SKILL_MEMORY.md`、注入的项目根规则（`CLAUDE.md` / `AGENTS.md`）、本文件。本文件与注入的根规则冲突时，根规则赢。
+Any one of these is enough:
+
+1. A real usage in the current skill's EXAMPLES.md
+2. An opened source definition (the signature of that symbol; a neighboring method is not verified)
+3. A location the user pointed at
+
+A Grep hit does not mean this type has this method.
+
+Skip this gate for language and standard-library APIs, and for the same symbol with the same signature already written in the file you are editing. A new name, a new arity, or a new overload still needs evidence.
+
+Unverified project API: mark that call TODO and keep writing the rest. Do not invent a signature. Do not assume B has a method because A does.
 
 ---
 
-## 协议 3：范围不够就先问
+## Protocol 2: Constraints beat copied code
 
-需求含糊或影响面不清：先收集，不写代码。
-不可逆：说明风险，等用户确认后再写。
-其余情况（含大范围但可逆）直接实现。不要宣布执行模式，也不要给普通补丁加确认关卡。
+A finished implementation is easy to copy together with its local anti-patterns.
+
+Copied code yields to constraints. Sources, in the order you consult them: the current skill's `SKILL_MEMORY.md`, injected root rules (`CLAUDE.md` / `AGENTS.md`), and this file. If this file conflicts with the injected root rules, the root rules win.
 
 ---
+
+## Protocol 3: If the scope is unclear, ask first
+
+Vague requirement or unclear blast radius: collect first; do not write code.
+Irreversible: state the risk and wait for confirmation before writing.
+Everything else, including a large but reversible change, implement directly. Do not announce an execution mode. Do not add a confirmation gate to an ordinary patch.

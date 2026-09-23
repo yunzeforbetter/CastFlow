@@ -11,9 +11,7 @@ A skill for creating new skills and iteratively improving them.
 
 ## CastFlow catalog
 
-For `castflow generate skills`, queue items, or `programmer-*-skill` in this repo: follow `SKILL_ITERATION.md` only. Copy name plus a short description (module name/id, one NOT). Do not fill a domain template or README. **ignore** this bullet later that says to make descriptions pushy — false recall against sibling modules is worse than a miss. Do not run Description Optimization. Write the four role files; do not start the eval loop.
-
-If the task is `castflow generate skills`, a queue item, or `programmer-*-skill`: follow this section, write the four role files, then **stop**. Do not continue into Creating a skill, Description Optimization, or the eval loop.
+For `castflow generate skills`, a queue item, or `programmer-*-skill` in this repo: follow `SKILL_ITERATION.md` only, including its prose language (config or queue-card `language`; missing means English). Write `SKILL.md` and only the role files that have real content, then **stop**. Copy the name plus a short description (module name or id, and one NOT). Do not fill a domain template or a README. Do not create an empty role file to fill four slots. **ignore** this bullet later that says to make descriptions pushy — false recall against sibling modules is worse than a miss. Do not run Description Optimization, and do not start the eval loop. Do not continue into Creating a skill.
 
 ## Freeform skills (not CastFlow catalog)
 
