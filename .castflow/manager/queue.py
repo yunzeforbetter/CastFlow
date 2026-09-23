@@ -4,7 +4,7 @@ import json
 import os
 
 from .catalog import load_catalog, save_catalog
-from .config import load_config
+from .config import load_config, normalize_language
 from .paths import ensure_runtime_layout, runtime_path
 
 QUEUE_VERSION = 1
@@ -73,10 +73,10 @@ def next_item(project_root):
 
 
 def _is_zh(language):
-    return not str(language or "zh").lower().startswith("en")
+    return normalize_language(language) == "zh"
 
 
-LOOP_ENGINE_PROMPT_NAME = "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md"
+LOOP_ENGINE_PROMPT_NAME = "MODULE_MARK_SYSTEM_PROMPT.md"
 LOOP_ENGINE_RUNTIME_PATH = ".castflow-runtime/skills/" + LOOP_ENGINE_PROMPT_NAME
 
 
@@ -84,7 +84,7 @@ def default_scan_generate_prompt(project_root, language=None):
     """One-line /goal prompt: read the loop-engine file at its runtime path."""
     cfg = load_config(project_root)
     if language is None:
-        language = cfg.get("language") or "zh"
+        language = cfg.get("language") or "en"
     if _is_zh(language):
         return "/goal 读取并按照 {} 执行".format(LOOP_ENGINE_RUNTIME_PATH)
     return "/goal Read and follow {}".format(LOOP_ENGINE_RUNTIME_PATH)
@@ -109,8 +109,8 @@ def build_handoff(project_root, generate=None, prompt=None):
     config.generate_skills (prompt vs empty).
     """
     cfg = load_config(project_root)
-    language = (cfg.get("language") or "zh").lower()
-    zh = _is_zh(language)
+    language = normalize_language(cfg.get("language"))
+    zh = language == "zh"
     if generate is True:
         return resolve_generate_prompt(
             project_root, prompt=prompt, language=language)
@@ -149,8 +149,9 @@ def build_handoff(project_root, generate=None, prompt=None):
             "写完：`python .castflow-runtime/manager.py validate`，通过后再 "
             "`python .castflow-runtime/manager.py sync`\n"
             "不要写 `.claude/skills` 或 `.agents/skills`。\n"
-            "禁止并行开下一个 skill。"
-        ).format(skill, skill)
+            "禁止并行开下一个 skill。\n"
+            "正文语言用 config 的 language（{lang}）。zh 写中文，en 写英文，缺省英文。"
+        ).format(skill, skill, lang=language)
         if detail:
             body += "\n\n" + detail
         body += "\n\n剩余 {} 项。下一轮再说 castflow generate skills。".format(
@@ -164,8 +165,10 @@ def build_handoff(project_root, generate=None, prompt=None):
         "Then: `python .castflow-runtime/manager.py validate`, then "
         "`python .castflow-runtime/manager.py sync`\n"
         "Do not write `.claude/skills` or `.agents/skills`.\n"
-        "Do not start the next skill in parallel."
-    ).format(skill, skill)
+        "Do not start the next skill in parallel.\n"
+        "Prose language is config language ({lang}). "
+        "zh is Chinese, en is English, missing means English."
+    ).format(skill, skill, lang=language)
     if detail:
         body += "\n\n" + detail
     body += "\n\n{} remaining. Next turn say castflow generate skills.".format(

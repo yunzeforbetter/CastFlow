@@ -160,7 +160,11 @@ def apply_setup_options(project_root, options):
     cfg = config.load_config(project_root)
     language = options.get("language")
     if language:
-        cfg["language"] = str(language).strip() or cfg.get("language") or "zh"
+        raw = str(language).strip()
+        cfg["language"] = (
+            config.normalize_language(raw) if raw
+            else (cfg.get("language") or "en")
+        )
     adapters_in = options.get("adapters")
     if isinstance(adapters_in, dict):
         cfg.setdefault("adapters", {}).update(
@@ -180,6 +184,10 @@ def apply_setup_options(project_root, options):
         )
     if "generate_skills" in options:
         cfg["generate_skills"] = bool(options.get("generate_skills"))
+    if "jev_enabled" in options:
+        cfg["jev_enabled"] = bool(options.get("jev_enabled"))
+    cfg.pop("jev_key", None)
+    cfg.pop("TYPESAFE_API_KEY", None)
     prompt = options.get("generate_prompt")
     if prompt is None:
         prompt = options.get("prompt")
@@ -203,8 +211,11 @@ def cold_start(project_root, options=None):
     options["generate_skills"] = generate_skills
     if "prompt" in options and "generate_prompt" not in options:
         options["generate_prompt"] = options.get("prompt")
+    jev_key = options.get("jev_key")
+    jev_enabled = bool(options.get("jev_enabled"))
     cfg = apply_setup_options(project_root, options)
     seed_report = adapters.seed(project_root)
+    jev_report = _sync_jev_module(project_root, jev_enabled, jev_key)
     saved = catalog.load_catalog(project_root)
     queued = queue.load_queue(project_root)
     handoff = ""
@@ -223,8 +234,24 @@ def cold_start(project_root, options=None):
         "modules": len(saved.get("modules") or []),
         "queued": len(queued.get("items") or []),
         "generate_skills": generate_skills,
+        "jev_enabled": jev_enabled,
+        "jev": jev_report,
         "handoff": handoff,
     }
+
+
+def _sync_jev_module(project_root, enabled, key):
+    """Copy the standalone Jev module only when the cold-start box is checked."""
+    import sys
+    from .paths import find_harness_dir
+    harness = find_harness_dir()
+    if harness not in sys.path:
+        sys.path.insert(0, harness)
+    try:
+        from jev.install import sync_module
+    except ImportError:
+        return {"enabled": bool(enabled), "missing": True}
+    return sync_module(project_root, enabled, key=key)
 
 
 def _remove_path(path):

@@ -52,6 +52,10 @@ GITIGNORE_BLOCK_LINES = (
     ".cursor/skills/",
     "# Per-machine skill disable list. Missing file = every skill active.",
     ".castflow-runtime/skills-disabled.json",
+    "# Optional integration secrets. One file, every key. Never commit it.",
+    ".castflow-runtime/secrets.env",
+    ".castflow-runtime/jev/key",
+    ".castflow-runtime/jev/*.local",
     "# END CASTFLOW GITIGNORE",
 )
 PROJECTION_INDEX_PATHS = (
@@ -64,7 +68,7 @@ PROJECTION_INDEX_PATHS = (
 CORE_SKILL_COPY = (
     "SKILL_ITERATION.md",
     "GLOBAL_SKILL_MEMORY.md",
-    "MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md",
+    "MODULE_MARK_SYSTEM_PROMPT.md",
 )
 
 CORE_SKILL_DIRS = skills_mod.CORE_SKILL_DIRS

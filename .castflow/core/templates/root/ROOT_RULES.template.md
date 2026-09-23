@@ -17,8 +17,8 @@ Host auto-injects this file and the matched skill `SKILL.md`.
 
 ## CastFlow commands
 
-- Pasted `/goal` scan prompt — follow `MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md`: land `_skill-gen-queue/`, one programmer skill at a time, mark done, compact, delete the queue. No parallel generate subagents.
-- Requirement to a runnable long task — **goal-loop-creator** (长任务转换系统). Compile a loop-engine Goal Loop Package under `loop-engine/packages/`. Do not invoke `/goal` in that skill.
+- Pasted `/goal` scan prompt — follow `MODULE_MARK_SYSTEM_PROMPT.md`: land `_skill-gen-queue/`, one programmer skill at a time, mark done, compact, delete the queue. No parallel generate subagents.
+- Requirement to a runnable long task — **goal-loop-creator** (long-task converter). Compile a loop-engine Goal Loop Package under `loop-engine/packages/`. Do not invoke `/goal` in that skill.
 - `castflow generate skills` — JSON queue for architect/debug/profiler only: write one, then stop. Do not mix with the `/goal` loop in the same turn.
 - `castflow.bat` / `python .castflow-runtime/manager.py ui` — visual console (skills, evolution, adapters, queue). First install: CastFlow checkout `castflow.bat`.
 - `python .castflow-runtime/manager.py sync` — project runtime skills to `.claude/skills` and `.agents/skills` (Grok/Cursor scan those; no extra skill trees).

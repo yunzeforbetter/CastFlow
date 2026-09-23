@@ -191,25 +191,94 @@ def description_shape_errors(description, skill_name=None):
     return errors
 
 
-def _extra_markdown(skill_path, top_md):
-    extra = [f for f in top_md if f not in EXPECTED_MD]
+_OPTIONAL_ROLES = (
+    "EXAMPLES.md",
+    "SKILL_MEMORY.md",
+    "ITERATION_GUIDE.md",
+)
+
+
+def _rel_posix(dirpath, skill_path, fname):
+    rel = os.path.relpath(dirpath, skill_path)
+    if rel == ".":
+        return fname
+    return os.path.join(rel, fname).replace("\\", "/")
+
+
+def _walk_skill_files(skill_path):
+    """Return (markdown paths, non-markdown paths) relative to the skill root."""
+    markdown = []
+    attachments = []
     for dirpath, dirnames, filenames in os.walk(skill_path):
         dirnames[:] = [d for d in dirnames if d != "__pycache__"]
-        rel = os.path.relpath(dirpath, skill_path)
-        if rel == ".":
-            continue
         for fname in filenames:
+            rel = _rel_posix(dirpath, skill_path, fname)
             if fname.endswith(".md"):
-                extra.append(os.path.join(rel, fname).replace("\\", "/"))
-    return extra
+                markdown.append(rel)
+            else:
+                attachments.append(rel)
+    return markdown, attachments
+
+
+def _is_catalog_skill(md_paths):
+    """True when this directory uses the catalog slots.
+
+    A subset of the four role names is a catalog skill. Extra markdown is
+    still catalog when a role file besides SKILL.md is present, or when the
+    extra file sits next to SKILL.md. Nested markdown with only SKILL.md is
+    freeform (skill-creator) and stays skipped.
+    """
+    if "SKILL.md" not in md_paths:
+        return False
+    extra = [path for path in md_paths if path not in EXPECTED_MD]
+    if not extra:
+        return True
+    if any(path in md_paths for path in _OPTIONAL_ROLES):
+        return True
+    return any("/" not in path for path in extra)
+
+
+def _body_without_frontmatter(content):
+    text = (content or "").lstrip("\ufeff")
+    if text.startswith("---"):
+        rest = text[3:]
+        end = rest.find("\n---")
+        if end >= 0:
+            return rest[end + 4:]
+    return text
+
+
+def _is_heading_only(content):
+    """True when the body is empty or every remaining line is a heading."""
+    lines = [
+        line.strip()
+        for line in _body_without_frontmatter(content).splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        return True
+    return all(line.startswith("#") for line in lines)
+
+
+def _attachment_pointer_errors(attachments, role_text):
+    errors = []
+    for rel in attachments:
+        base = rel.split("/")[-1]
+        if rel in role_text or base in role_text:
+            continue
+        errors.append(
+            "attachment has no pointer in a role file: {}".format(rel)
+        )
+    return errors
 
 
 def validate_skill_dir(skill_path):
     """Validate a single skill directory.
 
     Returns (errors, warnings, skipped).
-    Four role files missing -> skipped (not a generated CastFlow skill).
-    Four role files plus extra markdown -> error (invalid generated layout).
+    Catalog shape is SKILL.md plus any subset of the other three role files.
+    Missing optional role files are not errors. Freeform directories are skipped.
+    Extra markdown, a heading-only role file, or an unpointed attachment fails.
     """
     errors = []
     warnings = []
@@ -217,12 +286,11 @@ def validate_skill_dir(skill_path):
     if not os.path.isdir(skill_path):
         return ["Not a directory"], [], True
 
-    md_files = sorted(f for f in os.listdir(skill_path) if f.endswith(".md"))
-    missing = [name for name in EXPECTED_MD if name not in md_files]
-    if missing:
+    md_paths, attachments = _walk_skill_files(skill_path)
+    if not _is_catalog_skill(md_paths):
         return [], [], True
 
-    extra_md = _extra_markdown(skill_path, md_files)
+    extra_md = [path for path in md_paths if path not in EXPECTED_MD]
     if extra_md:
         errors.append(
             "extra markdown not allowed in generated skill: {}".format(
@@ -232,9 +300,18 @@ def validate_skill_dir(skill_path):
 
     file_contents = {}
     for fname in EXPECTED_MD:
-        file_contents[fname] = _read_file(os.path.join(skill_path, fname))
+        path = os.path.join(skill_path, fname)
+        if not os.path.isfile(path):
+            continue
+        content = _read_file(path)
+        if fname != "SKILL.md" and _is_heading_only(content):
+            errors.append(
+                "{} is an empty or heading-only role file; delete it "
+                "instead of leaving a stub".format(fname)
+            )
+        file_contents[fname] = content
 
-    skill_content = file_contents["SKILL.md"]
+    skill_content = file_contents.get("SKILL.md", "")
     if not ("name:" in skill_content[:500] and "description:" in skill_content[:500]):
         errors.append("SKILL.md missing YAML metadata (name/description)")
     else:
@@ -246,28 +323,25 @@ def validate_skill_dir(skill_path):
             )
         )
 
-    for fname in EXPECTED_MD:
-        content = file_contents[fname]
+    for fname, content in file_contents.items():
         if "{{" in content and "}}" in content:
             errors.append("{} has residual placeholder(s)".format(fname))
-
-    for fname in EXPECTED_MD:
-        content = file_contents[fname]
         found = set(ch for ch in content if ch in EMOJI_CHARS)
         if found:
             codes = ", ".join("U+{:04X}".format(ord(ch)) for ch in sorted(found))
             errors.append("{} contains emoji/symbols ({})".format(fname, codes))
 
     for fname in ["SKILL_MEMORY.md", "ITERATION_GUIDE.md"]:
-        content = file_contents[fname]
+        content = file_contents.get(fname)
+        if content is None:
+            continue
         matches = DATE_PATTERN.findall(content)
         if matches:
             errors.append("{} contains date(s): {}".format(fname, ", ".join(matches)))
 
-    for fname in EXPECTED_MD:
+    for fname, content in file_contents.items():
         if fname not in SIZE_LIMITS:
             continue
-        content = file_contents[fname]
         size = _count_size_units(content)
         limit = SIZE_LIMITS[fname]
         if size > limit:
@@ -278,6 +352,9 @@ def validate_skill_dir(skill_path):
                 )
             )
 
+    errors.extend(
+        _attachment_pointer_errors(attachments, "\n".join(file_contents.values()))
+    )
     return errors, warnings, False
 
 

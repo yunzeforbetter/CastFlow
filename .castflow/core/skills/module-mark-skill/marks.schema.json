@@ -1,0 +1,25 @@
+{
+  "evidence_card": {
+    "id": "stable package id",
+    "parent_id": "grab-bag parent, or empty",
+    "leaf_name": "last path segment, compared case-insensitively",
+    "sibling_feature_id": "existing feature whose leaf_name matches, or empty",
+    "fan_in": "other packages that reference this package's unique declarations",
+    "fan_out": "other packages this package references",
+    "entry_count": "own user-facing or process entries, using this repo's entry signals",
+    "consumer_ids": "feature packages that reference this package",
+    "decl_sample": "up to 8 declared names, not a file list",
+    "child_ids": "immediate child packages already found"
+  },
+  "stances": ["feature", "shared_method", "independent_system", "framework_mechanism"],
+  "actions": ["attach", "split", "keep", "review"],
+  "decision": {
+    "id": "package id",
+    "action": "attach | split | keep | review",
+    "target_id": "module id to join or create",
+    "role": "feature | tool | engine | adapter",
+    "weights": "stance name to 0..1",
+    "source": "rule | prior | jev | review",
+    "evidence": "one sentence citing fan-in, consumers, or leaf match"
+  }
+}

@@ -3,40 +3,88 @@
 Not a skill. Load only when scanning modules or generating module skills.
 Do not auto-inject into ordinary coding turns.
 
-There is no Python module scanner. Module discovery is the AI executing
-`MODULE_SKILL_LOOP_ENGINE_SYSTEM_PROMPT.md` in the current session.
+Module discovery for a cold-start checkbox is one ephemeral command, then the
+AI executes `MODULE_MARK_SYSTEM_PROMPT.md` for the multi-select
+and the one-at-a-time skill write:
+
+```text
+python .castflow/manager.py coldstart --root <project>
+```
+
+(Use `.castflow-runtime/manager.py` after seed.) Optional `--target N`
+selects a layer of one dependency tree (8 and 30 are coarser and finer cuts
+of the same merges, not a new clustering). The command prints every module
+at that cut. Each module nests one or more package atoms (paths, declared
+types, how many other packages reference it). An atom is evidence for that
+one skill, not a multi-select row and not a skill. It does not write a
+ledger. Do not call deleted `scan.py`, `manager.py scan`, or any HTTP scan API.
 
 When the user pastes a scan-and-generate prompt (cold-start checkbox), the
 model:
 
-1. Walks **product** scripts (any language) and groups **logical functional**
-   modules. Skip the AI framework entirely (see below).
-2. Shows a host **multi-select** so the user picks which modules get a skill;
-   each option must have a clickable/focus preview: description + script dirs
+1. Runs `coldstart` on **product** scripts, then applies
+   `module-mark-skill` before the checkbox. Marks score four stances
+   (feature, shared method, independent system, framework mechanism)
+   and may attach, split, or keep a package. Accepted marks live in
+   `.castflow-runtime/module-marks.txt` and win over a grab-bag path
+   cut. `coldstart` uses official TypeSafe System One only when
+   `TYPESAFE_API_KEY` is set; otherwise it prints that Jev is not
+   configured and keeps the structural prior. The skill states no
+   language and no directory names. Atoms are
+   packages the repo
+   already has: `GameLogic/**/Modules/<Feature>` (Logic and Runtime of the
+   same feature are one atom), `tools/<Name>`, vendor trees, and an asmdef
+   only when it is not a grab-bag around those features. Edges are distinct
+   declared type names (C#: type-name references, not `using`, not raw token
+   counts). Roles are tool / engine / feature / adapter / bootstrap. Skip
+   the AI framework entirely (see below).
+2. Shows a host **multi-select** of **every** printed module, in that
+   order, not one row per atom. Each option is a label plus one sentence
+   of meaning (role and how many packages reference it). Do not put atom
+   rows, symbols, or directory trees in the question. `recommend: yes` is
+   the default check (features with entries, plus the highest fan-in
+   engines). Tools and adapters stay in the list unchecked. Do not hide
+   them and do not turn the target knob into "only show 8 rows".
 3. Writes one short card per selected module under
-   `.castflow-runtime/_skill-gen-queue/`, then compacts unused scan context
+   `.castflow-runtime/_skill-gen-queue/`, then compacts unused scan context.
+   Or pass `--select <id> --queue` for exactly the ids the user chose.
+   The card keeps the one-line meaning and at most six script roots.
+   Skill generation searches those roots again; it does not reuse a
+   symbol list from the scan.
 4. Generates selected modules **one at a time** (read card -> write skill ->
-   mark `status: done` -> compact). Deletes the queue directory when finished.
-   Never generate two skills in parallel.
+   mark `status: done` -> compact). `--select <id> --skill` writes one skill
+   from real call sites and then deletes the queue. Never generate two skills
+   in parallel.
 
-Do not split by assembly, `.asmdef`, or first-level folders. Do not stop
-because there is no `Assets/Scripts` or `.cs`. Do not call `scan.py`,
-`manager.py scan`, or any HTTP scan API.
+Do not split a grab-bag asmdef or the first two path segments into the
+checkbox. Do not cluster files or functions. Do not stop because there is
+no `Assets/Scripts` or `.cs`. Do not hide rows to keep a short list. A
+grab-bag assembly's leftover scripts stay one residue engine, not one
+module per file.
 
 When the user did not ask to scan or generate, do not walk the tree and do
 not write skills.
 
 ## What counts as a module
 
-A module is a top-level functional unit with its own types and a stable
-script path.
+A module is the user-selected skill unit: one node of the package tree.
+It owns one or more atoms. List every module at the current cut. Do not
+list every atom. 3-8 is not a cap on the printed list. `--target` only
+chooses which layer of the same tree is printed.
 
-- Prefer 3-8 accepted modules.
-- One module may own several `script_dirs` / `paths` (same id merged).
-- Split only when two public APIs or lifecycles barely import each other.
-- Merge when one side is helpers, or either side has fewer than 3 script files.
+- Order is role, then how many other packages reference the node, then id.
+  `recommend: yes` rows come first.
+- One module may own several atoms, `script_dirs`, and `paths`.
+- The same `Modules/<Feature>` name under Logic and Runtime is one atom.
+- A symbol or path from another module's atoms does not belong on this card.
+- `util` / `test` / `editor` / protocol / vendor stay listed. Their
+  `recommend` is no. They are not skills until the user checks them.
+- One skill is one checked node. Nested atoms are not extra skills.
+- Optional `.castflow-runtime/module-roles.txt` lines
+  (`id-or-path-prefix role`) override a role before the cut. The scan
+  reads that file and does not write it. It is not a graph ledger.
 
-Not a module by default (still show in the multi-select, unchecked):
+Not selected by default (still show in the multi-select, unchecked):
 
 - `util` / `utils` / `common` / `shared` / `test` / `tests` / `editor`
 - every nested folder, generated code, vendor trees
@@ -56,19 +104,24 @@ installer, not a product module. Path segments matching the names above
 (case-insensitive for `CastFlow`) take the whole subtree out of scope.
 Do not keep a roster of framework skill names to skip.
 
-## Module card (AI fills; do not fabricate)
+## Module card (written only after the user checks it)
 
-Required on each candidate before the multi-select:
+Do not build this card before the multi-select. The printed module line is
+enough to ask. After the check, the queue file is a search hint:
 
-- `id`, `name`, `responsibility`
-- `script_dirs`, `scope_paths`, `core_symbols`
-- `suggested_skill`, `recommend`, `recommend_reason`
+- `id`, `name`, `role`, `responsibility` (one sentence)
+- `script_dirs`: at most six roots, nested folders folded up
+- `atoms`: ids only
+- `suggested_skill`
 
-`responsibility` is observed from scripts (and a directory README only if one
-exists next to those scripts). Empty is better than an invented story.
+No `scope_paths`, `core_symbols`, per-file paths, or symbol lists. Generation
+finds declarations under `script_dirs` and call sites across product scripts.
+`responsibility` comes from the module line (role, id, reference count), not
+from reading scripts during the checkbox. Empty is better than an invented story.
 
-Do not persist scan ledgers (`INVENTORY.md`, `STATE.yaml`, `catalog.json`
-rows filled by a script). The multi-select **is** the review UI.
+Do not persist scan ledgers (`INVENTORY.md`, `STATE.yaml`, `GRAPH.md`,
+`PREFLIGHT.md`, `CLAIMS.yaml`, `knowledge-graph.json`, `.ua/`). The
+multi-select **is** the review UI. `coldstart` without `--select` only prints.
 After the user submits the multi-select, persist **only selected** cards as
 `.castflow-runtime/_skill-gen-queue/{NN}-{id}.yaml` (`status: pending`).
 Do not write unselected modules. Delete the directory when every selected
@@ -81,7 +134,8 @@ skill is written.
 - AI scan -> multi-select with previews -> land selected cards -> compact
   -> generate one skill at a time from the queue -> delete the queue
 - Any language
-- After selection, recon stays inside that module's script paths
+- After selection, look for declarations under that card's script roots;
+  call sites are still searched across product scripts
 - Parallel generate subagents are forbidden (quality drops)
 
 **User did not ask** (install-only cold start):

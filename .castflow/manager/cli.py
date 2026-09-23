@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from . import adapters, catalog, config, evolution, queue, setup, skills
+from . import adapters, catalog, coldstart, config, evolution, jevmark, queue, setup, skills
 from .paths import (
     FactoryRuntimeError,
     find_harness_dir,
@@ -38,6 +38,12 @@ CastFlow manager
   python .castflow/manager.py flush     # run trace-flush (Codex / no Stop hook)
   python .castflow/manager.py homology  # batch connected-component homology (stdin JSON)
   python .castflow/manager.py validate  # four-file check on runtime skills
+  python .castflow/manager.py coldstart --root PATH [--target N]
+      # ephemeral package-atom tree; writes nothing. N is a cut of one tree.
+  python .castflow/manager.py coldstart --root PATH --select ID --queue
+      # write only the selected card(s) under _skill-gen-queue/
+  python .castflow/manager.py coldstart --root PATH --select ID --skill
+      # one programmer skill from real call sites, then delete the queue
 
 Cold start is the GUI (castflow.bat / castflow.sh / launch), not an AI conversation.
 Steps: configure -> optional scan/generate prompt -> 开启冷启动 (copy files) -> if checked, paste prompt.
@@ -171,6 +177,52 @@ def cmd_homology(project_root, args):
     result = _homology.cluster_items(items or [])
     json.dump(result, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
+    return 0
+
+
+def cmd_coldstart(project_root, args):
+    """List the selectable cut, or write the selected queue / one skill. No scan ledger."""
+    root = os.path.abspath(args.root or project_root)
+    selected = [item for item in (args.select or []) if item]
+    if args.skill and len(selected) != 1:
+        print("coldstart --skill needs exactly one --select")
+        return 2
+    sources, asmdefs = coldstart.read_product_tree(root)
+    rules = coldstart.load_role_rules(root)
+    cards, atoms, edges = coldstart.analyze_graph(
+        sources, target=args.target, asmdef_dirs=asmdefs, role_rules=rules,
+    )
+    marks, notice = jevmark.mark_atoms(
+        atoms, edges, environ=os.environ, project_root=root,
+    )
+    print("root: {}".format(root))
+    if notice:
+        print(notice)
+    print(coldstart.format_summary(cards), end="")
+    print(jevmark.format_marks(marks), end="")
+    if not selected:
+        if args.queue or args.skill:
+            print("coldstart: pass --select ID")
+            return 2
+        return 0
+    try:
+        chosen = coldstart.select_cards(cards, selected)
+    except KeyError as exc:
+        print("unknown module id: {}".format(exc))
+        return 2
+    written = coldstart.write_selected_queue(root, chosen)
+    print("queue: {}".format(len(written)))
+    for path in written:
+        print("queue-file: {}".format(os.path.basename(path)))
+    if not args.skill:
+        return 0
+    folder, hits = coldstart.write_programmer_skill(root, chosen[0], sources)
+    print("skill: {}".format(folder))
+    print("examples: {}".format(len(hits)))
+    for hit in hits:
+        print("call-site: {symbol} {path}:{line}".format(**hit))
+    coldstart.delete_queue(root)
+    print("queue-removed: yes")
     return 0
 
 
@@ -308,6 +360,27 @@ def build_parser():
     sub.add_parser("homology", help="Batch MEMORY homology (stdin JSON items)")
     sub.add_parser("status", help="Dump config/catalog/queue as JSON")
     sub.add_parser("validate", help="Validate four-file skills in runtime")
+    p_cold = sub.add_parser(
+        "coldstart",
+        help="List the package-atom cut (no scan ledger)",
+    )
+    p_cold.add_argument("--root", default=None, help="Product root to read")
+    p_cold.add_argument(
+        "--target", type=int, default=coldstart.DEFAULT_TARGET,
+        help="Selectable nodes to aim for. 8 and 30 are cuts of the same tree.",
+    )
+    p_cold.add_argument(
+        "--select", action="append", default=[],
+        help="Module id to keep. Repeat for several. Omit to only print.",
+    )
+    p_cold.add_argument(
+        "--queue", action="store_true",
+        help="Write only the selected cards into _skill-gen-queue/",
+    )
+    p_cold.add_argument(
+        "--skill", action="store_true",
+        help="Write one programmer skill for the single --select, then delete the queue",
+    )
     p_ui = sub.add_parser("ui", help="Open the visual console")
     p_ui.add_argument("--port", type=int, default=8765)
     p_ui.add_argument("--no-browser", action="store_true")
@@ -357,6 +430,7 @@ def main(argv=None):
         "homology": cmd_homology,
         "status": cmd_status,
         "validate": cmd_validate,
+        "coldstart": cmd_coldstart,
         "ui": cmd_ui,
         "launch": cmd_launch,
         "setup": cmd_setup,
