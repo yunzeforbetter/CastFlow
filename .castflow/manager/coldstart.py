@@ -1514,10 +1514,12 @@ def _example_blocks(call_sites, language):
 
 
 def write_programmer_skill(project_root, card, sources, call_sites=None):
-    """Write one programmer skill from real call sites. One card only.
+    """Copy live call lines into SKILL.md and EXAMPLES.md. Not the generation contract.
 
-    SKILL.md is always written. EXAMPLES.md is written only for live hits.
-    SKILL_MEMORY.md and ITERATION_GUIDE.md are not quota files.
+    A queue card and a named skill both follow SKILL_ITERATION.md. This
+    copier never opens a definition body, so it cannot see a signature lie
+    and does not write SKILL_MEMORY.md. The CLI does not call it. Tests use
+    it to check that a line copy does not invent an entry.
     """
     if call_sites is None:
         call_sites = collect_call_sites(sources, card, limit=8)

@@ -15,6 +15,8 @@ sys.path.insert(0, _CASTFLOW_DIR)
 
 from installer.validate import (
     validate_skill_dir,
+    validate_all,
+    check_programmer_skill,
     _count_size_units,
     extract_yaml_description,
     description_shape_errors,
@@ -374,6 +376,292 @@ class TestValidate(unittest.TestCase):
         errors, _, skipped = validate_skill_dir(skill_dir)
         self.assertFalse(skipped)
         self.assertTrue(any("extra key" in e.lower() for e in errors))
+
+
+_PROGRAMMER_DESC = (
+    "Change mail in this repo. Use when the user names mail. NOT battle."
+)
+
+_LIVE_SERVICE = (
+    "public class MailService\n"
+    "{\n"
+    "    public int Send(int id)\n"
+    "    {\n"
+    "        return id;\n"
+    "    }\n"
+    "}\n"
+)
+
+_LIVE_FLOW = (
+    "public class MailFlow\n"
+    "{\n"
+    "    public void Run(MailService mail, int id)\n"
+    "    {\n"
+    "        var n = mail.Send(id);\n"
+    "    }\n"
+    "}\n"
+)
+
+_GAP_SERVICE = (
+    "public class MailService\n"
+    "{\n"
+    "    public void Send(int id)\n"
+    "    {\n"
+    "        if (session == null) return;\n"
+    "        session.Transmit(id);\n"
+    "    }\n"
+    "}\n"
+)
+
+_GAP_FLOW = (
+    "public class MailFlow\n"
+    "{\n"
+    "    public void Run(MailService mail, int id)\n"
+    "    {\n"
+    "        mail.Send(id);\n"
+    "    }\n"
+    "}\n"
+)
+
+_EMPTY_WIDGET = (
+    "public class Widget\n"
+    "{\n"
+    "    public void Open()\n"
+    "    {\n"
+    "    }\n"
+    "}\n"
+)
+
+_PUBLISH_BUS = (
+    "public class Bus\n"
+    "{\n"
+    "    public void Run()\n"
+    "    {\n"
+    "        Ready.Publish();\n"
+    "    }\n"
+    "}\n"
+)
+
+
+def _line_of(text, snippet):
+    for number, line in enumerate(text.splitlines(), 1):
+        if snippet in line:
+            return number
+    raise AssertionError(snippet)
+
+
+def _examples(scene, code, ref):
+    return (
+        "## Example 1: send\n\n"
+        "Scene\n"
+        "{scene}\n\n"
+        "Code\n"
+        "```\n"
+        "{code}\n"
+        "```\n\n"
+        "Project reference\n"
+        "{ref}\n"
+    ).format(scene=scene, code=code, ref=ref)
+
+
+class TestProgrammerSkillGate(unittest.TestCase):
+    """Drive check_programmer_skill, the function validate_all calls."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="castflow-gate-")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _write(self, rel, text):
+        path = os.path.join(self.root, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        return path
+
+    def _skill(self, examples, memory=None):
+        skill = os.path.join(
+            self.root, ".castflow-runtime", "skills", "programmer-mail-skill",
+        )
+        os.makedirs(skill, exist_ok=True)
+        skill_md = (
+            "---\nname: programmer-mail-skill\n"
+            "description: {}\n---\n\n# Mail\n\nYield to battle.\n"
+        ).format(_PROGRAMMER_DESC)
+        self._write(
+            ".castflow-runtime/skills/programmer-mail-skill/SKILL.md",
+            skill_md,
+        )
+        self._write(
+            ".castflow-runtime/skills/programmer-mail-skill/EXAMPLES.md",
+            examples,
+        )
+        if memory is not None:
+            self._write(
+                ".castflow-runtime/skills/programmer-mail-skill/SKILL_MEMORY.md",
+                memory,
+            )
+        return skill
+
+    def _check(self, skill):
+        first = check_programmer_skill(skill, self.root)
+        second = check_programmer_skill(skill, self.root)
+        self.assertEqual(first, second)
+        return first
+
+    def test_live_call_without_memory_passes(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        line_no = _line_of(_LIVE_FLOW, "mail.Send(id)")
+        skill = self._skill(_examples(
+            "Send the id.",
+            "var n = mail.Send(id);",
+            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+        ))
+        errors = self._check(skill)
+        self.assertEqual(errors, [])
+        self.assertTrue(validate_all(self.root))
+
+    def test_signature_gap_without_memory_fails(self):
+        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _GAP_FLOW)
+        line_no = _line_of(_GAP_FLOW, "mail.Send(id)")
+        skill = self._skill(_examples(
+            "Send the id.",
+            "mail.Send(id);",
+            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+        ))
+        errors = self._check(skill)
+        self.assertIn("signature gap missing from memory", errors)
+        self.assertFalse(validate_all(self.root))
+
+    def test_signature_gap_that_only_repeats_the_signature_fails(self):
+        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _GAP_FLOW)
+        line_no = _line_of(_GAP_FLOW, "mail.Send(id)")
+        memory = (
+            "### Rule 1: send\n\n"
+            "Anchors: [method:Mail/MailService:Send]\n\n"
+            "Definition\n"
+            "Send takes id.\n"
+        )
+        skill = self._skill(_examples(
+            "Send the id.",
+            "mail.Send(id);",
+            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+        ), memory)
+        errors = self._check(skill)
+        self.assertIn("signature gap repeats the signature", errors)
+
+    def test_signature_gap_with_body_requirement_passes(self):
+        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _GAP_FLOW)
+        line_no = _line_of(_GAP_FLOW, "mail.Send(id)")
+        memory = (
+            "### Rule 1: session first\n\n"
+            "Anchors: [method:Mail/MailService:Send]\n\n"
+            "Definition\n"
+            "Call Send only after session exists.\n"
+        )
+        skill = self._skill(_examples(
+            "Send the id.",
+            "mail.Send(id);",
+            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+        ), memory)
+        self.assertEqual(self._check(skill), [])
+
+    def test_declaration_cite_fails(self):
+        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
+        line_no = _line_of(_GAP_SERVICE, "public void Send(int id)")
+        skill = self._skill(_examples(
+            "Send the id.",
+            "public void Send(int id)",
+            "Assets/Mail/MailService.cs:{}".format(line_no),
+        ))
+        self.assertIn("call site is a declaration", self._check(skill))
+
+    def test_empty_body_cite_fails(self):
+        self._write("Assets/Widget/Widget.cs", _EMPTY_WIDGET)
+        line_no = _line_of(_EMPTY_WIDGET, "public void Open()")
+        skill = self._skill(_examples(
+            "Open it.",
+            "public void Open()",
+            "Assets/Widget/Widget.cs:{}".format(line_no),
+        ))
+        self.assertIn("call site is an empty body", self._check(skill))
+
+    def test_publish_without_subscriber_fails(self):
+        self._write("Assets/Bus/Bus.cs", _PUBLISH_BUS)
+        line_no = _line_of(_PUBLISH_BUS, "Ready.Publish()")
+        skill = self._skill(_examples(
+            "Publish ready.",
+            "Ready.Publish();",
+            "Assets/Bus/Bus.cs:{}".format(line_no),
+        ))
+        self.assertIn(
+            "call site is a publish with no subscriber", self._check(skill),
+        )
+
+    def test_anchor_that_does_not_grep_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        line_no = _line_of(_LIVE_FLOW, "mail.Send(id)")
+        memory = (
+            "### Rule 1: note\n\n"
+            "Anchors: [method:Nope/MissingSymbol]\n\n"
+            "Definition\n"
+            "Leave the return value as the caller wrote it.\n"
+        )
+        skill = self._skill(_examples(
+            "Send the id.",
+            "var n = mail.Send(id);",
+            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+        ), memory)
+        self.assertIn("memory anchor does not grep", self._check(skill))
+
+    def test_live_call_written_up_as_a_registry_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        line_no = _line_of(_LIVE_FLOW, "mail.Send(id)")
+        skill = self._skill(_examples(
+            "Write this call site up as a registry.",
+            "var n = mail.Send(id);",
+            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+        ))
+        self.assertIn(
+            "call site is written up as a registry", self._check(skill),
+        )
+
+    def test_flow_defers_writing_rules_to_one_pass(self):
+        skills = os.path.join(_CASTFLOW_DIR, "core", "skills")
+        with open(os.path.join(skills, "SKILL_ITERATION.md"), encoding="utf-8") as handle:
+            contract = handle.read()
+        with open(os.path.join(skills, "MODULE_MARK_SYSTEM_PROMPT.md"), encoding="utf-8") as handle:
+            flow = handle.read()
+        keep = (
+            "Keep a line only when omitting it would make the next generated "
+            "call use the wrong symbol or the wrong argument."
+        )
+        fact = "A fact the signature already states stays an example, not a rule."
+        self.assertEqual(contract.count(keep), 1)
+        self.assertEqual(contract.count(fact), 1)
+        self.assertNotIn(keep, flow)
+        self.assertNotIn("Hot-path evidence", flow)
+        self.assertNotIn("three gates", flow)
+        self.assertNotIn("1-9", flow)
+        for term in ("call site", "signature gap", "yield"):
+            self.assertIn(term, contract)
+            self.assertIn(term, flow)
+        self.assertIn("Use when the user names <id>", contract)
+        self.assertIn("only when validate passed", flow)
+        self.assertIn("do not delete the queue", flow)
+        self.assertIn("does not write a skill body", contract)
+        self.assertIn("does not write a body", flow)
+        self.assertIn("does not require", flow)
+        self.assertIn("Checker, Collector, or Maker", flow)
+        self.assertIn("run_loop.py", flow)
+        self.assertIn("eval-viewer", flow)
 
 
 if __name__ == "__main__":

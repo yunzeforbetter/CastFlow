@@ -6,6 +6,10 @@ User-visible changes to CastFlow. Versions follow semver: a breaking workflow ch
 
 ---
 
+## Unreleased
+
+Cold-start skill generation and a named programmer skill use one pass. Writing one skill and clearing context stays, as isolation. It is no longer a reason to stop after `SKILL.md`, stop at three call lines, or skip a constraint the signature hides. `coldstart --skill` does not write a skill body. `validate` now rejects a programmer skill whose cited call site is a declaration, an empty body, a publish with no subscriber, or a registry write-up, and rejects a memory entry that misses a signature gap, only repeats the signature, or whose anchor does not grep. A call site with no memory file still passes. There is no eval loop. The default `/goal` names the cold-start language: the scan multi-select speaks that language, and module ids stay as printed. Skill prose still follows the queue card.
+
 ## 2.1.0 — 2026-09-18
 
 **macOS cold start matches Windows.** The framework repo and an already installed project can both open the wizard / console on a Mac. You no longer have to detour through `python … launch` only.

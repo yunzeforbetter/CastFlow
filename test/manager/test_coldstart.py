@@ -282,6 +282,7 @@ class ColdStartTests(unittest.TestCase):
         self.assertNotIn("language: en", text)
 
     def test_skill_uses_real_call_sites_inside_the_node(self):
+        """Line copier only. Not the generation contract in SKILL_ITERATION."""
         root = tempfile.mkdtemp(prefix="castflow-skill-")
         self.addCleanup(shutil.rmtree, root, True)
         battle = _by_id(self.cards())["battle"]
@@ -397,10 +398,10 @@ class ColdStartTests(unittest.TestCase):
              "--select", "battle", "--skill"],
             env=env, text=True,
         )
-        self.assertIn("examples: ", skilled)
-        self.assertIn("queue-removed: yes", skilled)
-        self.assertFalse(os.path.exists(coldstart.queue_dir(root)))
-        self.assertTrue(os.path.isdir(coldstart.skill_dir(root, "battle")))
+        self.assertIn("skill-body: not written by coldstart", skilled)
+        self.assertIn("queue-kept: yes", skilled)
+        self.assertTrue(os.path.isdir(coldstart.queue_dir(root)))
+        self.assertFalse(os.path.isdir(coldstart.skill_dir(root, "battle")))
         for forbidden in coldstart.LEDGER_NAMES:
             self.assertFalse(os.path.exists(os.path.join(root, forbidden)))
 

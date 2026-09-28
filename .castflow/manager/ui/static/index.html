@@ -153,7 +153,7 @@
               <option value="ko">한국어 (ko)</option>
             </select>
           </p>
-          <p class="path" data-i18n="langHelp">Cold start stores this language. The manager UI and later generated skill prose both use it. Default is English.</p>
+          <p class="path" data-i18n="langHelp">Cold start stores this language. The manager UI, the scan multi-select, and later skill prose use it. Default is English.</p>
           <p>
             <label class="chk"><input type="checkbox" data-setup-ad="claude" checked /> claude · .claude/skills</label>
             <label class="chk"><input type="checkbox" data-setup-ad="codex" checked /> codex · .agents/skills</label>
@@ -315,7 +315,7 @@
         alsoSeeded: "Also seeded: <code>skill-creator</code> (catalog four-file writer) and <code>origin-evolve-skill</code> (when evolution is on).",
         configTitle: "Settings",
         langLabel: "Language",
-        langHelp: "Cold start stores this language. The manager UI and later generated skill prose both use it. Default is English.",
+        langHelp: "Cold start stores this language. The manager UI, the scan multi-select, and later skill prose use it. Default is English.",
         evoPlugin: "Evolution plugin",
         jevEnable: "Enable Jev (optional)",
         jevHelp: "Leave unchecked to skip install. When checked, the module is copied to <code>.castflow-runtime/jev/</code>. The key goes in <code>.castflow-runtime/secrets.env</code> (<code>TYPESAFE_API_KEY</code>), which is gitignored and is not stored in <code>config.json</code>. Later keys go in that same file.",
@@ -410,7 +410,7 @@
         alsoSeeded: "同时装入：<code>skill-creator</code>（catalog 四文件）和 <code>origin-evolve-skill</code>（进化开启时）。",
         configTitle: "配置",
         langLabel: "语言",
-        langHelp: "冷启动记住这个语言。界面和之后生成的 skill 正文都用它。默认英文。",
+        langHelp: "冷启动记住这个语言。界面、扫描时的多选，以及之后的 skill 正文都用它。默认英文。",
         evoPlugin: "进化插件",
         jevEnable: "启用 Jev（可选）",
         jevHelp: "不勾选则不安装。勾选后把独立模块同步到 <code>.castflow-runtime/jev/</code>。密钥写入统一的 <code>.castflow-runtime/secrets.env</code>（<code>TYPESAFE_API_KEY</code>），该文件被 git 忽略，不会进 <code>config.json</code>。以后的 key 也写在这一个文件里。",
@@ -505,7 +505,7 @@
         alsoSeeded: "あわせて入るもの: <code>skill-creator</code>（catalog の4ファイル）と <code>origin-evolve-skill</code>（進化がオンのとき）。",
         configTitle: "設定",
         langLabel: "言語",
-        langHelp: "コールドスタートがこの言語を覚えています。管理画面と、その後生成する skill の本文の両方に使います。既定は英語です。",
+        langHelp: "コールドスタートがこの言語を覚えています。管理画面、スキャン時の複数選択、その後生成する skill の本文に使います。既定は英語です。",
         evoPlugin: "進化プラグイン",
         jevEnable: "Jev を有効にする（任意）",
         jevHelp: "オフならインストールしません。オンにするとモジュールを <code>.castflow-runtime/jev/</code> にコピーします。キーは <code>.castflow-runtime/secrets.env</code>（<code>TYPESAFE_API_KEY</code>）に書き、gitignore され、<code>config.json</code> には入りません。以後のキーも同じファイルです。",
@@ -600,7 +600,7 @@
         alsoSeeded: "함께 설치: <code>skill-creator</code>(catalog 네 파일)와 <code>origin-evolve-skill</code>(진화가 켜져 있을 때).",
         configTitle: "설정",
         langLabel: "언어",
-        langHelp: "콜드 스타트가 이 언어를 기억합니다. 관리 화면과 이후 생성되는 skill 본문 모두 이 언어를 씁니다. 기본은 영어입니다.",
+        langHelp: "콜드 스타트가 이 언어를 기억합니다. 관리 화면, 스캔 때의 다중 선택, 이후 생성되는 skill 본문 모두 이 언어를 씁니다. 기본은 영어입니다.",
         evoPlugin: "진화 플러그인",
         jevEnable: "Jev 사용(선택)",
         jevHelp: "끄면 설치하지 않습니다. 켜면 모듈을 <code>.castflow-runtime/jev/</code>로 복사합니다. 키는 <code>.castflow-runtime/secrets.env</code>(<code>TYPESAFE_API_KEY</code>)에 쓰이며 gitignore 되고 <code>config.json</code>에는 들어가지 않습니다. 이후 키도 같은 파일입니다.",

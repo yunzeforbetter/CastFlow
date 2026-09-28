@@ -37,13 +37,14 @@ CastFlow manager
   python .castflow/manager.py handoff   # print the next skill-creator prompt
   python .castflow/manager.py flush     # run trace-flush (Codex / no Stop hook)
   python .castflow/manager.py homology  # batch connected-component homology (stdin JSON)
-  python .castflow/manager.py validate  # four-file check on runtime skills
+  python .castflow/manager.py validate  # four-file check; programmer skills must pass the call site check
   python .castflow/manager.py coldstart --root PATH [--target N]
       # ephemeral package-atom tree; writes nothing. N is a cut of one tree.
   python .castflow/manager.py coldstart --root PATH --select ID --queue
       # write only the selected card(s) under _skill-gen-queue/
   python .castflow/manager.py coldstart --root PATH --select ID --skill
-      # one programmer skill from real call sites, then delete the queue
+      # does not write a skill body; the queue card uses the same
+      # SKILL_ITERATION pass as a named programmer skill
 
 Cold start is the GUI (castflow.bat / castflow.sh / launch), not an AI conversation.
 Steps: configure -> optional scan/generate prompt -> 开启冷启动 (copy files) -> if checked, paste prompt.
@@ -181,7 +182,7 @@ def cmd_homology(project_root, args):
 
 
 def cmd_coldstart(project_root, args):
-    """List the selectable cut, or write the selected queue / one skill. No scan ledger."""
+    """List the selectable cut, or write the selected queue. No skill body. No scan ledger."""
     root = os.path.abspath(args.root or project_root)
     selected = [item for item in (args.select or []) if item]
     if args.skill and len(selected) != 1:
@@ -216,13 +217,9 @@ def cmd_coldstart(project_root, args):
         print("queue-file: {}".format(os.path.basename(path)))
     if not args.skill:
         return 0
-    folder, hits = coldstart.write_programmer_skill(root, chosen[0], sources)
-    print("skill: {}".format(folder))
-    print("examples: {}".format(len(hits)))
-    for hit in hits:
-        print("call-site: {symbol} {path}:{line}".format(**hit))
-    coldstart.delete_queue(root)
-    print("queue-removed: yes")
+    print("skill-body: not written by coldstart")
+    print("generate: same SKILL_ITERATION pass as a named programmer skill")
+    print("queue-kept: yes")
     return 0
 
 
@@ -359,7 +356,10 @@ def build_parser():
     sub.add_parser("flush", help="Run trace-flush once")
     sub.add_parser("homology", help="Batch MEMORY homology (stdin JSON items)")
     sub.add_parser("status", help="Dump config/catalog/queue as JSON")
-    sub.add_parser("validate", help="Validate four-file skills in runtime")
+    sub.add_parser(
+        "validate",
+        help="Validate four-file skills; programmer skills must pass the call site check",
+    )
     p_cold = sub.add_parser(
         "coldstart",
         help="List the package-atom cut (no scan ledger)",
@@ -379,7 +379,7 @@ def build_parser():
     )
     p_cold.add_argument(
         "--skill", action="store_true",
-        help="Write one programmer skill for the single --select, then delete the queue",
+        help="Do not write a skill body. Generate the queue card with the same SKILL_ITERATION pass as a named skill",
     )
     p_ui = sub.add_parser("ui", help="Open the visual console")
     p_ui.add_argument("--port", type=int, default=8765)

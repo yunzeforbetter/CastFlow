@@ -81,13 +81,27 @@ LOOP_ENGINE_RUNTIME_PATH = ".castflow-runtime/skills/" + LOOP_ENGINE_PROMPT_NAME
 
 
 def default_scan_generate_prompt(project_root, language=None):
-    """One-line /goal prompt: read the loop-engine file at its runtime path."""
+    """One-line /goal prompt.
+
+    Names the loop-engine file and the config language for speech to the
+    user. Skill prose still follows the queue card, not this line.
+    """
     cfg = load_config(project_root)
     if language is None:
         language = cfg.get("language") or "en"
-    if _is_zh(language):
-        return "/goal 读取并按照 {} 执行".format(LOOP_ENGINE_RUNTIME_PATH)
-    return "/goal Read and follow {}".format(LOOP_ENGINE_RUNTIME_PATH)
+    lang = normalize_language(language)
+    if lang == "zh":
+        return (
+            "/goal 读取并按照 {path} 执行。"
+            "跟用户说话用 {lang}：多选的问题和每项说明用中文。"
+            "模块 id 保持原样。技能正文仍按卡上的 language。"
+        ).format(path=LOOP_ENGINE_RUNTIME_PATH, lang=lang)
+    return (
+        "/goal Read and follow {path}. "
+        "Speak to the user in {lang}: the multi-select question and each "
+        "option sentence use that language. "
+        "Keep module ids as printed. Skill prose still follows the card language."
+    ).format(path=LOOP_ENGINE_RUNTIME_PATH, lang=lang)
 
 
 def resolve_generate_prompt(project_root, prompt=None, language=None):

@@ -124,7 +124,7 @@ python .castflow/manager.py coldstart --root PATH --select ID --skill
 - 这不是已删除的 `scan.py`。不写 `STATE.yaml`、`INVENTORY.md`、`GRAPH.md`，也不写知识图谱。
 - 可选覆盖写在 `.castflow-runtime/module-roles.txt`，一行一个：`atom-id-or-path-prefix role`。
 
-`--queue` 只把选中的短卡写到 `.castflow-runtime/_skill-gen-queue/`。`--skill` 必须且只能有一个 `--select`，按真实调用点写出对应的 `programmer-<id>-skill`，然后删掉队列。
+`--queue` 只把选中的短卡写到 `.castflow-runtime/_skill-gen-queue/`。`--skill` 不写技能正文。一行调用抄不出会被签名掩盖的约束。这张卡和点名生成走同一条 `SKILL_ITERATION`。队列留着。
 
 ### Jev 分类
 
@@ -148,7 +148,7 @@ Skill 不会每次全量入上下文。按 **T1-PREPARE / T2-EXECUTE / T3-FEEDBA
 
 跨模块需求直接调用已生成的 `programmer-<id>-skill`。需要架构边界、排障或热路径时再点名 `architect-skill` / `debug-skill` / `profiler-skill`（向导不再勾选这三类）。`code-pipeline-skill` 已退役。
 
-生成纪律：勾选扫描后把短卡落到 `.castflow-runtime/_skill-gen-queue/`，一次只写一个 programmer skill，validate/sync 成功后标 `done` 再清上下文。并行生成会把上下文挤薄。增量同样走 loop-engine，或对 AI 说 `castflow generate skills`（skill-creator 一次写一个然后停）。
+生成纪律：勾选扫描后把短卡落到 `.castflow-runtime/_skill-gen-queue/`，一次只写一个 programmer skill，然后清上下文。这是隔离，不是更薄的技能：队列卡和 `castflow generate skills` 都走 `SKILL_ITERATION.md` 的同一次生成。并行生成会把上下文挤薄。validate 通过才标 `done`。整批结束再 sync 一次。
 
 ### 4. 自我进化：零额外动作采集 + 人在回路
 
@@ -282,9 +282,9 @@ python .castflow-runtime/manager.py coldstart --root . --select some-id --queue
 python .castflow-runtime/manager.py coldstart --root . --select some-id --skill
 ```
 
-第一条只打印切面和 Jev 标记，不写文件。`--queue` 只保留你选中的 id。`--skill` 按真实调用点写出一个 programmer skill，然后删掉队列。
+第一条只打印切面和 Jev 标记，不写文件。`--queue` 只保留你选中的 id。`--skill` 不写技能正文，也不删队列。
 
-向导里若勾了扫描，粘贴它的 `/goal` 是另一条路：AI 一次写一个 programmer skill。不要并行生成。skill 文件的规则在 `SKILL_ITERATION.md`。写入 runtime，再 sync。
+向导里若勾了扫描，粘贴它的 `/goal` 就是给这些卡写技能：一次一个 programmer skill，和点名生成同一条 `SKILL_ITERATION`。不要并行生成。写入 runtime，再 sync。
 
 日常增量：
 

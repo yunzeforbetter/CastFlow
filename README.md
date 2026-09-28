@@ -124,7 +124,7 @@ On an installed project the command is `python .castflow-runtime/manager.py cold
 - This is not the deleted `scan.py`. It does not write `STATE.yaml`, `INVENTORY.md`, `GRAPH.md`, or a knowledge graph.
 - Optional overrides live in `.castflow-runtime/module-roles.txt`, one line of `atom-id-or-path-prefix role`.
 
-`--queue` writes only the selected cards to `.castflow-runtime/_skill-gen-queue/`. `--skill` needs exactly one `--select`, writes that `programmer-<id>-skill` from real call sites, then deletes the queue.
+`--queue` writes only the selected cards to `.castflow-runtime/_skill-gen-queue/`. `--skill` does not write a skill body. A line grep cannot see a constraint the signature hides. Generate that card with the same `SKILL_ITERATION` pass as a named programmer skill. The queue stays.
 
 ### Jev classification
 
@@ -148,7 +148,7 @@ Skills are not dumped into context every turn. They load by **T1-PREPARE / T2-EX
 
 A cross-module request calls the generated `programmer-<id>-skill` directly. Name `architect-skill` / `debug-skill` / `profiler-skill` only when you need an architecture boundary, a diagnosis, or a hot path (the wizard no longer offers those three). `code-pipeline-skill` is retired.
 
-Generation discipline: after you check the scan, short cards land in `.castflow-runtime/_skill-gen-queue/`. Write one programmer skill at a time. Mark it `done` only after validate/sync succeed, then clear context. Parallel generation squeezes the context. Increments use the same loop-engine, or tell the AI `castflow generate skills` (skill-creator writes one, then stops).
+Generation discipline: after you check the scan, short cards land in `.castflow-runtime/_skill-gen-queue/`. Write one programmer skill at a time, then clear context. That is isolation, not a thinner skill: a queue card and `castflow generate skills` follow the same pass in `SKILL_ITERATION.md`. Parallel generation squeezes the context. Mark `done` only after validate succeeds. Sync once when the batch is done.
 
 ### 4. Self-evolution: capture with no extra step, human in the loop
 
@@ -282,9 +282,9 @@ python .castflow-runtime/manager.py coldstart --root . --select some-id --queue
 python .castflow-runtime/manager.py coldstart --root . --select some-id --skill
 ```
 
-The first command prints the cut and the Jev marks. It does not write files. `--queue` keeps only the ids you selected. `--skill` writes one programmer skill from real call sites and then deletes the queue.
+The first command prints the cut and the Jev marks. It does not write files. `--queue` keeps only the ids you selected. `--skill` does not write a skill body and does not delete the queue.
 
-If the wizard's scan box was checked, pasting its `/goal` is a separate path: the AI generates one programmer skill at a time. Do not generate in parallel. Rules for the skill files are in `SKILL_ITERATION.md`. Write into the runtime, then sync.
+If the wizard's scan box was checked, pasting its `/goal` is how those cards get skills: one programmer skill at a time, same `SKILL_ITERATION` pass as a named skill. Do not generate in parallel. Write into the runtime, then sync.
 
 Day-to-day increment:
 

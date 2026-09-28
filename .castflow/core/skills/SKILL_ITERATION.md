@@ -28,7 +28,7 @@ Code, paths, symbols, YAML keys, `Anchors`, `Related`, `[RETIRED]`, and the sing
 
 When `language` is `zh`, descriptive sentences and these labels are Chinese:
 
-- programmer description: the cold-start sentence in the next section. Still `len(compact) <= 280`. The trigger is still the module id.
+- programmer description: the sentence in **One generation pass**. Still `len(compact) <= 280`. The trigger is still the module id.
 - other skills: spoken when-to-use with `当用户`, plus one `NOT` or one `让位`. `len(compact) <= 240`.
 - architect: `本仓库的架构约束与分层。当用户问改动属于哪一层，或是否违反架构。NOT 模块 API 写法 (programmer-*-skill)。`
 - debug: `本仓库的边界与失败检查。当用户在查空引用、竞态或崩溃。NOT 模块 API 写法 (programmer-*-skill)。`
@@ -39,20 +39,40 @@ English (`en`, the default) uses the formulas and labels in the sections below.
 
 For any other code, write the body in that language. The description must still contain `Use when` or `当用户`, and exactly one `NOT`. `validate` only recognizes those tokens. Do not invent a third when-phrase.
 
-## Cold start is the thin pass
+## One generation pass
 
-Cold start and a later edit use these same slots. Cold start is weaker only in coverage, not in the recall sentence.
+A queue card and a named `programmer-*-skill` (`castflow generate skills` included) use this same pass. Writing one skill, then clearing context, stops crosstalk. It is not a thinner skill. `coldstart --skill` does not write a skill body.
 
-Cold start is the queue batch, or `coldstart --skill`. Write `SKILL.md` and stop. No eval loop. No description optimization. The scanner's display name is not a trigger: it is often a hot type. Do not create `SKILL_MEMORY.md` or `ITERATION_GUIDE.md` to fill a quota.
+No eval loop. No description optimization. Do not fill a role file to make four files. The scanner's display name is not a trigger: it is often a hot type. Acceptance of a programmer skill is `python .castflow-runtime/manager.py validate`. That command runs the programmer-skill check. Do not grade the skill yourself.
+
+Three terms cover this pass. Do not invent a second name for any of them.
+
+- **call site**: a reference other than the definition. A declaration, an empty body, or a Publish or Invoke with no subscriber is not a call site. Do not describe a call site as a registry. Cite each one as `path:line` under Project reference.
+- **signature gap**: the definition body requires something the signature does not state, so a signature-only read would emit the wrong call. The memory entry names that body requirement, and its anchor greps in this repo.
+- **yield**: one neighbor the description steps aside for. The description text writes that yield as a single `NOT`.
+
+Keep a line only when omitting it would make the next generated call use the wrong symbol or the wrong argument. A fact the signature already states stays an example, not a rule.
 
 - English description: `Change <id> in this repo. Use when the user names <id>. NOT <one neighbor id>.` Do not write `Change <id> (<id>)`. Repeating the id in parentheses does not replace a display name. No neighbor you can name: `NOT work outside <id>.` That sentence includes the id, so it is not one shared yield.
 - Chinese description: `改本仓库的 <id>。当用户点名 <id>。NOT <邻居 id>。` No neighbor: `NOT <id> 以外的工作。`
-- Do not share one NOT sentence across skills. Do not write `NOT other programmer-*-skill`. Do not write `NOT a different module` or `NOT 另一个模块`.
-- EXAMPLES: write `EXAMPLES.md` only when this pass opened at least one live call site, and record every live call site it found. Three live ones are enough. Do not pad with a declaration, an empty enum, or a protocol send. Fewer than three real entries means fewer examples, not invented ones. Zero live entries means do not write `EXAMPLES.md` and do not invent a hot path.
-- MEMORY: do not write `SKILL_MEMORY.md` on the cold-start pass. A later append creates it only for a constraint that was actually seen.
+- A display name may replace the bare id only when it is not a generic type and is not the same string as the id: `Change <display> (<id>) in this repo. Use when the user names <display> or <id>. NOT <one neighbor id>.` Same caps, still one yield. Do not put Object, String, UI, Item, Config, or KeyValuePair in the description.
+- Do not share one yield sentence across skills. Do not write `NOT other programmer-*-skill`. Do not write `NOT a different module` or `NOT 另一个模块`.
 - Prose language is the card `language`, otherwise config. Missing means English.
 
-A later edit, outside that batch, may put a real display name back: `Change <display> (<id>) in this repo. Use when the user names <display> or <id>. NOT <one neighbor id>.` Only when that display name is not a generic type and is not the same string as the id. It may add real rules and more live examples. Same caps, still one `NOT`, still no eval loop for a catalog skill. Do not put Object, String, UI, Item, Config, or KeyValuePair in the description.
+For each call site you will name:
+
+1. Find it in product scripts. The card's `script_dirs` are where declarations live, not the boundary of callers.
+2. Cite `path:line` of the call site, not the definition. Copy that call into `EXAMPLES.md`.
+3. Open the definition body. If there is a signature gap, write one `SKILL_MEMORY.md` entry for it. If there is no signature gap, do not write `SKILL_MEMORY.md`.
+4. `SKILL.md` points at the call site in one sentence. No protocol numbers, field dictionaries, or enum tables. Those are in files the model can open. A table in the skill goes stale and overrides the repo.
+
+`EXAMPLES.md`: only when this pass opened a call site. About 3-8 call sites that change what is generated. Fewer real call sites means fewer examples. Zero means do not write the file. Do not pad with a declaration, an empty body, or a Publish or Invoke that has no subscriber.
+
+`SKILL_MEMORY.md`: only a signature gap the keep test above keeps. Not a quota. No code fences. No dates.
+
+`ITERATION_GUIDE.md`: only when this skill has its own acceptance bar. The file names are not that bar. An acceptance bar does not require this file.
+
+Do not copy another repository's type names, message ids, or tab enums. A problem category may transfer. A symbol that does not exist here may not.
 
 ---
 
@@ -85,7 +105,7 @@ Once the host matches, the **whole file is in context**. Keep it to one screen. 
 
 Not in the description: synonyms, slang, steps, a sibling catalog, or "use this even if nobody named it."
 
-- Name matches `programmer-*-skill`: the cold-start sentence, or the later-edit sentence, from **Cold start is the thin pass**. No synonym list, no class or path list, no extra yield. `len(compact) <= 280`.
+- Name matches `programmer-*-skill`: the description sentence from **One generation pass**. No synonym list, no class or path list, no extra yield. `len(compact) <= 280`.
 - Other skills: spoken when-to-use, one `NOT`. `len(compact) <= 240`.
 - `architect-skill` / `debug-skill` / `profiler-skill` use these sentences (tune only the NOT target):
   - architect: `Project architecture constraints and layering. Use when the user asks which layer a change belongs in, or whether it violates architecture. NOT module API how-to (programmer-*-skill).`
@@ -102,7 +122,7 @@ One fence for a short formula. Pasteable usage goes in EXAMPLES.
 
 ## EXAMPLES.md
 
-Only hot, direct usages that change what is generated. About 3-8. Three that are used beat fifteen that are not. Over the cap: delete or merge **in this file**.
+Only call sites that change what is generated. About 3-8. Fewer real call sites beat a padded file. Over the cap: delete or merge **in this file**.
 
 Each entry: one-sentence scene, code copied from the repo, a path or symbol that greps. Imports only need to make the call readable. Do not invent an API.
 
@@ -125,7 +145,7 @@ A trap only if someone will actually hit it.
 
 ## SKILL_MEMORY.md
 
-Hard rules and common traps. As many as exist. Do not pad, and do not create this file until one exists. origin-evolve reads and writes this file. The first Append of a real constraint creates `SKILL_MEMORY.md` when it is absent. An empty file is not that append. No code fences.
+Hard rules and common traps. As many as exist. Do not pad, and do not create this file until one exists. A new entry must be a signature gap that the keep test in **One generation pass** keeps. The queue does not get a weaker bar. origin-evolve reads and writes this file. The first Append of a real constraint creates `SKILL_MEMORY.md` when it is absent. An empty file is not that append. No code fences.
 
 ```markdown
 ### Rule N: name
@@ -186,7 +206,7 @@ Only this skill's triggers: which change edits which file, and how you know the 
 ## Format
 
 - No emoji. No decorative Unicode (blocks, stars, check marks, crosses, Unicode arrows). ASCII `->`, Markdown, `- [ ]`, and `[RETIRED]` are fine.
-- `SKILL_MEMORY.md` and `ITERATION_GUIDE.md`: no dates, no `Updated`, no `V2.0`, no signature.
+- `SKILL_MEMORY.md` and `ITERATION_GUIDE.md`: no dates, no `Updated`, no `V2.0`, no sign-off line.
 - A cited path, class, or method was Read or Grepped this pass. Do not write a signature you did not open.
 
 ---
@@ -200,7 +220,7 @@ Unit matches `_count_size_units` in `validate.py`: non-whitespace characters out
 | File | Enough | Warning cap |
 |------|--------|-------------|
 | SKILL.md | One screen | 4000 |
-| EXAMPLES.md | 3-8 hot paths; code may be long | 14000 |
+| EXAMPLES.md | 3-8 call sites; code may be long | 14000 |
 | SKILL_MEMORY.md | One constraint per entry | 9000 |
 | ITERATION_GUIDE.md | This skill's triggers only | 4500 |
 
@@ -212,7 +232,7 @@ SKILL.md points at a role file only when that file exists, plus one line if an a
 
 | Situation | SKILL.md | EXAMPLES.md | SKILL_MEMORY.md | ITERATION_GUIDE.md |
 |-----------|----------|-------------|-----------------|-------------------|
-| New hot-path usage | | yes | maybe | |
+| New call site | | yes | maybe | |
 | New constraint or trap | | | yes | |
 | Duty or trigger changed | yes | maybe | maybe | yes |
 | Framework API changed | | yes | maybe | |

@@ -128,7 +128,9 @@ class TestColdStart(TmpProject):
         self.assertEqual(
             scan_text,
             "/goal 读取并按照 .castflow-runtime/skills/"
-            "MODULE_MARK_SYSTEM_PROMPT.md 执行",
+            "MODULE_MARK_SYSTEM_PROMPT.md 执行。"
+            "跟用户说话用 zh：多选的问题和每项说明用中文。"
+            "模块 id 保持原样。技能正文仍按卡上的 language。",
         )
         self.assertNotIn("\n", scan_text)
         copied = os.path.join(
@@ -531,7 +533,10 @@ class TestSetupConsole(TmpProject):
         self.assertEqual(
             text,
             "/goal Read and follow .castflow-runtime/skills/"
-            "MODULE_MARK_SYSTEM_PROMPT.md",
+            "MODULE_MARK_SYSTEM_PROMPT.md. "
+            "Speak to the user in en: the multi-select question and each "
+            "option sentence use that language. "
+            "Keep module ids as printed. Skill prose still follows the card language.",
         )
         self.assertNotIn("\n", text)
 
@@ -560,6 +565,8 @@ class TestLoopEnginePrompt(unittest.TestCase):
             "No parallel",
             "status: pending",
             "status: done",
+            "config.json` key `language`",
+            "哪些模块要生成 programmer skill",
         ):
             self.assertIn(needle, prompt)
         catalog = _read(os.path.join(
@@ -575,8 +582,7 @@ class TestLoopEnginePrompt(unittest.TestCase):
         prompt = _read(os.path.join(
             _CASTFLOW, "core", "skills",
             "MODULE_MARK_SYSTEM_PROMPT.md"))
-        self.assertIn("a false recall is worse than a miss", prompt)
-        self.assertIn("pushy", prompt)
+        self.assertIn("Description Optimization", prompt)
         self.assertIn("manager.py validate", prompt)
         creator = _read(os.path.join(
             _CASTFLOW, "core", "skills", "skill-creator", "SKILL.md"))
@@ -588,6 +594,8 @@ class TestLoopEnginePrompt(unittest.TestCase):
             _CASTFLOW, "core", "skills", "SKILL_ITERATION.md"))
         self.assertNotIn("add a feature / fix a bug", iteration)
         self.assertIn("Use when the user names", iteration)
+        self.assertIn("Pushy expansion is an error", iteration)
+        self.assertIn("A missed recall beats a false one", iteration)
         self.assertIn("NOT other programmer-*-skill", iteration)
         self.assertNotIn("programmer.template", iteration)
 
