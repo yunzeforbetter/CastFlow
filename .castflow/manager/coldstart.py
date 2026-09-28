@@ -18,7 +18,7 @@ import os
 import re
 import shutil
 
-from installer.validate import validate_skill_dir
+from installer.validate import enclosing_method, validate_skill_dir
 
 from .config import load_config, normalize_language
 
@@ -38,7 +38,7 @@ SCRIPT_EXTS = frozenset((
 # Path segment, compared case-insensitively. Whole subtree is out of scope.
 SKIP_SEGMENTS = frozenset((
     "library", "packages", "obj", "temp", "node_modules", "vendor", ".git",
-    "castflow", ".castflow", ".castflow-runtime",
+    "castflow", ".castflow", ".castflow-runtime", "castflow-skills",
     ".claude", ".agents", ".cursor", ".grok",
     "packagecache",
 ))
@@ -1223,10 +1223,10 @@ def queue_dir(project_root):
 
 
 def skill_dir(project_root, module_id):
-    return os.path.join(
-        project_root, ".castflow-runtime", "skills",
-        "programmer-{}-skill".format(module_id),
-    )
+    """Project skill output. Not under the runtime tree cold start deletes."""
+    from .skills import project_skill_dir
+    return project_skill_dir(
+        project_root, "programmer-{}-skill".format(module_id))
 
 
 def write_selected_queue(project_root, cards):
@@ -1343,6 +1343,7 @@ def collect_call_sites(sources, card, limit=8):
                     "path": path,
                     "line": index + 1,
                     "text": line.strip(),
+                    "enclosing": enclosing_method(sources[rel], index),
                     "outside_scope": path not in scope,
                 })
     # Prefer cross-file / out-of-scope hits, then stable path, and keep the
@@ -1425,10 +1426,13 @@ def _skill_markdown(card, desc, symbols, language):
                 "- 只改产品脚本里已有的 {} 调用点。\n"
                 "- 定义命中不是入口。\n"
             ).format(symbol_list)
-            nav = "- EXAMPLES.md — 从产品脚本复制的热调用点\n"
+            nav = (
+                "- EXAMPLES.md — 从产品脚本复制的热调用点\n"
+                "- ITERATION_GUIDE.md — 这份 skill 自己何时改哪个文件\n"
+            )
         else:
             duties = "- 这次没有活调用点。不要编一个入口。\n"
-            nav = ""
+            nav = "- ITERATION_GUIDE.md — 这份 skill 自己何时改哪个文件\n"
         body = (
             "改本仓库的 {mid}。\n\n"
             "## 让位\n\n"
@@ -1437,8 +1441,7 @@ def _skill_markdown(card, desc, symbols, language):
             "{duties}"
             "{deps}"
         ).format(mid=mid, desc=desc, duties=duties, deps=deps)
-        if nav:
-            body += "\n## 导航\n\n" + nav
+        body += "\n## 导航\n\n" + nav
     else:
         deps = (
             "- Depends on engine {} (summary only, not its own examples).\n".format(
@@ -1451,10 +1454,13 @@ def _skill_markdown(card, desc, symbols, language):
                 "- Edit existing product-script call sites of {}.\n"
                 "- A definition hit is not an entry.\n"
             ).format(symbol_list)
-            nav = "- EXAMPLES.md — hot call sites copied from product scripts\n"
+            nav = (
+                "- EXAMPLES.md — hot call sites copied from product scripts\n"
+                "- ITERATION_GUIDE.md — when to edit this skill, not the module\n"
+            )
         else:
             duties = "- This pass found no live call site. Do not invent an entry.\n"
-            nav = ""
+            nav = "- ITERATION_GUIDE.md — when to edit this skill, not the module\n"
         body = (
             "Change {mid} in this repo.\n\n"
             "## Yield\n\n"
@@ -1463,8 +1469,7 @@ def _skill_markdown(card, desc, symbols, language):
             "{duties}"
             "{deps}"
         ).format(mid=mid, desc=desc, duties=duties, deps=deps)
-        if nav:
-            body += "\n## Navigate\n\n" + nav
+        body += "\n## Navigate\n\n" + nav
     return (
         "---\n"
         "name: {skill}\n"
@@ -1474,52 +1479,139 @@ def _skill_markdown(card, desc, symbols, language):
     ).format(skill=skill_name, desc=desc, body=body)
 
 
+def _iteration_guide(symbols, language):
+    """How to update this skill. Not how to edit the module.
+
+    Triggers are facts this pass already has: the cited symbols, or the
+    absence of a call site. No product feature is invented as a trigger.
+    """
+    cited = ", ".join(symbols)
+    if language == "zh":
+        if symbols:
+            return (
+                "# 迭代\n\n"
+                "在 T4-MAINTAIN 与 SKILL_ITERATION.md 一起读。"
+                "本文件只说明何时修改这份 skill，不说明如何修改模块。\n\n"
+                "### 规则 1：引用的调用形状变了\n\n"
+                "触发：本 skill 引用的调用已经对不上它的 shape。符号：{cited}。\n"
+                "文件：EXAMPLES.md。用当前调用换掉该 shape。不要写行号。\n"
+                "检查：validate 不再报告 call site shape drifted。"
+                "只有签名缺口变了才改 SKILL_MEMORY.md。\n\n"
+                "### 规则 2：引用的符号没了\n\n"
+                "触发：产品脚本里已经 grep 不到上述某个符号。\n"
+                "文件：EXAMPLES.md 删掉该示例。"
+                "SKILL_MEMORY.md 里锚点就是该符号的条目标 [RETIRED]，不删正文。\n"
+                "检查：Retire 之前 grep 结果为空。\n\n"
+                "### 规则 3：让位对象变了\n\n"
+                "触发：描述里那一个 NOT 不再是实际冲突的邻居。\n"
+                "文件：只改 SKILL.md 的 description。仍然只有一个 NOT。\n"
+                "检查：描述仍点名本模块，且只有一个 NOT。\n"
+            ).format(cited=cited)
+        return (
+            "# 迭代\n\n"
+            "在 T4-MAINTAIN 与 SKILL_ITERATION.md 一起读。"
+            "本文件只说明何时修改这份 skill，不说明如何修改模块。\n\n"
+            "### 规则 1：出现活调用点\n\n"
+            "触发：以后某次在本模块里找到声明以外的调用。\n"
+            "文件：EXAMPLES.md。写成路径、包围方法、symbol 和 shape。\n"
+            "检查：validate 接受该引用。不要为了填文件编一个调用。\n"
+        )
+    if symbols:
+        return (
+            "# Iteration\n\n"
+            "Loaded at T4-MAINTAIN with SKILL_ITERATION.md. "
+            "This file says when to edit this skill. "
+            "It does not say how to edit the module.\n\n"
+            "### Rule 1: a cited shape drifted\n\n"
+            "Trigger: a call this skill cites no longer matches its shape. "
+            "Symbols: {cited}.\n"
+            "File: EXAMPLES.md. Replace that shape with the live call. "
+            "Do not write a line number.\n"
+            "Check: validate no longer reports call site shape drifted. "
+            "Edit SKILL_MEMORY.md only when the signature gap changed.\n\n"
+            "### Rule 2: a cited symbol is gone\n\n"
+            "Trigger: grep no longer finds one of those symbols in product scripts.\n"
+            "File: EXAMPLES.md drops that example. "
+            "Mark a SKILL_MEMORY.md entry [RETIRED] only when its anchors are that symbol. "
+            "Do not delete the entry body.\n"
+            "Check: grep is empty before Retire.\n\n"
+            "### Rule 3: the yield neighbor changed\n\n"
+            "Trigger: the one NOT in the description is no longer the neighbor it collides with.\n"
+            "File: the SKILL.md description only. Still one NOT.\n"
+            "Check: the description still names this module and exactly one NOT.\n"
+        ).format(cited=cited)
+    return (
+        "# Iteration\n\n"
+        "Loaded at T4-MAINTAIN with SKILL_ITERATION.md. "
+        "This file says when to edit this skill. "
+        "It does not say how to edit the module.\n\n"
+        "### Rule 1: a live call site appears\n\n"
+        "Trigger: a later pass finds a call of this module that is not a declaration.\n"
+        "File: EXAMPLES.md. Cite the path, the enclosing method, the symbol, and the shape.\n"
+        "Check: validate accepts the cite. Do not invent a call to fill the file.\n"
+    )
+
+
+def _example_reference(hit):
+    """File, enclosing method, symbol, and call shape. Not a line number."""
+    lines = [hit["path"]]
+    enclosing = hit.get("enclosing") or ""
+    if enclosing:
+        lines.append("enclosing: {}".format(enclosing))
+    lines.append("symbol: {}".format(hit["symbol"]))
+    lines.append("shape: {}".format(hit["text"] or hit["symbol"]))
+    return "\n".join(lines)
+
+
 def _example_blocks(call_sites, language):
     blocks = []
     for index, hit in enumerate(call_sites, 1):
         text = hit["text"] or hit["symbol"]
+        ref = _example_reference(hit)
+        where = hit.get("enclosing") or hit["path"]
         if language == "zh":
             blocks.append(
                 "## 示例{n}：{symbol} 调用点\n\n"
                 "场景\n"
-                "产品脚本在声明行以外引用 {symbol}。\n\n"
+                "{where} 调用 {symbol}。\n\n"
                 "代码\n"
                 "```\n"
                 "{text}\n"
                 "```\n\n"
                 "项目参考\n"
-                "{path}:{line} {symbol}\n"
+                "{ref}\n"
                 .format(
                     n=index, symbol=hit["symbol"], text=text,
-                    path=hit["path"], line=hit["line"],
+                    where=where, ref=ref,
                 )
             )
         else:
             blocks.append(
                 "## Example {n}: {symbol} call site\n\n"
                 "Scene\n"
-                "Product script references {symbol} outside its declaration.\n\n"
+                "{where} calls {symbol}.\n\n"
                 "Code\n"
                 "```\n"
                 "{text}\n"
                 "```\n\n"
                 "Project reference\n"
-                "{path}:{line} {symbol}\n"
+                "{ref}\n"
                 .format(
                     n=index, symbol=hit["symbol"], text=text,
-                    path=hit["path"], line=hit["line"],
+                    where=where, ref=ref,
                 )
             )
     return "\n".join(blocks)
 
 
 def write_programmer_skill(project_root, card, sources, call_sites=None):
-    """Copy live call lines into SKILL.md and EXAMPLES.md. Not the generation contract.
+    """Write the four role files from live calls. Not a license to invent.
 
     A queue card and a named skill both follow SKILL_ITERATION.md. This
-    copier never opens a definition body, so it cannot see a signature lie
-    and does not write SKILL_MEMORY.md. The CLI does not call it. Tests use
-    it to check that a line copy does not invent an entry.
+    copier does not open a definition body, so it cannot name a signature
+    gap. SKILL_MEMORY.md stays empty. ITERATION_GUIDE.md is how to update
+    this skill, from the cites this pass made. It does not invent a product
+    feature as a trigger. The CLI does not call it.
     """
     if call_sites is None:
         call_sites = collect_call_sites(sources, card, limit=8)
@@ -1528,6 +1620,9 @@ def write_programmer_skill(project_root, card, sources, call_sites=None):
     if len(call_sites) > 8:
         call_sites = call_sites[:8]
     folder = skill_dir(project_root, card["id"])
+    from .skills import skill_kind
+    if skill_kind(os.path.basename(folder), project_root) == "core":
+        raise RuntimeError("factory-owned skill: {}".format(os.path.basename(folder)))
     if os.path.isdir(folder):
         shutil.rmtree(folder)
     os.makedirs(folder)
@@ -1538,13 +1633,17 @@ def write_programmer_skill(project_root, card, sources, call_sites=None):
         if hit["symbol"] not in symbols:
             symbols.append(hit["symbol"])
     skill = _skill_markdown(card, desc, symbols, language)
-    payloads = {"SKILL.md": skill}
+    examples = _example_blocks(call_sites, language) if call_sites else ""
     if call_sites:
-        examples = _example_blocks(call_sites, language)
         problems = heat_path_violations(card, call_sites, examples + "\n" + skill)
         if problems:
             raise RuntimeError("heat-path: {}".format("; ".join(problems)))
-        payloads["EXAMPLES.md"] = examples
+    payloads = {
+        "SKILL.md": skill,
+        "EXAMPLES.md": examples,
+        "SKILL_MEMORY.md": "",
+        "ITERATION_GUIDE.md": _iteration_guide(symbols, language),
+    }
     for fname, content in payloads.items():
         with open(os.path.join(folder, fname), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(content)

@@ -270,7 +270,7 @@ chmod +x castflow.sh castflow.command  # macOS / Linux: first time
 | 4 Scan | `coldstart --root` | Package cut, plus Jev marks when the module is installed |
 | 5 AI (only if checked) | Paste the prompt | Generate from that prompt, one skill at a time |
 
-After install the console has three pages: **Framework** (update from source and sync) / **Skills** (retire / activate / update / sync) / **Queue**. A wrong check is "roll back and cold-start again". Do not delete files by hand.
+After install the console has two pages: **Framework** (update from source and sync; the scan prompt can be copied again here) / **Skills** (retire / activate / update / sync). A wrong check is "roll back and cold-start again". Do not delete files by hand. If scan was left unchecked and you want it later, copy the prompt on the Framework page. You do not have to roll back.
 
 For cold start, open the launcher (Windows: double-click `castflow.bat`; macOS: double-click `castflow.command` or run `./castflow.sh`). Do not ask the AI to run seed for you.
 
@@ -344,7 +344,7 @@ This refreshes framework skills and core files only. It does **not** overwrite p
 | `adapters.py` | runtime ↔ `.claude/skills` + `.agents/skills`; owned gitignore; clear compatibility leftovers |
 | `skills.py` | Inventory, local disable (`skills-disabled.json`), refresh from source |
 | `bundle.py` | seed copies `manager.py` / `manager/` / `installer/` into the runtime and writes project-root `castflow.bat` / `castflow.sh` / `castflow.command` |
-| `catalog.py` / `queue.py` | Console queue status and the optional `/goal` handoff |
+| `catalog.py` / `queue.py` | Catalog state, and the optional `/goal` prompt. The console no longer has a Queue page |
 | `evolution.py` | Evolution switch: uninstall hooks and the origin-evolve projection |
 | `ui/` | stdlib HTTP console (`127.0.0.1`) |
 | `.castflow/jev/` | Optional classifier (`mark.py`, `install.py`). Copied to `.castflow-runtime/jev/` only when the wizard box is on |

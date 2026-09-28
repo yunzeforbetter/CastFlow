@@ -158,7 +158,7 @@ def build_handoff(project_root, generate=None, prompt=None):
         body = (
             "用 skill-creator 只写这一个，然后停：{}\n"
             "\n"
-            "写到 `.castflow-runtime/skills/{}/`（四文件）。\n"
+            "写到 `castflow-skills/{}/`（四文件）。\n"
             "正文按 `.castflow-runtime/skills/SKILL_ITERATION.md`。\n"
             "写完：`python .castflow-runtime/manager.py validate`，通过后再 "
             "`python .castflow-runtime/manager.py sync`\n"
@@ -174,7 +174,7 @@ def build_handoff(project_root, generate=None, prompt=None):
     body = (
         "skill-creator: write only this skill, then stop: {}\n"
         "\n"
-        "Write `.castflow-runtime/skills/{}/` (four files).\n"
+        "Write `castflow-skills/{}/` (four files).\n"
         "Body follows `.castflow-runtime/skills/SKILL_ITERATION.md`.\n"
         "Then: `python .castflow-runtime/manager.py validate`, then "
         "`python .castflow-runtime/manager.py sync`\n"

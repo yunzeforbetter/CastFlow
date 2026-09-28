@@ -450,6 +450,15 @@ def _line_of(text, snippet):
     raise AssertionError(snippet)
 
 
+def _call_ref(path, symbol, shape, enclosing=""):
+    lines = [path]
+    if enclosing:
+        lines.append("enclosing: {}".format(enclosing))
+    lines.append("symbol: {}".format(symbol))
+    lines.append("shape: {}".format(shape))
+    return "\n".join(lines)
+
+
 def _examples(scene, code, ref):
     return (
         "## Example 1: send\n\n"
@@ -482,7 +491,7 @@ class TestProgrammerSkillGate(unittest.TestCase):
 
     def _skill(self, examples, memory=None):
         skill = os.path.join(
-            self.root, ".castflow-runtime", "skills", "programmer-mail-skill",
+            self.root, "castflow-skills", "programmer-mail-skill",
         )
         os.makedirs(skill, exist_ok=True)
         skill_md = (
@@ -490,18 +499,21 @@ class TestProgrammerSkillGate(unittest.TestCase):
             "description: {}\n---\n\n# Mail\n\nYield to battle.\n"
         ).format(_PROGRAMMER_DESC)
         self._write(
-            ".castflow-runtime/skills/programmer-mail-skill/SKILL.md",
+            "castflow-skills/programmer-mail-skill/SKILL.md",
             skill_md,
         )
         self._write(
-            ".castflow-runtime/skills/programmer-mail-skill/EXAMPLES.md",
+            "castflow-skills/programmer-mail-skill/EXAMPLES.md",
             examples,
         )
-        if memory is not None:
-            self._write(
-                ".castflow-runtime/skills/programmer-mail-skill/SKILL_MEMORY.md",
-                memory,
-            )
+        self._write(
+            "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
+            "" if memory is None else memory,
+        )
+        self._write(
+            "castflow-skills/programmer-mail-skill/ITERATION_GUIDE.md",
+            "",
+        )
         return skill
 
     def _check(self, skill):
@@ -513,11 +525,13 @@ class TestProgrammerSkillGate(unittest.TestCase):
     def test_live_call_without_memory_passes(self):
         self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
         self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        line_no = _line_of(_LIVE_FLOW, "mail.Send(id)")
         skill = self._skill(_examples(
             "Send the id.",
             "var n = mail.Send(id);",
-            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "var n = mail.Send(id);", "MailFlow.Run",
+            ),
         ))
         errors = self._check(skill)
         self.assertEqual(errors, [])
@@ -526,11 +540,13 @@ class TestProgrammerSkillGate(unittest.TestCase):
     def test_signature_gap_without_memory_fails(self):
         self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
         self._write("Assets/Flow/MailFlow.cs", _GAP_FLOW)
-        line_no = _line_of(_GAP_FLOW, "mail.Send(id)")
         skill = self._skill(_examples(
             "Send the id.",
             "mail.Send(id);",
-            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "mail.Send(id);", "MailFlow.Run",
+            ),
         ))
         errors = self._check(skill)
         self.assertIn("signature gap missing from memory", errors)
@@ -549,7 +565,10 @@ class TestProgrammerSkillGate(unittest.TestCase):
         skill = self._skill(_examples(
             "Send the id.",
             "mail.Send(id);",
-            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "mail.Send(id);", "MailFlow.Run",
+            ),
         ), memory)
         errors = self._check(skill)
         self.assertIn("signature gap repeats the signature", errors)
@@ -567,37 +586,43 @@ class TestProgrammerSkillGate(unittest.TestCase):
         skill = self._skill(_examples(
             "Send the id.",
             "mail.Send(id);",
-            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "mail.Send(id);", "MailFlow.Run",
+            ),
         ), memory)
         self.assertEqual(self._check(skill), [])
 
     def test_declaration_cite_fails(self):
         self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
-        line_no = _line_of(_GAP_SERVICE, "public void Send(int id)")
         skill = self._skill(_examples(
             "Send the id.",
             "public void Send(int id)",
-            "Assets/Mail/MailService.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Mail/MailService.cs", "Send",
+                "public void Send(int id)",
+            ),
         ))
         self.assertIn("call site is a declaration", self._check(skill))
 
     def test_empty_body_cite_fails(self):
         self._write("Assets/Widget/Widget.cs", _EMPTY_WIDGET)
-        line_no = _line_of(_EMPTY_WIDGET, "public void Open()")
         skill = self._skill(_examples(
             "Open it.",
             "public void Open()",
-            "Assets/Widget/Widget.cs:{}".format(line_no),
+            _call_ref("Assets/Widget/Widget.cs", "Open", "public void Open()"),
         ))
         self.assertIn("call site is an empty body", self._check(skill))
 
     def test_publish_without_subscriber_fails(self):
         self._write("Assets/Bus/Bus.cs", _PUBLISH_BUS)
-        line_no = _line_of(_PUBLISH_BUS, "Ready.Publish()")
         skill = self._skill(_examples(
             "Publish ready.",
             "Ready.Publish();",
-            "Assets/Bus/Bus.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Bus/Bus.cs", "Publish",
+                "Ready.Publish();", "Bus.Run",
+            ),
         ))
         self.assertIn(
             "call site is a publish with no subscriber", self._check(skill),
@@ -616,22 +641,88 @@ class TestProgrammerSkillGate(unittest.TestCase):
         skill = self._skill(_examples(
             "Send the id.",
             "var n = mail.Send(id);",
-            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "var n = mail.Send(id);", "MailFlow.Run",
+            ),
         ), memory)
         self.assertIn("memory anchor does not grep", self._check(skill))
 
     def test_live_call_written_up_as_a_registry_fails(self):
         self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
         self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        line_no = _line_of(_LIVE_FLOW, "mail.Send(id)")
         skill = self._skill(_examples(
             "Write this call site up as a registry.",
             "var n = mail.Send(id);",
-            "Assets/Flow/MailFlow.cs:{}".format(line_no),
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "var n = mail.Send(id);", "MailFlow.Run",
+            ),
         ))
         self.assertIn(
             "call site is written up as a registry", self._check(skill),
         )
+
+    def test_line_number_does_not_select_the_call(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        skill = self._skill(_examples(
+            "Send the id.",
+            "var n = mail.Send(id);",
+            "Assets/Flow/MailFlow.cs:1",
+        ))
+        self.assertEqual(self._check(skill), [])
+
+    def test_changed_call_shape_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write(
+            "Assets/Flow/MailFlow.cs",
+            _LIVE_FLOW.replace("mail.Send(id)", "mail.Send(id, 1)"),
+        )
+        skill = self._skill(_examples(
+            "Send the id.",
+            "var n = mail.Send(id);",
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "var n = mail.Send(id);", "MailFlow.Run",
+            ),
+        ))
+        self.assertIn("call site shape drifted", self._check(skill))
+
+    def test_programmer_skill_missing_role_file_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        skill = self._skill(_examples(
+            "Send the id.",
+            "var n = mail.Send(id);",
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "var n = mail.Send(id);", "MailFlow.Run",
+            ),
+        ))
+        os.remove(os.path.join(skill, "ITERATION_GUIDE.md"))
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertIn("programmer skill missing ITERATION_GUIDE.md", errors)
+
+    def test_programmer_heading_only_role_file_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        skill = self._skill(_examples(
+            "Send the id.",
+            "var n = mail.Send(id);",
+            _call_ref(
+                "Assets/Flow/MailFlow.cs", "Send",
+                "var n = mail.Send(id);", "MailFlow.Run",
+            ),
+        ))
+        self._write(
+            "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
+            "# Rules\n",
+        )
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertTrue(any("heading-only" in e.lower() for e in errors))
 
     def test_flow_defers_writing_rules_to_one_pass(self):
         skills = os.path.join(_CASTFLOW_DIR, "core", "skills")

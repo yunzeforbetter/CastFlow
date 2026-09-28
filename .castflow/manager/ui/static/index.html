@@ -95,7 +95,6 @@
     <nav id="tabs">
       <button data-tab="framework" class="active" data-i18n="tabFramework">Framework</button>
       <button data-tab="skills" data-i18n="tabSkills">Skills</button>
-      <button data-tab="queue" data-i18n="tabQueue">Queue</button>
     </nav>
   </header>
 
@@ -205,8 +204,23 @@
           <button type="button" class="btn" data-action="sync" id="btn-sync" data-i18n="syncOnly">Sync projections only</button>
           <button type="button" class="btn bad" id="btn-unseed" data-i18n="unseedBtn">Roll back and cold start again</button>
         </div>
-        <p class="path" data-i18n-html="unseedHelp">Rollback removes <code>.castflow-runtime/</code> (including manager / hooks) and projected skills, and clears a stray <code>.castflow/</code>. Project source is not deleted. The wizard opens again.</p>
+        <p class="path" data-i18n-html="unseedHelp">Rollback removes <code>.castflow-runtime/</code> (including manager / hooks) and projected skills, and clears a stray <code>.castflow/</code>. Project source is not deleted. Skills under <code>castflow-skills/</code> are kept. The wizard opens again.</p>
         <p class="path" id="framework-msg"></p>
+      </div>
+      <div class="card">
+        <label class="choice">
+          <input type="checkbox" id="fw-scan-gen" />
+          <span>
+            <b data-i18n="scanTitle">Scan modules and generate skills</b>
+            <span class="path" data-i18n-html="scanHelpLater">Cold start is already done. Check this to copy the prompt again. The box starts with the prompt saved at cold start, if any. Empty uses the default <code>/goal</code> that reads <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>.</span>
+          </span>
+        </label>
+        <textarea id="fw-prompt" class="prompt hidden" data-i18n-placeholder="promptPlaceholder" placeholder="Empty = default prompt"></textarea>
+        <div class="toolbar" style="margin-top:10px">
+          <button type="button" class="btn" id="btn-fill-fw-prompt" data-i18n="fillPrompt">Fill default prompt</button>
+          <button type="button" class="btn primary" id="btn-copy-scan-gen" data-i18n="copyScan">Copy scan-and-generate prompt</button>
+        </div>
+        <p class="path" id="fw-scan-msg"></p>
       </div>
       <div class="card">
         <h2 data-i18n="settingsTitle">Settings</h2>
@@ -230,7 +244,7 @@
     </section>
 
     <section id="tab-skills" class="hidden">
-      <p class="path" data-i18n-html="skillsLead">Source of truth is <code>.castflow-runtime/skills/</code>. The disable list is local, <code>.castflow-runtime/skills-disabled.json</code> (gitignored). A skill not listed there is active. Opening this page refreshes projections. <code>goal-loop-creator</code> is a core skill: long-task converter.</p>
+      <p class="path" data-i18n-html="skillsLead">Framework skills live in <code>.castflow-runtime/skills/</code>. Project skills live in <code>castflow-skills/</code> and stay across a full cold start. The disable list is local, <code>.castflow-runtime/skills-disabled.json</code> (gitignored). A skill not listed there is active. Opening this page refreshes projections. <code>goal-loop-creator</code> is a core skill: long-task converter.</p>
       <div class="toolbar">
         <button class="btn primary" data-action="sync" onclick="doSync()" data-i18n="syncBtn">Sync</button>
       </div>
@@ -244,42 +258,6 @@
         </table>
       </div>
     </section>
-
-    <section id="tab-queue" class="hidden">
-      <div class="card">
-        <label class="choice">
-          <input type="checkbox" id="queue-scan-gen" />
-          <span>
-            <b data-i18n="scanTitle">Scan modules and generate skills</b>
-            <span class="path" data-i18n-html="scanHelpQueue">When checked, copy the default <code>/goal</code> prompt (it reads <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>). You can edit it. Empty uses the default.</span>
-          </span>
-        </label>
-        <textarea id="queue-prompt" class="prompt hidden" data-i18n-placeholder="promptPlaceholder" placeholder="Empty = default prompt"></textarea>
-        <div class="toolbar" style="margin-top:10px">
-          <button type="button" class="btn" id="btn-fill-queue-prompt" data-i18n="fillPrompt">Fill default prompt</button>
-          <button type="button" class="btn primary" id="btn-copy-scan-gen" data-i18n="copyScan">Copy scan-and-generate prompt</button>
-        </div>
-        <p class="path" id="queue-scan-msg"></p>
-      </div>
-      <div class="card">
-        <h2 data-i18n="queueWhatTitle">What the queue is for</h2>
-        <p data-i18n-html="queueWhatBody">Framework skills are already in <code>.castflow-runtime/skills/</code> at cold start, including <code>goal-loop-creator</code> (<b>long-task converter</b>). <strong>The queue only holds module skills the AI still has to write</strong> (<code>programmer-*-skill</code>).</p>
-      </div>
-      <div class="card">
-        <h2 data-i18n="nextTitle">Next line for the AI</h2>
-        <pre id="handoff-text"></pre>
-        <button type="button" class="btn primary" id="btn-copy-handoff" data-i18n="copyHandoffBtn">Copy handoff text</button>
-        <p class="path" id="copy-msg"></p>
-      </div>
-      <div class="card">
-        <h2 data-i18n="pendingTitle">Waiting to generate</h2>
-        <p class="path" data-i18n="pendingHelp">Module discovery is done by the AI after you paste the prompt. Python does not scan directories.</p>
-        <div class="toolbar">
-          <button type="button" class="btn ok" id="btn-queue" data-i18n="enqueue">Add accepted modules to the queue</button>
-        </div>
-        <ol id="queue-list"></ol>
-      </div>
-    </section>
   </main>
 
   <script>
@@ -291,7 +269,6 @@
         pickFolderEllipsis: "Choose project folder…",
         tabFramework: "Framework",
         tabSkills: "Skills",
-        tabQueue: "Queue",
         setupTitle: "CastFlow cold start",
         setupLead: "After install the project only has <code>.castflow-runtime/</code> (skills / hooks / manager). It will not copy another <code>.castflow/</code>.",
         step1t: "1 Pick a project",
@@ -331,14 +308,14 @@
         updateBtn: "Update from source and sync",
         syncOnly: "Sync projections only",
         unseedBtn: "Roll back and cold start again",
-        unseedHelp: "Rollback removes <code>.castflow-runtime/</code> (including manager / hooks) and projected skills, and clears a stray <code>.castflow/</code>. Project source is not deleted. The wizard opens again.",
+        unseedHelp: "Rollback removes <code>.castflow-runtime/</code> (including manager / hooks) and projected skills, and clears a stray <code>.castflow/</code>. Project source is not deleted. Skills under <code>castflow-skills/</code> are kept. The wizard opens again.",
         settingsTitle: "Settings",
         evoOffBtn: "Turn evolution on",
         evoOnBtn: "Turn evolution off",
         saveSync: "Save settings and sync",
         evoOnLabel: "Evolution is on: it captures runtime/memory, and origin evolve is available.",
         evoOffLabel: "Evolution is off: hooks and origin-evolve are not projected.",
-        skillsLead: "Source of truth is <code>.castflow-runtime/skills/</code>. The disable list is local, <code>.castflow-runtime/skills-disabled.json</code> (gitignored). A skill not listed there is active. Opening this page refreshes projections. <code>goal-loop-creator</code> is a core skill: long-task converter.",
+        skillsLead: "Framework skills live in <code>.castflow-runtime/skills/</code>. Project skills live in <code>castflow-skills/</code> and stay across a full cold start. The disable list is local, <code>.castflow-runtime/skills-disabled.json</code> (gitignored). A skill not listed there is active. Opening this page refreshes projections. <code>goal-loop-creator</code> is a core skill: long-task converter.",
         syncBtn: "Sync",
         thName: "name",
         thKind: "kind",
@@ -350,19 +327,11 @@
         statusOff: "retired",
         activate: "Activate",
         retire: "Retire",
-        scanHelpQueue: "When checked, copy the default <code>/goal</code> prompt (it reads <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>). You can edit it. Empty uses the default.",
+        scanHelpLater: "Cold start is already done. Check this to copy the prompt again. The box starts with the prompt saved at cold start, if any. Empty uses the default <code>/goal</code> that reads <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>.",
         copyScan: "Copy scan-and-generate prompt",
-        queueWhatTitle: "What the queue is for",
-        queueWhatBody: "Framework skills are already in <code>.castflow-runtime/skills/</code> at cold start, including <code>goal-loop-creator</code> (<b>long-task converter</b>). <strong>The queue only holds module skills the AI still has to write</strong> (<code>programmer-*-skill</code>).",
-        nextTitle: "Next line for the AI",
-        copyHandoffBtn: "Copy handoff text",
-        pendingTitle: "Waiting to generate",
-        pendingHelp: "Module discovery is done by the AI after you paste the prompt. Python does not scan directories.",
-        enqueue: "Add accepted modules to the queue",
-        queueEmpty: "Queue is empty. Check scan-and-generate, then give the prompt to the AI.",
         projectPrefix: "Project: ",
         summaryWithPrompt: "Wrote .castflow-runtime/ (skills / hooks / manager). Copy the prompt below to the AI so it reads that file and runs it.",
-        summaryNoPrompt: "Wrote .castflow-runtime/ (skills / hooks / manager). Scan-and-generate was not checked, so no AI prompt is needed. If that was a mistake, choose Cold start again.",
+        summaryNoPrompt: "Wrote .castflow-runtime/ (skills / hooks / manager). Scan-and-generate was not checked, so no AI prompt is needed. To scan later, copy the prompt on the Framework page. You do not have to cold-start again.",
         confirmUnseed: "This removes .castflow-runtime/ (including manager / hooks) and projected files, and clears a stray .castflow/. The wizard opens again. Project source is not deleted.",
         noFolder: "No folder selected",
         notJson: "Server returned non-JSON (HTTP {status})",
@@ -377,7 +346,6 @@
         actRetire: "Retire ",
         actActivate: "Activate ",
         actUpdate: "Update ",
-        actEnqueue: "Enqueue",
         actEvo: "Toggle evolution",
         actSave: "Save and sync"
       },
@@ -386,7 +354,6 @@
         pickFolderEllipsis: "选择项目文件夹…",
         tabFramework: "框架",
         tabSkills: "Skills",
-        tabQueue: "队列",
         setupTitle: "CastFlow 冷启动",
         setupLead: "装架后项目里只有 <code>.castflow-runtime/</code>（skills / hooks / manager）。不会再拷一份 <code>.castflow/</code>。",
         step1t: "1 选项目",
@@ -426,14 +393,14 @@
         updateBtn: "从 CastFlow 源更新并同步",
         syncOnly: "只同步投影",
         unseedBtn: "回退并重新冷启动",
-        unseedHelp: "回退会卸下整个 <code>.castflow-runtime/</code>（含 manager / hooks）和投影 skill，并清掉误留的 <code>.castflow/</code>。不删除工程源码。然后重新打开向导。",
+        unseedHelp: "回退会卸下整个 <code>.castflow-runtime/</code>（含 manager / hooks）和投影 skill，并清掉误留的 <code>.castflow/</code>。不删除工程源码。<code>castflow-skills/</code> 里的项目 skill 会保留。然后重新打开向导。",
         settingsTitle: "设置",
         evoOffBtn: "启用进化",
         evoOnBtn: "关闭进化",
         saveSync: "保存设置并同步",
         evoOnLabel: "进化开：采集 runtime/memory，可用 origin evolve。",
         evoOffLabel: "进化关：不投影 hook / origin-evolve。",
-        skillsLead: "真源 <code>.castflow-runtime/skills/</code>。停用名单只在本机 <code>.castflow-runtime/skills-disabled.json</code>（gitignore，不进仓库）。没写进该文件的 skill 默认激活。打开本页会自动刷新投影。<code>goal-loop-creator</code> 是核心 skill：long-task converter。",
+        skillsLead: "框架 skill 在 <code>.castflow-runtime/skills/</code>。项目 skill 在 <code>castflow-skills/</code>，全量冷启动不会删掉。停用名单只在本机 <code>.castflow-runtime/skills-disabled.json</code>（gitignore，不进仓库）。没写进该文件的 skill 默认激活。打开本页会自动刷新投影。<code>goal-loop-creator</code> 是核心 skill：long-task converter。",
         syncBtn: "同步",
         thName: "名称",
         thKind: "类型",
@@ -445,19 +412,11 @@
         statusOff: "停用",
         activate: "激活",
         retire: "停用",
-        scanHelpQueue: "勾选后复制默认 <code>/goal</code> 提示词（读取 <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>）。可改写；留空用默认。",
+        scanHelpLater: "冷启动已经完成。勾选后再复制一次提示词。输入框会带上冷启动时保存的提示词（如果有）。留空则用默认 <code>/goal</code>，读取 <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>。",
         copyScan: "复制扫描生成指令",
-        queueWhatTitle: "队列是做什么的",
-        queueWhatBody: "框架 skill 冷启动时已经写入 <code>.castflow-runtime/skills/</code>，包括 <code>goal-loop-creator</code>（<b>long-task converter</b>）。<strong>队列只装还需要 AI 写正文的模块 skill</strong>（<code>programmer-*-skill</code>）。",
-        nextTitle: "给 AI 的下一句",
-        copyHandoffBtn: "复制交接话术",
-        pendingTitle: "待生成列表",
-        pendingHelp: "模块发现由 AI（勾选后粘贴提示词）完成，不跑 Python 扫目录。",
-        enqueue: "把已接受的模块加入队列",
-        queueEmpty: "队列空。勾选扫描生成后把提示词交给 AI。",
         projectPrefix: "项目: ",
         summaryWithPrompt: "已写入 .castflow-runtime/（skills / hooks / manager）。把下面提示词复制给 AI，让它读取指定文件并执行。",
-        summaryNoPrompt: "已写入 .castflow-runtime/（skills / hooks / manager）。未勾选扫描生成，不需要 AI 提示词。勾选错了可以点「重新冷启动」。",
+        summaryNoPrompt: "已写入 .castflow-runtime/（skills / hooks / manager）。未勾选扫描生成，不需要 AI 提示词。之后要扫，在框架页复制提示词即可，不必重新冷启动。",
         confirmUnseed: "将卸下本项目的 .castflow-runtime/（含 manager / hooks）和投影文件，并清掉误留的 .castflow/。然后重新打开向导。不会删除工程源码。",
         noFolder: "未选择文件夹",
         notJson: "服务器返回了非 JSON（HTTP {status}）",
@@ -472,7 +431,6 @@
         actRetire: "停用 ",
         actActivate: "激活 ",
         actUpdate: "更新 ",
-        actEnqueue: "入队",
         actEvo: "切换进化",
         actSave: "保存并同步"
       },
@@ -481,7 +439,6 @@
         pickFolderEllipsis: "プロジェクトフォルダを選択…",
         tabFramework: "フレームワーク",
         tabSkills: "Skills",
-        tabQueue: "キュー",
         setupTitle: "CastFlow コールドスタート",
         setupLead: "導入後、プロジェクトに残るのは <code>.castflow-runtime/</code>（skills / hooks / manager）だけです。もう一つの <code>.castflow/</code> はコピーしません。",
         step1t: "1 プロジェクトを選ぶ",
@@ -521,14 +478,14 @@
         updateBtn: "ソースから更新して同期",
         syncOnly: "投影だけ同期",
         unseedBtn: "戻してコールドスタートをやり直す",
-        unseedHelp: "戻すと <code>.castflow-runtime/</code>（manager / hooks を含む）と投影 skill を外し、誤って残った <code>.castflow/</code> も消します。プロジェクトのソースは消しません。ウィザードが再び開きます。",
+        unseedHelp: "戻すと <code>.castflow-runtime/</code>（manager / hooks を含む）と投影 skill を外し、誤って残った <code>.castflow/</code> も消します。プロジェクトのソースは消しません。<code>castflow-skills/</code> の skill は残します。ウィザードが再び開きます。",
         settingsTitle: "設定",
         evoOffBtn: "進化をオン",
         evoOnBtn: "進化をオフ",
         saveSync: "設定を保存して同期",
         evoOnLabel: "進化オン: runtime/memory を採取し、origin evolve が使えます。",
         evoOffLabel: "進化オフ: hook と origin-evolve は投影しません。",
-        skillsLead: "正本は <code>.castflow-runtime/skills/</code> です。無効リストはローカルの <code>.castflow-runtime/skills-disabled.json</code>（gitignore）だけです。載っていない skill は有効です。このページを開くと投影を更新します。<code>goal-loop-creator</code> はコア skill です: long-task converter。",
+        skillsLead: "フレームワーク skill は <code>.castflow-runtime/skills/</code> です。プロジェクト skill は <code>castflow-skills/</code> にあり、コールドスタートでは消えません。無効リストはローカルの <code>.castflow-runtime/skills-disabled.json</code>（gitignore）だけです。載っていない skill は有効です。このページを開くと投影を更新します。<code>goal-loop-creator</code> はコア skill です: long-task converter。",
         syncBtn: "同期",
         thName: "名前",
         thKind: "種類",
@@ -540,19 +497,11 @@
         statusOff: "無効",
         activate: "有効化",
         retire: "無効化",
-        scanHelpQueue: "オンにすると既定の <code>/goal</code> プロンプトをコピーします（<code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code> を読みます）。書き換えできます。空なら既定です。",
+        scanHelpLater: "コールドスタートは済んでいます。チェックしてからプロンプトをコピーし直してください。入力欄には、コールドスタート時に保存したプロンプトがあればそれを入れます。空なら既定の <code>/goal</code> で <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code> を読みます。",
         copyScan: "スキャン生成の指示をコピー",
-        queueWhatTitle: "キューの役割",
-        queueWhatBody: "フレームワーク skill はコールドスタート時に <code>.castflow-runtime/skills/</code> へ入ります。<code>goal-loop-creator</code>（<b>long-task converter</b>）を含みます。<strong>キューに入るのは、AI が本文をまだ書くモジュール skill だけです</strong>（<code>programmer-*-skill</code>）。",
-        nextTitle: "AI への次の一文",
-        copyHandoffBtn: "引き渡し文をコピー",
-        pendingTitle: "生成待ち",
-        pendingHelp: "モジュール発見は、プロンプトを貼ったあとの AI が行います。Python はディレクトリを走査しません。",
-        enqueue: "受け入れたモジュールをキューに入れる",
-        queueEmpty: "キューは空です。スキャン生成にチェックしてから、プロンプトを AI に渡してください。",
         projectPrefix: "プロジェクト: ",
         summaryWithPrompt: ".castflow-runtime/（skills / hooks / manager）を書きました。下のプロンプトを AI にコピーし、指定ファイルを読んで実行させてください。",
-        summaryNoPrompt: ".castflow-runtime/（skills / hooks / manager）を書きました。スキャン生成はオフなので AI プロンプトは不要です。間違えた場合はコールドスタートをやり直してください。",
+        summaryNoPrompt: ".castflow-runtime/（skills / hooks / manager）を書きました。スキャン生成はオフなので AI プロンプトは不要です。あとからスキャンするときは、フレームワークのページでプロンプトをコピーしてください。コールドスタートのやり直しは不要です。",
         confirmUnseed: "このプロジェクトの .castflow-runtime/（manager / hooks を含む）と投影ファイルを外し、誤って残った .castflow/ も消します。ウィザードが再び開きます。プロジェクトのソースは消しません。",
         noFolder: "フォルダが選ばれていません",
         notJson: "サーバが JSON 以外を返しました（HTTP {status}）",
@@ -567,7 +516,6 @@
         actRetire: "無効化 ",
         actActivate: "有効化 ",
         actUpdate: "更新 ",
-        actEnqueue: "キューに追加",
         actEvo: "進化を切り替え",
         actSave: "保存して同期"
       },
@@ -576,7 +524,6 @@
         pickFolderEllipsis: "프로젝트 폴더 선택…",
         tabFramework: "프레임워크",
         tabSkills: "Skills",
-        tabQueue: "대기열",
         setupTitle: "CastFlow 콜드 스타트",
         setupLead: "설치 후 프로젝트에는 <code>.castflow-runtime/</code>(skills / hooks / manager)만 남습니다. <code>.castflow/</code>를 또 복사하지 않습니다.",
         step1t: "1 프로젝트 선택",
@@ -616,14 +563,14 @@
         updateBtn: "소스에서 업데이트 후 동기화",
         syncOnly: "투영만 동기화",
         unseedBtn: "되돌리고 콜드 스타트 다시",
-        unseedHelp: "되돌리면 <code>.castflow-runtime/</code>(manager / hooks 포함)와 투영 skill을 제거하고, 잘못 남은 <code>.castflow/</code>도 지웁니다. 프로젝트 소스는 지우지 않습니다. 마법사가 다시 열립니다.",
+        unseedHelp: "되돌리면 <code>.castflow-runtime/</code>(manager / hooks 포함)와 투영 skill을 제거하고, 잘못 남은 <code>.castflow/</code>도 지웁니다. 프로젝트 소스는 지우지 않습니다. <code>castflow-skills/</code>의 skill은 남깁니다. 마법사가 다시 열립니다.",
         settingsTitle: "설정",
         evoOffBtn: "진화 켜기",
         evoOnBtn: "진화 끄기",
         saveSync: "설정 저장 후 동기화",
         evoOnLabel: "진화 켜짐: runtime/memory를 수집하고 origin evolve를 쓸 수 있습니다.",
         evoOffLabel: "진화 꺼짐: hook과 origin-evolve를 투영하지 않습니다.",
-        skillsLead: "원본은 <code>.castflow-runtime/skills/</code>입니다. 비활성 목록은 이 기기의 <code>.castflow-runtime/skills-disabled.json</code>(gitignore)뿐입니다. 목록에 없으면 활성입니다. 이 페이지를 열면 투영을 새로 고칩니다. <code>goal-loop-creator</code>는 핵심 skill입니다: long-task converter.",
+        skillsLead: "프레임워크 skill은 <code>.castflow-runtime/skills/</code>에 있습니다. 프로젝트 skill은 <code>castflow-skills/</code>에 있으며 콜드 스타트에서 지워지지 않습니다. 비활성 목록은 이 기기의 <code>.castflow-runtime/skills-disabled.json</code>(gitignore)뿐입니다. 목록에 없으면 활성입니다. 이 페이지를 열면 투영을 새로 고칩니다. <code>goal-loop-creator</code>는 핵심 skill입니다: long-task converter.",
         syncBtn: "동기화",
         thName: "이름",
         thKind: "종류",
@@ -635,19 +582,11 @@
         statusOff: "중지",
         activate: "활성화",
         retire: "중지",
-        scanHelpQueue: "켜면 기본 <code>/goal</code> 프롬프트를 복사합니다(<code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>를 읽음). 고칠 수 있습니다. 비우면 기본값입니다.",
+        scanHelpLater: "콜드 스타트는 이미 끝났습니다. 체크한 다음 프롬프트를 다시 복사하세요. 입력칸에는 콜드 스타트 때 저장한 프롬프트가 있으면 그것을 넣습니다. 비우면 기본 <code>/goal</code>이 <code>.castflow-runtime/skills/MODULE_MARK_SYSTEM_PROMPT.md</code>를 읽습니다.",
         copyScan: "스캔 생성 지시 복사",
-        queueWhatTitle: "대기열의 역할",
-        queueWhatBody: "프레임워크 skill은 콜드 스타트 때 <code>.castflow-runtime/skills/</code>에 들어갑니다. <code>goal-loop-creator</code>(<b>long-task converter</b>)가 포함됩니다. <strong>대기열에는 AI가 본문을 아직 써야 하는 모듈 skill만 들어갑니다</strong>(<code>programmer-*-skill</code>).",
-        nextTitle: "AI에게 줄 다음 문장",
-        copyHandoffBtn: "인수 문장 복사",
-        pendingTitle: "생성 대기",
-        pendingHelp: "모듈 발견은 프롬프트를 붙인 뒤 AI가 합니다. Python은 디렉터리를 훑지 않습니다.",
-        enqueue: "수락한 모듈을 대기열에 넣기",
-        queueEmpty: "대기열이 비어 있습니다. 스캔 생성을 켠 다음 프롬프트를 AI에 주세요.",
         projectPrefix: "프로젝트: ",
         summaryWithPrompt: ".castflow-runtime/(skills / hooks / manager)를 썼습니다. 아래 프롬프트를 AI에 복사해 지정 파일을 읽고 실행하게 하세요.",
-        summaryNoPrompt: ".castflow-runtime/(skills / hooks / manager)를 썼습니다. 스캔 생성을 끄면 AI 프롬프트가 필요 없습니다. 잘못 켰다면 콜드 스타트를 다시 하세요.",
+        summaryNoPrompt: ".castflow-runtime/(skills / hooks / manager)를 썼습니다. 스캔 생성을 끄면 AI 프롬프트가 필요 없습니다. 나중에 스캔하려면 프레임워크 페이지에서 프롬프트를 복사하세요. 콜드 스타트를 다시 할 필요는 없습니다.",
         confirmUnseed: "이 프로젝트의 .castflow-runtime/(manager / hooks 포함)와 투영 파일을 제거하고, 잘못 남은 .castflow/도 지웁니다. 마법사가 다시 열립니다. 프로젝트 소스는 지우지 않습니다.",
         noFolder: "폴더를 선택하지 않았습니다",
         notJson: "서버가 JSON이 아닌 응답을 보냈습니다(HTTP {status})",
@@ -662,7 +601,6 @@
         actRetire: "중지 ",
         actActivate: "활성화 ",
         actUpdate: "업데이트 ",
-        actEnqueue: "대기열에 넣기",
         actEvo: "진화 전환",
         actSave: "저장 후 동기화"
       }
@@ -761,12 +699,7 @@
       $("skill-rows").innerHTML = skillItems.map(skillRow).join("") ||
         "<tr><td colspan=5 class='path'>" + esc(t("skillsEmpty")) + "</td></tr>";
 
-      const items = (STATE.queue && STATE.queue.items) || [];
-      $("queue-list").innerHTML = items.map(i =>
-        "<li><span class='pill " + (i.state || "") + "'>" + i.state + "</span> " +
-        esc(i.kind) + " / " + esc(i.id) + " → " + esc(i.skill) + "</li>"
-      ).join("") || "<p class='path'>" + esc(t("queueEmpty")) + "</p>";
-      $("handoff-text").textContent = STATE.handoff || "";
+      syncFwScan();
 
       const evo = !!(STATE.config.evolution && STATE.config.evolution.enabled);
       $("evo-btn").textContent = evo ? t("evoOnBtn") : t("evoOffBtn");
@@ -787,9 +720,22 @@
       if (wrap) wrap.classList.toggle("hidden", !on);
     }
 
-    function toggleQueueScanGen() {
-      const on = $("queue-scan-gen") && $("queue-scan-gen").checked;
-      const box = $("queue-prompt");
+    function syncFwScan() {
+      const box = $("fw-scan-gen");
+      if (!box || !STATE) return;
+      const root = STATE.project_root || "";
+      if (box.dataset.root !== root) {
+        box.dataset.root = root;
+        box.checked = !!(STATE.config && STATE.config.generate_skills);
+        const prompt = $("fw-prompt");
+        if (prompt) prompt.value = (STATE.config && STATE.config.generate_prompt) || "";
+      }
+      toggleFwScan();
+    }
+
+    function toggleFwScan() {
+      const on = $("fw-scan-gen") && $("fw-scan-gen").checked;
+      const box = $("fw-prompt");
       if (box) box.classList.toggle("hidden", !on);
     }
 
@@ -878,6 +824,7 @@
         if ($("setup-scan-gen")) $("setup-scan-gen").checked = false;
         if ($("setup-prompt")) $("setup-prompt").value = "";
         if ($("setup-err")) $("setup-err").textContent = "";
+        if ($("fw-scan-gen")) delete $("fw-scan-gen").dataset.root;
         render();
       } catch (err) {
         setStatus((err && err.message) || String(err), true);
@@ -900,7 +847,7 @@
       $("app-header").classList.remove("hidden");
       $("app-main").classList.remove("hidden");
       render();
-      showTab("queue");
+      showTab("framework");
     }
     async function runAction(label, fn) {
       setStatus(label + "…", false);
@@ -938,13 +885,6 @@
         render();
       });
     }
-    async function doQueue() {
-      await runAction(t("actEnqueue"), async () => {
-        STATE = await api("/api/queue", "POST", {});
-        render();
-        showTab("queue");
-      });
-    }
     async function toggleEvo() {
       await runAction(t("actEvo"), async () => {
         const on = !(STATE && STATE.config && STATE.config.evolution && STATE.config.evolution.enabled);
@@ -965,15 +905,14 @@
       });
     }
     async function copyScanGen() {
-      const msg = $("queue-scan-msg");
+      const msg = $("fw-scan-msg");
       try {
-        if (!$("queue-scan-gen") || !$("queue-scan-gen").checked) {
+        if (!$("fw-scan-gen") || !$("fw-scan-gen").checked) {
           if (msg) msg.textContent = t("checkScanFirst");
           return;
         }
-        const custom = (($("queue-prompt") && $("queue-prompt").value) || "").trim();
+        const custom = (($("fw-prompt") && $("fw-prompt").value) || "").trim();
         const text = custom || (STATE && STATE.default_prompt) || "";
-        $("handoff-text").textContent = text;
         try {
           await navigator.clipboard.writeText(text);
         } catch (e) {
@@ -990,7 +929,6 @@
       }
     }
 
-    async function copyHandoff() { copyText("handoff-text"); }
     async function copyText(id) {
       const text = ($(id) && $(id).textContent) || "";
       try {
@@ -1032,15 +970,17 @@
     on("btn-save", saveConfig);
     on("btn-framework-update", doFrameworkUpdate);
     on("btn-sync", doSync);
-    on("btn-queue", doQueue);
-    on("btn-copy-handoff", copyHandoff);
     on("btn-copy-scan-gen", copyScanGen);
     on("btn-pick-root", pickRoot);
     on("btn-pick-root-header", pickRoot);
     on("btn-unseed", resetColdStart);
     on("btn-setup-reset", resetColdStart);
     on("btn-fill-default-prompt", function() { fillDefaultPrompt("setup-prompt"); });
-    on("btn-fill-queue-prompt", function() { fillDefaultPrompt("queue-prompt"); });
+    on("btn-fill-fw-prompt", function() {
+      if ($("fw-scan-gen")) $("fw-scan-gen").checked = true;
+      toggleFwScan();
+      fillDefaultPrompt("fw-prompt");
+    });
     if ($("setup-lang")) $("setup-lang").addEventListener("change", applyI18n);
     if ($("lang-select")) $("lang-select").addEventListener("change", function () {
       applyI18n();
@@ -1056,8 +996,8 @@
       const wrap = $("setup-jev-key-wrap");
       if (wrap) wrap.classList.toggle("hidden", !jevBox.checked);
     });
-    const queueScan = $("queue-scan-gen");
-    if (queueScan) queueScan.addEventListener("change", toggleQueueScanGen);
+    const fwScan = $("fw-scan-gen");
+    if (fwScan) fwScan.addEventListener("change", toggleFwScan);
 
     reload().catch(err => { $("project-path").textContent = err.message; $("project-path").className = "err"; });
   </script>

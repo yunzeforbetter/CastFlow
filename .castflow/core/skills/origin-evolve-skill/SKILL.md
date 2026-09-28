@@ -8,7 +8,7 @@ description: >
 
 # Origin Evolve
 
-Turn pending memory snapshots in `.castflow-runtime/traces/trace.md` into approved skill updates under `.castflow-runtime/skills/`. Never write adapter mirrors. After writes: `python .castflow/manager.py sync`.
+Turn pending memory snapshots in `.castflow-runtime/traces/trace.md` into approved skill updates. A project skill is written under `castflow-skills/<name>/`, including a later update of that skill. Never write a project skill under `.castflow-runtime/skills/` (cold start replaces that tree). Never write a factory-owned skill. Never write adapter mirrors. After writes: `python .castflow/manager.py sync`.
 
 Trigger: `origin evolve` (or the same intent). Never run unprompted.
 
@@ -63,6 +63,6 @@ Cluster MEMORY subblocks with one `manager.py homology` call. Priority among **e
 
 **Step 4.** One proposal at a time. Rejection writes `EVOLVE_REJECTION`.
 
-**Step 5.** Atomic write. Replace analyzed entries with `<!-- PROCESSED ts:... entries:N proposals:M -->`. Drop `.trace_lock` in finally.
+**Step 5.** Atomic write of a project skill only, under `castflow-skills/<name>/` (create the directory if this is the first file). Do not write `.castflow-runtime/skills/<name>/`, and do not write a factory-owned name there or in `castflow-skills/`. A same-named `castflow-skills/` directory does not replace a factory skill. Replace analyzed entries with `<!-- PROCESSED ts:... entries:N proposals:M -->`. Drop `.trace_lock` in finally. Then `python .castflow/manager.py sync`.
 
 No score calibration. If snapshots look noisy, tell the user it is a hook/config issue.

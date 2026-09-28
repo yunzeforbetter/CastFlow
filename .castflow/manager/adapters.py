@@ -405,18 +405,6 @@ def _skip_projection_names(project_root, evolution_on):
     return skip
 
 
-def _iter_runtime_skill_dirs(src):
-    if not os.path.isdir(src):
-        return
-    for entry in os.listdir(src):
-        if entry == "__pycache__":
-            continue
-        src_path = os.path.join(src, entry)
-        if os.path.isdir(src_path) and os.path.isfile(
-                os.path.join(src_path, "SKILL.md")):
-            yield entry, src_path
-
-
 def _strip_compat_skill_trees(project_root, names, dry_run):
     """Drop CastFlow skill dirs from Grok/Cursor so those hosts cannot scan extra copies."""
     stripped = {}
@@ -435,9 +423,10 @@ def _strip_compat_skill_trees(project_root, names, dry_run):
 
 
 def _project_skills(project_root, adapters, dry_run, evolution_on=True):
-    src = os.path.join(runtime_dir(project_root), "skills")
+    """Publish each resolved body once. Never publish both trees for one name."""
+    items = list(skills_mod.inventory(project_root))
     skip = _skip_projection_names(project_root, evolution_on)
-    all_names = [name for name, _ in _iter_runtime_skill_dirs(src)]
+    all_names = [item["name"] for item in items]
     projected = {}
     for key in SKILL_DISCOVERY_ADAPTERS:
         rel = ADAPTER_SKILL_DIRS[key]
@@ -446,12 +435,14 @@ def _project_skills(project_root, adapters, dry_run, evolution_on=True):
             projected[key] = {"enabled": False, "path": dest, "skills": []}
             continue
         written = []
-        for entry, src_path in _iter_runtime_skill_dirs(src):
+        for item in items:
+            entry = item["name"]
             dest_path = os.path.join(dest, entry)
             if entry in skip:
                 if not dry_run:
                     _remove_entry(dest_path)
                 continue
+            src_path = item.get("body_path") or item.get("runtime_path")
             if not dry_run:
                 link_or_copy_skill(src_path, dest_path)
             written.append(entry)

@@ -270,7 +270,7 @@ chmod +x castflow.sh castflow.command  # macOS / Linux：首次
 | 4 扫描 | `coldstart --root` | 包切面；装了 Jev 时一并打标记 |
 | 5 AI（仅勾选时） | 粘贴提示词 | 按该提示词生成，一次一个 skill |
 
-装架后控制台三页：**框架**（从源更新并同步）/ **Skills**（retire / activate / update / sync）/ **队列**。勾选错了用「回退并重新冷启动」，不必手删文件。
+装架后控制台两页：**框架**（从源更新并同步；扫描提示词也可以在这里再复制）/ **Skills**（retire / activate / update / sync）。勾选错了用「回退并重新冷启动」，不必手删文件。没勾扫描、后来又要扫，不必回退，在框架页复制提示词即可。
 
 冷启动请打开启动器（Windows 双击 `castflow.bat`，macOS 双击 `castflow.command` 或跑 `./castflow.sh`），不要让 AI 代跑 seed。
 
@@ -344,7 +344,7 @@ python .castflow-runtime/manager.py update-framework
 | `adapters.py` | runtime ↔ `.claude/skills` + `.agents/skills`；gitignore 托管；清兼容残留 |
 | `skills.py` | 清单、本机停用（`skills-disabled.json`）、从源刷新 |
 | `bundle.py` | seed 把 `manager.py` / `manager/` / `installer/` 拷进 runtime，并写项目根 `castflow.bat` / `castflow.sh` / `castflow.command` |
-| `catalog.py` / `queue.py` | 控制台队列状态，以及可选的 `/goal` 交接 |
+| `catalog.py` / `queue.py` | catalog 状态，以及可选的 `/goal` 提示词。控制台不再单列队列页 |
 | `evolution.py` | 进化开关：卸 hook 与 origin-evolve 投影 |
 | `ui/` | stdlib HTTP 控制台（`127.0.0.1`） |
 | `.castflow/jev/` | 可选分类器（`mark.py`、`install.py`）。只有向导勾选才拷到 `.castflow-runtime/jev/` |

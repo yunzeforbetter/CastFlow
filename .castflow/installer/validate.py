@@ -248,15 +248,20 @@ def _body_without_frontmatter(content):
     return text
 
 
+def _is_blank_body(content):
+    """True when the body has no text. Frontmatter-only counts as blank."""
+    return not _body_without_frontmatter(content).strip()
+
+
 def _is_heading_only(content):
-    """True when the body is empty or every remaining line is a heading."""
+    """True when every remaining line is a heading. A blank body is not one."""
     lines = [
         line.strip()
         for line in _body_without_frontmatter(content).splitlines()
         if line.strip()
     ]
     if not lines:
-        return True
+        return False
     return all(line.startswith("#") for line in lines)
 
 
@@ -279,6 +284,8 @@ def validate_skill_dir(skill_path):
     Catalog shape is SKILL.md plus any subset of the other three role files.
     Missing optional role files are not errors. Freeform directories are skipped.
     Extra markdown, a heading-only role file, or an unpointed attachment fails.
+    A programmer skill must have all four role files. An empty role file is
+    valid there. Any other catalog skill still deletes an empty role file.
     """
     errors = []
     warnings = []
@@ -298,15 +305,27 @@ def validate_skill_dir(skill_path):
             )
         )
 
+    programmer = _is_programmer_skill_name(os.path.basename(os.path.normpath(skill_path)))
+    if programmer:
+        for fname in EXPECTED_MD:
+            if fname not in md_paths:
+                errors.append("programmer skill missing {}".format(fname))
+
     file_contents = {}
     for fname in EXPECTED_MD:
         path = os.path.join(skill_path, fname)
         if not os.path.isfile(path):
             continue
         content = _read_file(path)
-        if fname != "SKILL.md" and _is_heading_only(content):
+        if fname != "SKILL.md" and _is_blank_body(content):
+            if not programmer:
+                errors.append(
+                    "{} is an empty role file; delete it "
+                    "instead of leaving a stub".format(fname)
+                )
+        elif fname != "SKILL.md" and _is_heading_only(content):
             errors.append(
-                "{} is an empty or heading-only role file; delete it "
+                "{} is a heading-only role file; leave it empty or delete it "
                 "instead of leaving a stub".format(fname)
             )
         file_contents[fname] = content
@@ -501,42 +520,201 @@ def _resolve_inside(project_root, rel_path):
     return full
 
 
-def _cited_line(project_root, sources, ref_text, code_text):
-    """Return (rel, line_no, line_text) or None. line_no is 1-based."""
-    match = _PATH_LINE_RE.search(ref_text or "")
-    if match:
-        full = _resolve_inside(project_root, match.group(1))
-        if full is None:
-            return None
-        rel = os.path.relpath(full, os.path.abspath(project_root)).replace("\\", "/")
-        text = None
-        for src_rel, src_text in sources:
-            if src_rel == rel:
-                text = src_text
-                break
-        if text is None:
-            try:
-                text = _read_file(full)
-            except (OSError, UnicodeError):
-                return None
-        lines = text.splitlines()
-        line_no = int(match.group(2))
-        if line_no < 1 or line_no > len(lines):
-            return None
-        return rel, line_no, lines[line_no - 1]
-    snippet = ""
+_SKIP_METHOD = frozenset((
+    "if", "for", "while", "switch", "catch", "using", "lock", "new",
+    "return", "foreach", "sizeof", "typeof", "nameof", "else", "elif",
+    "try", "finally", "do", "get", "set", "when", "fixed", "unchecked",
+    "checked",
+))
+_SCOPE_TOKEN_RE = re.compile(
+    r"\b(?:class|struct|interface|record)\s+([A-Za-z_][A-Za-z0-9_]*)"
+    r"|(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\("
+    r"|[{}]"
+)
+_PATH_FILE_RE = re.compile(r"^[A-Za-z0-9_./\\-]+\.[A-Za-z0-9]+$")
+
+
+def _norm_code(text):
+    return re.sub(r"\s+", "", text or "")
+
+
+def enclosing_method(file_text, line_index):
+    """Return Class.Method for a 0-based line, or '' when no method is open.
+
+    A `{` on the target line counts as entered. A `}` on that line does not
+    close the scope, so a one-line method still encloses its own call.
+    """
+    lines = (file_text or "").splitlines()
+    if line_index < 0 or line_index >= len(lines):
+        return ""
+    depth = 0
+    class_stack = []
+    class_depth = []
+    method_stack = []
+    pending_class = None
+    pending_method = None
+
+    def apply(line, close):
+        nonlocal depth, pending_class, pending_method
+        for match in _SCOPE_TOKEN_RE.finditer(line):
+            if match.group(1):
+                pending_class = match.group(1)
+                continue
+            if match.group(2):
+                name = match.group(2)
+                if name not in _SKIP_METHOD:
+                    pending_method = name
+                continue
+            if match.group(0) == "{":
+                depth += 1
+                if pending_class:
+                    class_stack.append(pending_class)
+                    class_depth.append(depth)
+                    pending_class = None
+                if pending_method:
+                    method_stack.append((pending_method, depth))
+                    pending_method = None
+            elif close:
+                if method_stack and method_stack[-1][1] == depth:
+                    method_stack.pop()
+                if class_depth and class_depth[-1] == depth:
+                    class_depth.pop()
+                    class_stack.pop()
+                if depth > 0:
+                    depth -= 1
+
+    for index, line in enumerate(lines):
+        if index == line_index:
+            apply(line, False)
+            break
+        apply(line, True)
+    method = method_stack[-1][0] if method_stack else ""
+    cls = class_stack[-1] if class_stack else ""
+    if cls and method:
+        return cls + "." + method
+    return method
+
+
+def _enclosing_matches(wanted, got):
+    if not wanted:
+        return True
+    if not got:
+        return False
+    return got == wanted or got.endswith("." + wanted) or wanted.endswith("." + got)
+
+
+def _first_code_line(code_text):
     for raw in (code_text or "").splitlines():
         stripped = raw.strip()
         if stripped and not stripped.startswith("```"):
-            snippet = stripped
-            break
-    if not snippet:
-        return None
-    for rel, text in sources:
-        for line_no, line in enumerate(text.splitlines(), 1):
-            if snippet in line:
-                return rel, line_no, line
-    return None
+            return stripped
+    return ""
+
+
+def _parse_call_ref(ref_text):
+    """Return path, enclosing, symbol, shape, legacy_line.
+
+    `path:line` is kept only as a hint. It is not the identity of the call.
+    """
+    path = enclosing = symbol = shape = None
+    legacy_line = None
+    for raw in (ref_text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        low = line.lower()
+        if low.startswith("enclosing:"):
+            enclosing = line.split(":", 1)[1].strip()
+        elif low.startswith("symbol:"):
+            symbol = line.split(":", 1)[1].strip()
+        elif low.startswith("shape:"):
+            shape = line.split(":", 1)[1].strip()
+        else:
+            match = _PATH_LINE_RE.search(line)
+            if match and path is None:
+                path = match.group(1)
+                legacy_line = int(match.group(2))
+            elif path is None and _PATH_FILE_RE.match(line):
+                path = line
+    return path, enclosing, symbol, shape, legacy_line
+
+
+def _file_text(project_root, sources, rel_path):
+    full = _resolve_inside(project_root, rel_path)
+    if full is None:
+        return None, None
+    rel = os.path.relpath(full, os.path.abspath(project_root)).replace("\\", "/")
+    for src_rel, src_text in sources:
+        if src_rel == rel:
+            return rel, src_text
+    try:
+        return rel, _read_file(full)
+    except (OSError, UnicodeError):
+        return None, None
+
+
+def resolve_call_site(project_root, sources, ref_text, code_text):
+    """Find the live line a reference names.
+
+    Returns a dict with status `ok`, `drifted`, or `missing`. On `ok`,
+    `rel`, `line_no` (1-based), and `line_text` are set. Identity is the
+    call shape inside the named file and enclosing method. A line number
+    is used only when that line still equals the shape.
+    """
+    path, enclosing, symbol, shape, legacy_line = _parse_call_ref(ref_text)
+    needle = shape or _first_code_line(code_text)
+    if path:
+        rel, text = _file_text(project_root, sources, path)
+        files = [(rel, text)] if text is not None else []
+        if not files:
+            return {"status": "missing"}
+    else:
+        files = list(sources)
+
+    def same(line):
+        return bool(needle) and _norm_code(line.strip()) == _norm_code(needle)
+
+    def symbol_ok(line):
+        if not symbol:
+            return True
+        return re.search(r"\b" + re.escape(symbol) + r"\b", line) is not None
+
+    matches = []
+    for rel, text in files:
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            if not same(line) or not symbol_ok(line):
+                continue
+            if not _enclosing_matches(enclosing, enclosing_method(text, index)):
+                continue
+            matches.append((rel, index + 1, line))
+    if matches:
+        if legacy_line is not None:
+            for item in matches:
+                if item[1] == legacy_line:
+                    return {
+                        "status": "ok", "rel": item[0],
+                        "line_no": item[1], "line_text": item[2],
+                    }
+        item = matches[0]
+        return {
+            "status": "ok", "rel": item[0],
+            "line_no": item[1], "line_text": item[2],
+        }
+
+    if symbol and files:
+        for rel, text in files:
+            lines = text.splitlines()
+            for index, line in enumerate(lines):
+                if not symbol_ok(line):
+                    continue
+                kind = _line_kind(line)
+                if kind not in ("call", "publish"):
+                    continue
+                if not _enclosing_matches(enclosing, enclosing_method(text, index)):
+                    continue
+                return {"status": "drifted"}
+    return {"status": "missing"}
 
 
 def _example_blocks(examples_text):
@@ -673,8 +851,9 @@ def check_programmer_skill(skill_dir, project_root):
     """Accept or reject a programmer skill against a source tree.
 
     Pure: skill text plus the tree. No model call. Empty means accept.
-    A missing memory file is accepted when every cited usage is a call site
-    and none of those calls has a signature gap.
+    An empty memory file is accepted when every cited usage is a call site
+    and none of those calls has a signature gap. A line number is not an
+    identity: the call is the shape in the named file and method.
     """
     skill_dir = os.path.abspath(skill_dir)
     name = os.path.basename(os.path.normpath(skill_dir))
@@ -697,11 +876,18 @@ def check_programmer_skill(skill_dir, project_root):
     if not blocks and examples.strip():
         blocks = [{"text": examples, "code": "", "ref": examples}]
     for block in blocks:
-        cited = _cited_line(project_root, sources, block.get("ref", ""), block.get("code", ""))
-        if cited is None:
+        resolved = resolve_call_site(
+            project_root, sources, block.get("ref", ""), block.get("code", ""),
+        )
+        if resolved["status"] == "drifted":
+            errors.append("call site shape drifted")
+            continue
+        if resolved["status"] != "ok":
             errors.append("call site does not resolve")
             continue
-        _rel, _line_no, line_text = cited
+        _rel, _line_no, line_text = (
+            resolved["rel"], resolved["line_no"], resolved["line_text"],
+        )
         file_text = ""
         for src_rel, src_text in sources:
             if src_rel == _rel:
@@ -774,33 +960,40 @@ def check_programmer_skill(skill_dir, project_root):
 
 
 def _skills_roots(project_root):
+    """Resolved skill stores. Host projection trees are not a second root."""
+    from manager.skills import project_skills_root
+
     runtime = os.path.join(project_root, ".castflow-runtime", "skills")
-    mirrored = os.path.join(project_root, ".claude", "skills")
+    project = project_skills_root(project_root)
     roots = []
     if os.path.isdir(runtime):
         roots.append(runtime)
-    elif os.path.isdir(mirrored):
-        roots.append(mirrored)
+    if os.path.isdir(project):
+        roots.append(project)
     return roots
 
 
 def validate_all(project_root):
-    """Validate four-file skills under runtime (preferred) or .claude/skills/."""
+    """Validate each resolved skill body once. Not the adapter mirrors."""
+    from manager.skills import inventory
+
     print("\n=== Validation Report ===\n")
     roots = _skills_roots(project_root)
-    if not roots:
-        print("  [FAIL] no skills directory (.castflow-runtime/skills or .claude/skills)")
+    items = inventory(project_root)
+    if not items and not roots:
+        print("  [FAIL] no skills directory (.castflow-runtime/skills or castflow-skills)")
         return False
-    skills_dir = roots[0]
-    print("  Root: {}".format(skills_dir))
+    for skills_dir in roots:
+        print("  Root: {}".format(skills_dir))
 
     all_pass = True
     checked = 0
     total_warnings = 0
 
-    for entry in sorted(os.listdir(skills_dir)):
-        entry_path = os.path.join(skills_dir, entry)
-        if not os.path.isdir(entry_path):
+    for item in items:
+        entry = item["name"]
+        entry_path = item.get("body_path") or item.get("runtime_path")
+        if not entry_path or not os.path.isdir(entry_path):
             continue
 
         errors, warnings, skipped = validate_skill_dir(entry_path)

@@ -299,8 +299,22 @@ class ColdStartTests(unittest.TestCase):
         folder, used = coldstart.write_programmer_skill(root, battle, FIXTURE, hits)
         self.assertTrue(folder.endswith("programmer-battle-skill"))
         self.assertEqual(
-            set(os.listdir(folder)), {"SKILL.md", "EXAMPLES.md"})
+            set(os.listdir(folder)),
+            {"SKILL.md", "EXAMPLES.md", "SKILL_MEMORY.md", "ITERATION_GUIDE.md"},
+        )
         examples = open(os.path.join(folder, "EXAMPLES.md"), "r", encoding="utf-8").read()
+        memory = open(os.path.join(folder, "SKILL_MEMORY.md"), "r", encoding="utf-8").read()
+        guide = open(os.path.join(folder, "ITERATION_GUIDE.md"), "r", encoding="utf-8").read()
+        self.assertEqual(memory, "")
+        self.assertIn("when to edit this skill", guide)
+        self.assertIn("does not say how to edit the module", guide)
+        self.assertIn("shape drifted", guide)
+        self.assertIn(used[0]["symbol"], guide)
+        self.assertNotIn("when a new building type ships", guide)
+        self.assertIn("enclosing:", examples)
+        self.assertIn("symbol:", examples)
+        self.assertIn("shape:", examples)
+        self.assertNotRegex(examples, r":\d+")
         skill = open(os.path.join(folder, "SKILL.md"), "r", encoding="utf-8").read()
         self.assertGreaterEqual(examples.count("## Example "), 3)
         self.assertLessEqual(examples.count("## Example "), 8)
@@ -313,7 +327,7 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(description.count("NOT"), 1)
         self.assertIn("battle", description)
         self.assertNotIn("SKILL_MEMORY.md", skill)
-        self.assertNotIn("ITERATION_GUIDE.md", skill)
+        self.assertIn("ITERATION_GUIDE.md", skill)
         self.assertNotIn("skill cluster", skill.lower())
         self.assertNotIn("Hud.cs", examples)
         problems = coldstart.heat_path_violations(battle, used, examples + skill)
@@ -334,7 +348,16 @@ class ColdStartTests(unittest.TestCase):
         folder, used = coldstart.write_programmer_skill(
             root, card, {}, call_sites=[])
         self.assertEqual(used, [])
-        self.assertEqual(set(os.listdir(folder)), {"SKILL.md"})
+        self.assertEqual(
+            set(os.listdir(folder)),
+            {"SKILL.md", "EXAMPLES.md", "SKILL_MEMORY.md", "ITERATION_GUIDE.md"},
+        )
+        for name in ("EXAMPLES.md", "SKILL_MEMORY.md"):
+            text = open(os.path.join(folder, name), "r", encoding="utf-8").read()
+            self.assertEqual(text, "")
+        guide = open(os.path.join(folder, "ITERATION_GUIDE.md"), "r", encoding="utf-8").read()
+        self.assertIn("a live call site appears", guide)
+        self.assertIn("Do not invent a call", guide)
         skill = open(os.path.join(folder, "SKILL.md"), "r", encoding="utf-8").read()
         description = skill.split("description: ", 1)[1].split("\n", 1)[0]
         self.assertIn("quiet", description)

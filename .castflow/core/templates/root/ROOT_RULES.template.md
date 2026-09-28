@@ -2,7 +2,7 @@
 
 This file is generated from CastFlow (`ROOT_RULES.template.md`). Harness section is above the boundary; edit only the project section below it.
 
-Skill source of truth: `.castflow-runtime/skills/` (never edit adapter mirrors).
+Framework skills: `.castflow-runtime/skills/` (replaced on cold start). Project skills: `castflow-skills/` (kept across cold start). Never edit adapter mirrors.
 
 ## Using skills (T1-T4)
 
@@ -21,7 +21,7 @@ Host auto-injects this file and the matched skill `SKILL.md`.
 - Requirement to a runnable long task — **goal-loop-creator** (long-task converter). Compile a loop-engine Goal Loop Package under `loop-engine/packages/`. Do not invoke `/goal` in that skill.
 - `castflow generate skills` — JSON queue for architect/debug/profiler only: write one, then stop. Do not mix with the `/goal` loop in the same turn.
 - `castflow.bat` / `python .castflow-runtime/manager.py ui` — visual console (skills, evolution, adapters, queue). First install: CastFlow checkout `castflow.bat`.
-- `python .castflow-runtime/manager.py sync` — project runtime skills to `.claude/skills` and `.agents/skills` (Grok/Cursor scan those; no extra skill trees).
+- `python .castflow-runtime/manager.py sync` — project each skill once to `.claude/skills` and `.agents/skills` (Grok/Cursor scan those; no extra skill trees).
 
 <!-- if:evolution -->
 ## Experience capture (evolution plugin ON)

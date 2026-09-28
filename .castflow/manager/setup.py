@@ -336,10 +336,10 @@ def _strip_hook_file(path):
 def unseed(project_root):
     """Remove CastFlow runtime + projections so cold start can run again.
 
-    Does not delete project source. Drops leftover vendored `.castflow/` and
-    project launchers (`castflow.bat` / `castflow.sh` / `castflow.command`;
-    manager lives in runtime). Root CLAUDE.md / AGENTS.md keep a non-stub
-    project section.
+    Does not delete project source or `castflow-skills/` (project skill
+    bodies). Drops leftover vendored `.castflow/` and project launchers
+    (`castflow.bat` / `castflow.sh` / `castflow.command`; manager lives in
+    runtime). Root CLAUDE.md / AGENTS.md keep a non-stub project section.
     """
     from .paths import reject_factory_runtime
 

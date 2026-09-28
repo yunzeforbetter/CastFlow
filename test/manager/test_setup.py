@@ -30,7 +30,7 @@ _REPO = os.path.normpath(os.path.join(
 _CASTFLOW = os.path.join(_REPO, ".castflow")
 sys.path.insert(0, _CASTFLOW)
 
-from manager import adapters, config, queue, setup
+from manager import adapters, config, queue, setup, skills
 from manager.paths import FactoryRuntimeError, factory_root, runtime_dir
 from manager.cli import main as manager_main
 from manager.ui.server import STATIC_DIR, _state, make_handler
@@ -182,6 +182,140 @@ class TestColdStart(TmpProject):
             again_text,
         )
         self.assertNotIn("\n", again_text)
+
+    def test_unseed_cold_start_keeps_project_skill_and_refreshes_factory(self):
+        """Winner C: project bytes sit outside the wipe; factory files are replaced."""
+        from installer.validate import validate_all, validate_skill_dir
+
+        setup.cold_start(self.root, {"language": "en"})
+        name = "programmer-billing-skill"
+        body = (
+            "---\nname: programmer-billing-skill\n"
+            "description: Change billing in this repo. "
+            "Use when the user names billing. NOT work outside billing.\n"
+            "---\n\n# billing\n"
+        )
+        memory = "### Rule 1: keep\n\nDefinition\nDo not drop the id.\n"
+        first = skills.write_project_skill(self.root, name, {"SKILL.md": body})
+        self.assertTrue(first.get("ok"), first)
+        second = skills.write_project_skill(
+            self.root, name, {"SKILL_MEMORY.md": memory})
+        self.assertTrue(second.get("ok"), second)
+        skill_dir = skills.project_skill_dir(self.root, name)
+        skill_md = os.path.join(skill_dir, "SKILL.md")
+        memory_md = os.path.join(skill_dir, "SKILL_MEMORY.md")
+        self.assertEqual(_read(skill_md), body)
+        self.assertEqual(_read(memory_md), memory)
+
+        notes_name = "notes-skill"
+        notes = (
+            "---\nname: notes-skill\n"
+            "description: Project notes. Use when the user asks for notes. "
+            "NOT module API how-to.\n"
+            "---\n\nKeep a short project note.\n"
+        )
+        noted = skills.write_project_skill(
+            self.root, notes_name, {"SKILL.md": notes})
+        self.assertTrue(noted.get("ok"), noted)
+        rejected = skills.write_project_skill(
+            self.root, "skill-creator", {"SKILL.md": "nope\n"})
+        self.assertFalse(rejected.get("ok"))
+        self.assertEqual(rejected.get("error"), "factory-owned")
+
+        factory_skill = os.path.join(
+            _CASTFLOW, "core", "skills", "skill-creator", "SKILL.md")
+        factory_loose = os.path.join(
+            _CASTFLOW, "core", "skills", "SKILL_ITERATION.md")
+        runtime_skill = os.path.join(
+            runtime_dir(self.root), "skills", "skill-creator", "SKILL.md")
+        runtime_loose = os.path.join(
+            runtime_dir(self.root), "skills", "SKILL_ITERATION.md")
+        with open(runtime_skill, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n<!-- mutated-by-test -->\n")
+        with open(runtime_loose, "a", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n<!-- mutated-loose -->\n")
+        shadow = os.path.join(self.root, "castflow-skills", "skill-creator")
+        _write(os.path.join(shadow, "SKILL.md"), "shadow skill\n")
+        _write(os.path.join(shadow, "EXTRA.txt"), "extra\n")
+
+        setup.cold_start(self.root, {"language": "en"})
+        self.assertEqual(_read(skill_md), body)
+        self.assertEqual(_read(memory_md), memory)
+        self.assertEqual(_read(runtime_skill), _read(factory_skill))
+        self.assertEqual(_read(runtime_loose), _read(factory_loose))
+
+        setup.unseed(self.root)
+        self.assertFalse(os.path.isdir(runtime_dir(self.root)))
+        self.assertEqual(_read(skill_md), body)
+        self.assertEqual(_read(memory_md), memory)
+        self.assertEqual(_read(os.path.join(shadow, "EXTRA.txt")), "extra\n")
+
+        setup.cold_start(self.root, {"language": "en"})
+        self.assertEqual(_read(skill_md), body)
+        self.assertEqual(_read(memory_md), memory)
+        self.assertEqual(_read(runtime_skill), _read(factory_skill))
+        self.assertEqual(_read(runtime_loose), _read(factory_loose))
+        self.assertFalse(os.path.isdir(os.path.join(
+            runtime_dir(self.root), "skills", name)))
+
+        rows = skills.inventory(self.root)
+        names = [row["name"] for row in rows]
+        self.assertEqual(names.count(name), 1)
+        self.assertEqual(names.count("skill-creator"), 1)
+        self.assertEqual(names.count(notes_name), 1)
+        by_name = dict((row["name"], row) for row in rows)
+        self.assertEqual(
+            by_name["skill-creator"].get("collision"),
+            "ignored-project-shadow",
+        )
+        self.assertTrue(by_name["skill-creator"]["body_path"].replace(
+            "\\", "/").endswith(".castflow-runtime/skills/skill-creator"))
+        self.assertTrue(by_name[name]["body_path"].replace(
+            "\\", "/").endswith("castflow-skills/" + name))
+
+        adapters.sync(self.root)
+        factory_text = _read(factory_skill)
+        for rel in (
+            os.path.join(".claude", "skills"),
+            os.path.join(".agents", "skills"),
+        ):
+            projected = os.path.join(self.root, rel, "skill-creator")
+            self.assertFalse(os.path.isfile(os.path.join(projected, "EXTRA.txt")))
+            self.assertEqual(_read(os.path.join(projected, "SKILL.md")), factory_text)
+            self.assertEqual(
+                _read(os.path.join(self.root, rel, name, "SKILL.md")), body)
+            self.assertEqual(os.listdir(os.path.join(self.root, rel)).count(name), 1)
+            self.assertEqual(
+                os.listdir(os.path.join(self.root, rel)).count("skill-creator"), 1)
+        for host in ("grok", "cursor"):
+            base = os.path.join(self.root, "." + host, "skills")
+            self.assertFalse(os.path.lexists(os.path.join(base, name)))
+            self.assertFalse(os.path.lexists(os.path.join(base, "skill-creator")))
+
+        errors, _warnings, skipped = validate_skill_dir(
+            skills.resolve_skill_dir(self.root, notes_name))
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+        self.assertTrue(skills.retire(self.root, notes_name).get("ok"))
+        adapters.sync(self.root)
+        self.assertFalse(os.path.isdir(os.path.join(
+            self.root, ".claude", "skills", notes_name)))
+        self.assertFalse(os.path.isdir(os.path.join(
+            self.root, ".agents", "skills", notes_name)))
+        self.assertEqual(_read(os.path.join(
+            skills.project_skill_dir(self.root, notes_name), "SKILL.md")), notes)
+        self.assertTrue(skills.restore(self.root, notes_name).get("ok"))
+        adapters.sync(self.root)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".claude", "skills", notes_name, "SKILL.md")))
+        self.assertIn(notes_name, [
+            row["name"] for row in skills.inventory(self.root)])
+        import io
+        from contextlib import redirect_stdout
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            validate_all(self.root)
+        self.assertIn("[PASS]   notes-skill", captured.getvalue())
 
     def test_update_framework_refreshes_core_skill(self):
         setup.cold_start(self.root, {"optional_skills": {"architect": False}})
@@ -423,7 +557,11 @@ class TestSetupConsole(TmpProject):
         self.assertIn("选择项目文件夹", html)
         self.assertIn("/api/pick-root", html)
         self.assertIn("tab-framework", html)
+        self.assertIn("fw-scan-gen", html)
+        self.assertIn("scanHelpLater", html)
         self.assertIn("/api/framework/update", html)
+        self.assertNotIn("data-tab=\"queue\"", html)
+        self.assertNotIn("id=\"tab-queue\"", html)
         self.assertNotIn("data-tab=\"overview\"", html)
         self.assertNotIn("data-tab=\"evolution\"", html)
 

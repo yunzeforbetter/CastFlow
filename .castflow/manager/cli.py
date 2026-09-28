@@ -401,7 +401,10 @@ def build_parser():
         "--generate-skills", action="store_true",
         help="Return the /goal loop-engine prompt after copying framework files",
     )
-    sub.add_parser("unseed", help="Remove runtime and projections so cold start can run again")
+    sub.add_parser(
+        "unseed",
+        help="Remove runtime and projections so cold start can run again. Keeps castflow-skills/",
+    )
     sub.add_parser("update-framework", help="Refresh CastFlow source skills and core files, then sync")
     return parser
 
