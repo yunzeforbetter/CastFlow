@@ -1,8 +1,13 @@
 """Runtime skill inventory, local disable flags, and update-from-source.
 
-Canonical store is `.castflow-runtime/skills/`. Adapter trees are mirrors.
-Disable never deletes the runtime copy; projection skips disabled names.
-The disable list is local (gitignored). Skills not in that file are active.
+Framework skills live in `.castflow-runtime/skills/` and are replaced from
+the factory on seed. Project skills live in `<project>/castflow-skills/`
+and are not inside the tree `unseed` deletes. One `resolve_skill_dir`
+picks the body of a name: a factory-owned name always uses the runtime
+directory, and any same-named project directory is an ignored shadow.
+Adapter trees are mirrors of that one body. Disable never deletes the
+body; projection skips disabled names. The disable list is local
+(gitignored). Skills not in that file are active.
 """
 
 from __future__ import print_function
@@ -41,6 +46,9 @@ HARNESS_RETIRED_SKILL_NAMES = (
     "skill-forge",
     "bootstrap-skill",
 )
+
+# Project-authored bodies. Not under `.castflow-runtime/` and not `.castflow/`.
+PROJECT_SKILLS_DIRNAME = "castflow-skills"
 
 
 def empty_state():
@@ -137,46 +145,90 @@ def skill_kind(name, project_root=None):
 
 def source_dir_for(name, project_root):
     kind = skill_kind(name, project_root)
-    runtime_skill = os.path.join(runtime_dir(project_root), "skills", name)
+    runtime_skill = runtime_skill_dir(project_root, name)
     if kind == "core":
         src = os.path.join(core_skills_src(project_root), name)
         return src if os.path.isdir(src) else runtime_skill
-    return runtime_skill
+    return project_skill_dir(project_root, name)
 
 
 def runtime_skill_dir(project_root, name):
     return os.path.join(runtime_dir(project_root), "skills", name)
 
 
-def inventory(project_root):
-    """Every skill directory in the canonical runtime store that has SKILL.md."""
-    skills_root = os.path.join(runtime_dir(project_root), "skills")
-    retired = retired_names(project_root)
-    items = []
-    if not os.path.isdir(skills_root):
-        return items
-    names = os.listdir(skills_root)
-    names.sort()
-    for name in names:
-        if name.startswith("."):
+def project_skills_root(project_root):
+    """Directory of project-authored skills. Cold start does not delete it."""
+    return os.path.join(project_root, PROJECT_SKILLS_DIRNAME)
+
+
+def project_skill_dir(project_root, name):
+    return os.path.join(project_skills_root(project_root), name)
+
+
+def resolve_skill_dir(project_root, name):
+    """Single body directory for `name`, or None.
+
+    Factory-owned names resolve only to `.castflow-runtime/skills/<name>`
+    when that directory has `SKILL.md`. Every other name resolves only to
+    `castflow-skills/<name>/` when that directory has `SKILL.md`.
+    """
+    name = str(name or "").strip()
+    if not name or name.startswith(".") or "/" in name or "\\" in name:
+        return None
+    if skill_kind(name, project_root) == "core":
+        path = runtime_skill_dir(project_root, name)
+    else:
+        path = project_skill_dir(project_root, name)
+    if _is_skill_dir(path):
+        return path
+    return None
+
+
+def _skill_names_under(root):
+    if not os.path.isdir(root):
+        return []
+    names = []
+    try:
+        entries = os.listdir(root)
+    except OSError:
+        return []
+    for name in entries:
+        if name.startswith(".") or name == "__pycache__":
             continue
-        path = os.path.join(skills_root, name)
-        if not _is_skill_dir(path):
+        if _is_skill_dir(os.path.join(root, name)):
+            names.append(name)
+    return names
+
+
+def inventory(project_root):
+    """One row per resolved body. Factory names hide a same-named project dir."""
+    retired = retired_names(project_root)
+    runtime_names = set(_skill_names_under(
+        os.path.join(runtime_dir(project_root), "skills")))
+    project_names = set(_skill_names_under(project_skills_root(project_root)))
+    items = []
+    for name in sorted(runtime_names | project_names):
+        body = resolve_skill_dir(project_root, name)
+        if body is None:
             continue
         kind = skill_kind(name, project_root)
         src = source_dir_for(name, project_root)
         family = "framework" if kind == "core" else "project"
         role = CORE_SKILL_ROLES.get(name, "")
-        items.append({
+        item = {
             "name": name,
             "kind": kind,
             "family": family,
             "role": role,
             "retired": name in retired,
-            "runtime_path": path.replace("\\", "/"),
+            "runtime_path": body.replace("\\", "/"),
+            "body_path": body.replace("\\", "/"),
             "source_path": src.replace("\\", "/"),
             "has_skill_md": True,
-        })
+        }
+        if kind == "core" and name in project_names:
+            item["collision"] = "ignored-project-shadow"
+        items.append(item)
     return items
 
 
@@ -230,11 +282,86 @@ def restore(project_root, name):
     }
 
 
-def update_skill(project_root, name):
-    """Refresh a named skill from its source of truth into the runtime store.
+def _safe_skill_name(name):
+    name = str(name or "").strip()
+    if not name or name.startswith("."):
+        return None
+    if "/" in name or "\\" in name or name in (".", ".."):
+        return None
+    return name
 
-    Core skills come from CastFlow harness core; project skills already live
-    in runtime.
+
+def _file_inside(root, rel):
+    """Absolute path for a relative skill file, or None if it escapes `root`."""
+    text = str(rel or "").replace("\\", "/").strip()
+    if not text or text.startswith("/") or text.endswith("/"):
+        return None
+    parts = [part for part in text.split("/") if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        return None
+    full = os.path.abspath(os.path.join(root, *parts))
+    root_abs = os.path.abspath(root)
+    try:
+        if os.path.commonpath([root_abs, full]) != root_abs:
+            return None
+    except ValueError:
+        return None
+    return full
+
+
+def write_project_skill(project_root, name, files):
+    """Create or update a project skill under `castflow-skills/<name>/`.
+
+    Rejects factory-owned names. Does not copy bytes into
+    `.castflow-runtime/` or an adapter tree. A later call updates only the
+    named files and leaves the rest of the skill in place.
+    """
+    name = _safe_skill_name(name)
+    if not name:
+        return {"ok": False, "error": "bad skill name"}
+    if skill_kind(name, project_root) == "core":
+        return {"ok": False, "error": "factory-owned", "name": name}
+    if not isinstance(files, dict) or not files:
+        return {"ok": False, "error": "missing files", "name": name}
+    dest = project_skill_dir(project_root, name)
+    planned = []
+    for raw, content in files.items():
+        full = _file_inside(dest, raw)
+        if full is None:
+            return {"ok": False, "error": "bad path", "name": name, "path": str(raw)}
+        if not isinstance(content, str):
+            return {"ok": False, "error": "file must be text", "name": name}
+        planned.append((full, content, str(raw).replace("\\", "/")))
+    os.makedirs(dest, exist_ok=True)
+    written = []
+    for full, content, rel in planned:
+        parent = os.path.dirname(full)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(full, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+        written.append(rel)
+    if not _is_skill_dir(dest):
+        return {
+            "ok": False,
+            "error": "SKILL.md required",
+            "name": name,
+            "path": dest.replace("\\", "/"),
+        }
+    return {
+        "ok": True,
+        "name": name,
+        "kind": "project",
+        "path": dest.replace("\\", "/"),
+        "files": written,
+    }
+
+
+def update_skill(project_root, name):
+    """Refresh a framework skill from factory core into the runtime store.
+
+    Project skills already live in `castflow-skills/`. Updating one is a
+    no-op: their bytes are never copied into `.castflow-runtime/`.
     """
     if not name or not str(name).strip():
         return {"ok": False, "error": "missing skill name"}
@@ -242,6 +369,17 @@ def update_skill(project_root, name):
     item = get_skill(project_root, name)
     if item is None:
         return {"ok": False, "error": "unknown skill", "name": name}
+    if item.get("kind") != "core":
+        body = resolve_skill_dir(project_root, name) or project_skill_dir(
+            project_root, name)
+        return {
+            "ok": True,
+            "name": name,
+            "kind": item["kind"],
+            "updated": True,
+            "noop": True,
+            "path": body.replace("\\", "/"),
+        }
     dest = runtime_skill_dir(project_root, name)
     src = source_dir_for(name, project_root)
     if not os.path.isdir(src):

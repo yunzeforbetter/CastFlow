@@ -72,7 +72,7 @@ Four ways an AI assistant loses control on a large project:
 | Problem | Symptom | What CastFlow does |
 |---------|---------|--------------------|
 | Architecture amnesia | Inconsistent style, broken layering | `architect-skill` extracts rules from real code; T1 force-loads the runtime protocol |
-| API hallucination | Calls that do not exist, invented signatures | Protocol 1: EXAMPLES, a definition you opened, or a pointer from the user — any one is enough. Mark unverified call sites TODO. Do not guess a signature |
+| API hallucination | Calls that do not exist, invented signatures | Protocol 1: an opened definition or a user pointer. A skill file locator or an EXAMPLES snippet is not proof. Leave an unverified call unimplemented. Do not guess a signature |
 | Fragmented knowledge | Rules live in chat and PR comments | Four role files (SKILL / EXAMPLES / SKILL_MEMORY / ITERATION_GUIDE). The files are the knowledge |
 | Experience that does not accumulate | The same mistake next time | Shared `.castflow-runtime/memory` + `traces/` across tools; `origin evolve` distills them into rules and writes the source **after a human approves**, then syncs |
 
@@ -124,7 +124,7 @@ On an installed project the command is `python .castflow-runtime/manager.py cold
 - This is not the deleted `scan.py`. It does not write `STATE.yaml`, `INVENTORY.md`, `GRAPH.md`, or a knowledge graph.
 - Optional overrides live in `.castflow-runtime/module-roles.txt`, one line of `atom-id-or-path-prefix role`.
 
-`--queue` writes only the selected cards to `.castflow-runtime/_skill-gen-queue/`. `--skill` needs exactly one `--select`, writes that `programmer-<id>-skill` from real call sites, then deletes the queue.
+`--queue` writes only the selected cards to `.castflow-runtime/_skill-gen-queue/`. `--skill` does not write a skill body. Generation records which feature sits in which script file. It does not copy a call or a signature-gap body. Generate that card with the same `SKILL_ITERATION` pass as a named programmer skill. The queue stays.
 
 ### Jev classification
 
@@ -148,7 +148,7 @@ Skills are not dumped into context every turn. They load by **T1-PREPARE / T2-EX
 
 A cross-module request calls the generated `programmer-<id>-skill` directly. Name `architect-skill` / `debug-skill` / `profiler-skill` only when you need an architecture boundary, a diagnosis, or a hot path (the wizard no longer offers those three). `code-pipeline-skill` is retired.
 
-Generation discipline: after you check the scan, short cards land in `.castflow-runtime/_skill-gen-queue/`. Write one programmer skill at a time. Mark it `done` only after validate/sync succeed, then clear context. Parallel generation squeezes the context. Increments use the same loop-engine, or tell the AI `castflow generate skills` (skill-creator writes one, then stops).
+Generation discipline: after you check the scan, short cards land in `.castflow-runtime/_skill-gen-queue/`. Write one programmer skill at a time, then clear context. That is isolation, not a thinner skill: a queue card and `castflow generate skills` follow the same pass in `SKILL_ITERATION.md`. Parallel generation squeezes the context. Mark `done` only after validate succeeds. Sync once when the batch is done.
 
 ### 4. Self-evolution: capture with no extra step, human in the loop
 
@@ -190,7 +190,7 @@ CastFlow/
 │       │   ├── SKILL_ITERATION.md         # Four role-file standard; validate checks shape
 │       │   ├── MODULE_MARK_SYSTEM_PROMPT.md
 │       │   ├── origin-evolve-skill/       # Read traces → Append/Merge/Retire proposals
-│       │   ├── skill-creator/             # Catalog four-file set (eval loop is not part of cold start)
+│       │   ├── skill-creator/             # Catalog skills; SKILL_MEMORY only when a rule exists
 │       │   └── goal-loop-creator/         # Core: long-task compiler. Requirement → loop-engine package
 │       ├── protocols/validated-protocol.md
 │       ├── rules/
@@ -270,7 +270,7 @@ chmod +x castflow.sh castflow.command  # macOS / Linux: first time
 | 4 Scan | `coldstart --root` | Package cut, plus Jev marks when the module is installed |
 | 5 AI (only if checked) | Paste the prompt | Generate from that prompt, one skill at a time |
 
-After install the console has three pages: **Framework** (update from source and sync) / **Skills** (retire / activate / update / sync) / **Queue**. A wrong check is "roll back and cold-start again". Do not delete files by hand.
+After install the console has two pages: **Framework** (update from source and sync; the scan prompt can be copied again here) / **Skills** (retire / activate / update / sync). A wrong check is "roll back and cold-start again". Do not delete files by hand. If scan was left unchecked and you want it later, copy the prompt on the Framework page. You do not have to roll back.
 
 For cold start, open the launcher (Windows: double-click `castflow.bat`; macOS: double-click `castflow.command` or run `./castflow.sh`). Do not ask the AI to run seed for you.
 
@@ -282,9 +282,9 @@ python .castflow-runtime/manager.py coldstart --root . --select some-id --queue
 python .castflow-runtime/manager.py coldstart --root . --select some-id --skill
 ```
 
-The first command prints the cut and the Jev marks. It does not write files. `--queue` keeps only the ids you selected. `--skill` writes one programmer skill from real call sites and then deletes the queue.
+The first command prints the cut and the Jev marks. It does not write files. `--queue` keeps only the ids you selected. `--skill` does not write a skill body and does not delete the queue.
 
-If the wizard's scan box was checked, pasting its `/goal` is a separate path: the AI generates one programmer skill at a time. Do not generate in parallel. Rules for the skill files are in `SKILL_ITERATION.md`. Write into the runtime, then sync.
+If the wizard's scan box was checked, pasting its `/goal` is how those cards get skills: one programmer skill at a time, same `SKILL_ITERATION` pass as a named skill. Do not generate in parallel. Write into the runtime, then sync.
 
 Day-to-day increment:
 
@@ -344,7 +344,7 @@ This refreshes framework skills and core files only. It does **not** overwrite p
 | `adapters.py` | runtime ↔ `.claude/skills` + `.agents/skills`; owned gitignore; clear compatibility leftovers |
 | `skills.py` | Inventory, local disable (`skills-disabled.json`), refresh from source |
 | `bundle.py` | seed copies `manager.py` / `manager/` / `installer/` into the runtime and writes project-root `castflow.bat` / `castflow.sh` / `castflow.command` |
-| `catalog.py` / `queue.py` | Console queue status and the optional `/goal` handoff |
+| `catalog.py` / `queue.py` | Catalog state, and the optional `/goal` prompt. The console no longer has a Queue page |
 | `evolution.py` | Evolution switch: uninstall hooks and the origin-evolve projection |
 | `ui/` | stdlib HTTP console (`127.0.0.1`) |
 | `.castflow/jev/` | Optional classifier (`mark.py`, `install.py`). Copied to `.castflow-runtime/jev/` only when the wizard box is on |
@@ -365,7 +365,7 @@ Only `validate.py` remains. `manager.py validate` calls it. 1.x `bootstrap.py` /
 | `SKILL_ITERATION.md` | Four roles + Anchors/Related + attachment pointers; machine checks go through `manager.py validate` |
 | `MODULE_MARK_SYSTEM_PROMPT.md` | The `/goal` run after the scan is checked: scan → multi-select → generate one at a time |
 | `origin-evolve-skill/` | Distill memory snapshots; never runs by itself |
-| `skill-creator/` | Catalog four-file set; the eval loop is forbidden during cold start |
+| `skill-creator/` | Catalog skills. `SKILL_MEMORY.md` only when a rule exists. The eval loop is forbidden during cold start |
 | `goal-loop-creator/` | **Core skill / long-task compiler.** Installed automatically at cold start. Compiles a requirement into a Goal Loop Package the AI can run (loop-engine: name the system once and finish it). Does not execute `/goal` |
 | `hooks/trace-collector.py` | Primary path `.castflow-runtime/memory/*.md`; optional inbound Claude auto-memory |
 | `hooks/trace-flush.py` | Write a trace only when a snapshot exists; `--selftest` |
@@ -385,12 +385,12 @@ Named `T<index>-<verb>`. The authority is the project-root `CLAUDE.md`.
 
 | Moment | Trigger | What the AI reads on its own |
 |--------|---------|------------------------------|
-| **T1-PREPARE** | Before writing code | Full `GLOBAL_SKILL_MEMORY.md` + the target `SKILL_MEMORY.md` + EXAMPLES as needed |
+| **T1-PREPARE** | Before writing code | Full `GLOBAL_SKILL_MEMORY.md` + the target `SKILL_MEMORY.md` when that file exists + EXAMPLES as needed |
 | **T2-EXECUTE** | While writing | Do not reread; use the already loaded protocol 3 to decide whether to gather information first |
 | **T3-FEEDBACK** | User feedback | `protocols/validated-protocol.md` |
 | **T4-MAINTAIN** | Create or change skill structure | `SKILL_ITERATION.md` + the target `ITERATION_GUIDE.md` |
 
-Separating the four roles is a hard constraint: code samples live only in EXAMPLES, hard rules only in SKILL_MEMORY, navigation in SKILL, evolution rules in ITERATION_GUIDE. Script or data attachments are allowed, but they must not be used to split EXAMPLES apart.
+Separating the four roles is a hard constraint: code samples live only in EXAMPLES, hard rules only in SKILL_MEMORY, navigation in SKILL, evolution rules in ITERATION_GUIDE. Omit `EXAMPLES.md` when the pass found no feature to locate. Omit `SKILL_MEMORY.md` when the pass found no rule to record. Implicit rules and conventions count. An empty file is not a stand-in. Script or data attachments are allowed, but they must not be used to split EXAMPLES apart.
 
 `description` is the always-on recall sentence (about 200 characters): what it does + when to use it + **one** NOT. A miss is better than a false recall. No synonym lists, and no "use this even if it was not named".
 

@@ -34,16 +34,20 @@ CastFlow manager
   python .castflow/manager.py sync      # project non-retired runtime skills to adapter trees
   python .castflow/manager.py evolve on|off
   python .castflow/manager.py queue     # enqueue accepted modules for AI
+  python .castflow/manager.py queue-complete NAME # validate and mark one item done
+  python .castflow/manager.py queue-fail NAME ERROR # retain a failed item for review
+  python .castflow/manager.py queue-retry NAME # retry a failed item
   python .castflow/manager.py handoff   # print the next skill-creator prompt
   python .castflow/manager.py flush     # run trace-flush (Codex / no Stop hook)
   python .castflow/manager.py homology  # batch connected-component homology (stdin JSON)
-  python .castflow/manager.py validate  # four-file check on runtime skills
+  python .castflow/manager.py validate  # validate required files and script locators
   python .castflow/manager.py coldstart --root PATH [--target N]
       # ephemeral package-atom tree; writes nothing. N is a cut of one tree.
   python .castflow/manager.py coldstart --root PATH --select ID --queue
       # write only the selected card(s) under _skill-gen-queue/
   python .castflow/manager.py coldstart --root PATH --select ID --skill
-      # one programmer skill from real call sites, then delete the queue
+      # does not write a skill body; the queue card uses the same
+      # SKILL_ITERATION pass as a named programmer skill
 
 Cold start is the GUI (castflow.bat / castflow.sh / launch), not an AI conversation.
 Steps: configure -> optional scan/generate prompt -> 开启冷启动 (copy files) -> if checked, paste prompt.
@@ -152,6 +156,35 @@ def cmd_queue(project_root, args):
     return 0
 
 
+def cmd_queue_complete(project_root, args):
+    result = queue.complete_item(project_root, args.name)
+    if not result.get("ok"):
+        print("queue-complete failed: {}".format(result.get("error") or "unknown error"))
+        for error in result.get("errors") or []:
+            print("  - {}".format(error))
+        return 1
+    print("Queue item completed: {}".format(args.name))
+    return 0
+
+
+def cmd_queue_fail(project_root, args):
+    result = queue.fail_item(project_root, args.name, args.error)
+    if not result.get("ok"):
+        print("queue-fail failed: {}".format(result.get("error") or "unknown error"))
+        return 1
+    print("Queue item failed: {}".format(args.name))
+    return 0
+
+
+def cmd_queue_retry(project_root, args):
+    result = queue.retry_item(project_root, args.name)
+    if not result.get("ok"):
+        print("queue-retry failed: {}".format(result.get("error") or "unknown error"))
+        return 1
+    print("Queue item requeued: {}".format(args.name))
+    return 0
+
+
 def cmd_handoff(project_root, args):
     print(queue.build_handoff(project_root))
     return 0
@@ -181,7 +214,7 @@ def cmd_homology(project_root, args):
 
 
 def cmd_coldstart(project_root, args):
-    """List the selectable cut, or write the selected queue / one skill. No scan ledger."""
+    """List the selectable cut, or write the selected queue. No skill body. No scan ledger."""
     root = os.path.abspath(args.root or project_root)
     selected = [item for item in (args.select or []) if item]
     if args.skill and len(selected) != 1:
@@ -189,8 +222,10 @@ def cmd_coldstart(project_root, args):
         return 2
     sources, asmdefs = coldstart.read_product_tree(root)
     rules = coldstart.load_role_rules(root)
+    marks = coldstart.load_module_marks(root)
     cards, atoms, edges = coldstart.analyze_graph(
         sources, target=args.target, asmdef_dirs=asmdefs, role_rules=rules,
+        module_marks=marks,
     )
     marks, notice = jevmark.mark_atoms(
         atoms, edges, environ=os.environ, project_root=root,
@@ -216,13 +251,9 @@ def cmd_coldstart(project_root, args):
         print("queue-file: {}".format(os.path.basename(path)))
     if not args.skill:
         return 0
-    folder, hits = coldstart.write_programmer_skill(root, chosen[0], sources)
-    print("skill: {}".format(folder))
-    print("examples: {}".format(len(hits)))
-    for hit in hits:
-        print("call-site: {symbol} {path}:{line}".format(**hit))
-    coldstart.delete_queue(root)
-    print("queue-removed: yes")
+    print("skill-body: not written by coldstart")
+    print("generate: same SKILL_ITERATION pass as a named programmer skill")
+    print("queue-kept: yes")
     return 0
 
 
@@ -355,11 +386,21 @@ def build_parser():
     p_evo = sub.add_parser("evolve", help="Enable/disable the evolution plugin")
     p_evo.add_argument("state", nargs="?", default=None)
     sub.add_parser("queue", help="Enqueue accepted modules for sequential AI generation")
+    p_qdone = sub.add_parser("queue-complete", help="Validate and complete one generated queue item")
+    p_qdone.add_argument("name")
+    p_qfail = sub.add_parser("queue-fail", help="Mark one queue item failed and retain its error")
+    p_qfail.add_argument("name")
+    p_qfail.add_argument("error")
+    p_qretry = sub.add_parser("queue-retry", help="Requeue one failed or completed queue item")
+    p_qretry.add_argument("name")
     sub.add_parser("handoff", help="Print the next skill-creator prompt")
     sub.add_parser("flush", help="Run trace-flush once")
     sub.add_parser("homology", help="Batch MEMORY homology (stdin JSON items)")
     sub.add_parser("status", help="Dump config/catalog/queue as JSON")
-    sub.add_parser("validate", help="Validate four-file skills in runtime")
+    sub.add_parser(
+        "validate",
+        help="Validate skill files and programmer script locators",
+    )
     p_cold = sub.add_parser(
         "coldstart",
         help="List the package-atom cut (no scan ledger)",
@@ -379,7 +420,7 @@ def build_parser():
     )
     p_cold.add_argument(
         "--skill", action="store_true",
-        help="Write one programmer skill for the single --select, then delete the queue",
+        help="Do not write a skill body. Generate the queue card with the same SKILL_ITERATION pass as a named skill",
     )
     p_ui = sub.add_parser("ui", help="Open the visual console")
     p_ui.add_argument("--port", type=int, default=8765)
@@ -401,7 +442,10 @@ def build_parser():
         "--generate-skills", action="store_true",
         help="Return the /goal loop-engine prompt after copying framework files",
     )
-    sub.add_parser("unseed", help="Remove runtime and projections so cold start can run again")
+    sub.add_parser(
+        "unseed",
+        help="Remove runtime and projections so cold start can run again. Keeps castflow-skills/",
+    )
     sub.add_parser("update-framework", help="Refresh CastFlow source skills and core files, then sync")
     return parser
 
@@ -425,6 +469,9 @@ def main(argv=None):
         "update": cmd_update,
         "evolve": cmd_evolve,
         "queue": cmd_queue,
+        "queue-complete": cmd_queue_complete,
+        "queue-fail": cmd_queue_fail,
+        "queue-retry": cmd_queue_retry,
         "handoff": cmd_handoff,
         "flush": cmd_flush,
         "homology": cmd_homology,

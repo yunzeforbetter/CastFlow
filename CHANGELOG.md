@@ -6,6 +6,10 @@ User-visible changes to CastFlow. Versions follow semver: a breaking workflow ch
 
 ---
 
+## Unreleased
+
+Cold-start skill generation and a named programmer skill use one pass. Writing one skill and clearing context stays, as isolation. The minimum recorded unit is one feature located in one script file. The model reads that script for the API. A call site, a copied call shape, a line number, or a signature-gap body constraint is not required. `coldstart --skill` does not write a skill body. `validate` accepts a programmer skill whose locators each name an existing source script, including after that file's calls and bodies change. It rejects a missing path, a non-script, or an example that is only a call with no script file. A programmer skill has `SKILL.md` and `ITERATION_GUIDE.md`. `EXAMPLES.md` is written only when this pass found a feature in a script file. No such feature means the file is not created. An empty or heading-only `EXAMPLES.md` does not pass. `SKILL_MEMORY.md` is written only when this pass found a rule to record, including an implicit rule or a convention. No such rule means the file is not created. An empty or heading-only `SKILL_MEMORY.md` does not pass. A missing `ITERATION_GUIDE.md` or a heading-only stub does not. Update a locator when its script file is added, removed, renamed, or the feature moves to another file, not because the implementation inside an existing script changed. There is no eval loop. The default `/goal` names the cold-start language: the scan multi-select speaks that language, and module ids stay as printed. Skill prose still follows the queue card. After install the console no longer has a Queue page. Open manager lands on Framework, where the scan prompt can be copied again. Generation cards still live in `_skill-gen-queue/`.
+
 ## 2.1.0 — 2026-09-18
 
 **macOS cold start matches Windows.** The framework repo and an already installed project can both open the wizard / console on a Mac. You no longer have to detour through `python … launch` only.

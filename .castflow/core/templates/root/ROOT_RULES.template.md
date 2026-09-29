@@ -2,7 +2,7 @@
 
 This file is generated from CastFlow (`ROOT_RULES.template.md`). Harness section is above the boundary; edit only the project section below it.
 
-Skill source of truth: `.castflow-runtime/skills/` (never edit adapter mirrors).
+Framework skills: `.castflow-runtime/skills/` (replaced on cold start). Project skills: `castflow-skills/` (kept across cold start). Never edit adapter mirrors.
 
 ## Using skills (T1-T4)
 
@@ -10,7 +10,7 @@ Host auto-injects this file and the matched skill `SKILL.md`.
 
 | Moment | When | Read |
 |--------|------|------|
-| T1-PREPARE | Before writing code | whole `GLOBAL_SKILL_MEMORY.md` + target `SKILL_MEMORY.md` + EXAMPLES as needed |
+| T1-PREPARE | Before writing code | whole `GLOBAL_SKILL_MEMORY.md` + target `SKILL_MEMORY.md` when that file exists + EXAMPLES as needed |
 | T2-EXECUTE | While writing | no extra file; apply protocol 3 from the T1 load |
 | T3-FEEDBACK | User accepts/rejects | `protocols/validated-protocol.md` |
 | T4-MAINTAIN | Creating/editing a skill | `SKILL_ITERATION.md` + that skill's `ITERATION_GUIDE.md` |
@@ -21,7 +21,7 @@ Host auto-injects this file and the matched skill `SKILL.md`.
 - Requirement to a runnable long task — **goal-loop-creator** (long-task converter). Compile a loop-engine Goal Loop Package under `loop-engine/packages/`. Do not invoke `/goal` in that skill.
 - `castflow generate skills` — JSON queue for architect/debug/profiler only: write one, then stop. Do not mix with the `/goal` loop in the same turn.
 - `castflow.bat` / `python .castflow-runtime/manager.py ui` — visual console (skills, evolution, adapters, queue). First install: CastFlow checkout `castflow.bat`.
-- `python .castflow-runtime/manager.py sync` — project runtime skills to `.claude/skills` and `.agents/skills` (Grok/Cursor scan those; no extra skill trees).
+- `python .castflow-runtime/manager.py sync` — project each skill once to `.claude/skills` and `.agents/skills` (Grok/Cursor scan those; no extra skill trees).
 
 <!-- if:evolution -->
 ## Experience capture (evolution plugin ON)
@@ -43,7 +43,7 @@ The CastFlow evolution plugin is disabled. Do not write `.castflow-runtime/memor
 
 ## API hallucination (P0)
 
-Do not invent project APIs. Evidence is EXAMPLES, an opened definition, or a user pointer. Unverified calls get TODO; do not guess signatures. Details: `GLOBAL_SKILL_MEMORY.md` protocol 1.
+Do not invent project APIs. A skill file locator or an EXAMPLES snippet is not proof. Evidence is an opened definition or a user pointer. Leave an unverified call unimplemented; do not guess a signature. Details: `GLOBAL_SKILL_MEMORY.md` protocol 1.
 
 <!-- ========== project section (team-owned) ========== -->
 

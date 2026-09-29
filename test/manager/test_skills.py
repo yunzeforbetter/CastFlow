@@ -189,18 +189,20 @@ class TestRetireSync(TmpProject):
         self.assertIn(".castflow-runtime/skills-disabled.json", gitignore)
 
         new_name = "programmer-billing-skill"
-        _write(
-            os.path.join(runtime_dir(self.root), "skills", new_name, "SKILL.md"),
-            "---\nname: programmer-billing-skill\ndescription: "
-            "Change billing. Use when the user names billing. "
-            "NOT other programmer-*-skill.\n---\n\n# billing\n",
-        )
+        written = skills.write_project_skill(self.root, new_name, {
+            "SKILL.md": (
+                "---\nname: programmer-billing-skill\ndescription: "
+                "Change billing. Use when the user names billing. "
+                "NOT other programmer-*-skill.\n---\n\n# billing\n"
+            ),
+        })
+        self.assertTrue(written.get("ok"))
         adapters.refresh_projections(self.root)
         self.assertTrue(os.path.isfile(os.path.join(
             self.root, ".claude", "skills", new_name, "SKILL.md")))
         self.assertNotIn(new_name, skills.retired_names(self.root))
 
-        shutil.rmtree(os.path.join(runtime_dir(self.root), "skills", new_name))
+        shutil.rmtree(skills.project_skill_dir(self.root, new_name))
         adapters.refresh_projections(self.root)
         self.assertFalse(os.path.isdir(os.path.join(
             self.root, ".claude", "skills", new_name)))
@@ -239,20 +241,23 @@ class TestUpdateSync(TmpProject):
             self.assertTrue(os.path.isfile(projected), key)
             self.assertEqual(_read(projected), source)
 
-    def test_update_project_skill_uses_runtime_copy(self):
+    def test_update_project_skill_keeps_preserved_copy(self):
         manager_main(["--project-root", self.root, "seed"])
         body = (
             "---\nname: programmer-billing-skill\ndescription: billing\n"
             "---\n\n# billing\n\nOwns invoices.\n"
         )
-        dest = os.path.join(
-            runtime_dir(self.root), "skills", "programmer-billing-skill")
-        _write(os.path.join(dest, "SKILL.md"), body)
+        written = skills.write_project_skill(
+            self.root, "programmer-billing-skill", {"SKILL.md": body})
+        self.assertTrue(written.get("ok"))
+        dest = skills.project_skill_dir(self.root, "programmer-billing-skill")
         result = skills.update_skill(self.root, "programmer-billing-skill")
         self.assertTrue(result.get("ok"))
         self.assertEqual(result.get("kind"), "project")
         self.assertTrue(result.get("noop"))
         self.assertEqual(_read(os.path.join(dest, "SKILL.md")), body)
+        self.assertFalse(os.path.isdir(os.path.join(
+            runtime_dir(self.root), "skills", "programmer-billing-skill")))
         adapters.sync(self.root)
         claude = os.path.join(
             self.root, ".claude", "skills", "programmer-billing-skill")
@@ -462,15 +467,16 @@ class TestOption4Projection(TmpProject):
         _assert_skill_md_layout(self, os.path.join(
             self.root, ".claude", "skills", "skill-creator"))
 
-    def test_new_runtime_skill_reaches_claude_and_agents_only(self):
+    def test_new_project_skill_reaches_claude_and_agents_only(self):
         manager_main(["--project-root", self.root, "seed"])
         name = "programmer-u3d-probe-skill"
         body = (
             "---\nname: programmer-u3d-probe-skill\n"
             "description: probe skill for discovery\n---\n\n# probe\n"
         )
-        dest = os.path.join(runtime_dir(self.root), "skills", name)
-        _write(os.path.join(dest, "SKILL.md"), body)
+        written = skills.write_project_skill(self.root, name, {"SKILL.md": body})
+        self.assertTrue(written.get("ok"))
+        dest = skills.project_skill_dir(self.root, name)
         adapters.sync(self.root)
         for key, rel in (
             ("claude", os.path.join(".claude", "skills")),
@@ -481,6 +487,21 @@ class TestOption4Projection(TmpProject):
             self.assertEqual(_read(os.path.join(projected, "SKILL.md")), body)
         self.assertFalse(os.path.isdir(_compat_skill_path(self.root, "grok", name)))
         self.assertFalse(os.path.isdir(_compat_skill_path(self.root, "cursor", name)))
+        self.assertEqual(_read(os.path.join(dest, "SKILL.md")), body)
+
+    def test_runtime_only_project_skill_is_not_the_body(self):
+        manager_main(["--project-root", self.root, "seed"])
+        name = "programmer-leftover-skill"
+        _write(
+            os.path.join(runtime_dir(self.root), "skills", name, "SKILL.md"),
+            "---\nname: programmer-leftover-skill\n"
+            "description: leftover\n---\n\n# leftover\n",
+        )
+        self.assertIsNone(skills.resolve_skill_dir(self.root, name))
+        self.assertNotIn(name, [item["name"] for item in skills.inventory(self.root)])
+        adapters.sync(self.root)
+        self.assertFalse(os.path.isdir(os.path.join(
+            self.root, ".claude", "skills", name)))
 
 
 if __name__ == "__main__":

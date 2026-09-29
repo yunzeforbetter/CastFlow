@@ -17,17 +17,18 @@ Runtime protocol for a catalog skill that is already active.
 
 Training data and "the usual way" are not this repository. A project or module API needs evidence before it enters a patch.
 
-Any one of these is enough:
+A skill file locator is only where to open the script. A path in `EXAMPLES.md` or `SKILL_MEMORY.md`, and an example snippet, are not proof of a project API.
 
-1. A real usage in the current skill's EXAMPLES.md
-2. An opened source definition (the signature of that symbol; a neighboring method is not verified)
-3. A location the user pointed at
+Either of these is enough:
+
+1. An opened source definition (the signature of that symbol; a neighboring method is not verified)
+2. A location the user pointed at
 
 A Grep hit does not mean this type has this method.
 
 Skip this gate for language and standard-library APIs, and for the same symbol with the same signature already written in the file you are editing. A new name, a new arity, or a new overload still needs evidence.
 
-Unverified project API: mark that call TODO and keep writing the rest. Do not invent a signature. Do not assume B has a method because A does.
+Unverified project API: leave that call unimplemented. Do not invent a signature. Do not assume B has a method because A does.
 
 ---
 
@@ -35,7 +36,7 @@ Unverified project API: mark that call TODO and keep writing the rest. Do not in
 
 A finished implementation is easy to copy together with its local anti-patterns.
 
-Copied code yields to constraints. Sources, in the order you consult them: the current skill's `SKILL_MEMORY.md`, injected root rules (`CLAUDE.md` / `AGENTS.md`), and this file. If this file conflicts with the injected root rules, the root rules win.
+Copied code yields to constraints. Sources, in the order you consult them: the current skill's `SKILL_MEMORY.md` when that file exists, injected root rules (`CLAUDE.md` / `AGENTS.md`), and this file. If this file conflicts with the injected root rules, the root rules win.
 
 ---
 

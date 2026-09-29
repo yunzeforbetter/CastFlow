@@ -52,9 +52,13 @@ model:
    Skill generation searches those roots again; it does not reuse a
    symbol list from the scan.
 4. Generates selected modules **one at a time** (read card -> write skill ->
-   mark `status: done` -> compact). `--select <id> --skill` writes one skill
-   from real call sites and then deletes the queue. Never generate two skills
-   in parallel.
+   `validate` -> mark `status: done` -> compact). The write is
+   `SKILL_ITERATION.md` **One generation pass**, the same pass as a named
+   programmer skill. Mark done only after `validate` passes. That check is
+   the acceptance, not a self-report. One-at-a-time and the context clear
+   are isolation, not a thinner skill. `coldstart --skill` does not write
+   the body. Never generate two skills in parallel. Delete the queue only
+   after that check has passed.
 
 Do not split a grab-bag asmdef or the first two path segments into the
 checkbox. Do not cluster files or functions. Do not stop because there is
@@ -124,15 +128,18 @@ Do not persist scan ledgers (`INVENTORY.md`, `STATE.yaml`, `GRAPH.md`,
 multi-select **is** the review UI. `coldstart` without `--select` only prints.
 After the user submits the multi-select, persist **only selected** cards as
 `.castflow-runtime/_skill-gen-queue/{NN}-{id}.yaml` (`status: pending`).
-Do not write unselected modules. Delete the directory when every selected
-skill is written.
+Do not write unselected modules. Delete the directory only after `validate`
+has passed for every selected skill.
 
 ## Two modes
 
 **User asked to scan** (pasted generate prompt):
 
 - AI scan -> multi-select with previews -> land selected cards -> compact
-  -> generate one skill at a time from the queue -> delete the queue
+  -> generate one skill at a time from the queue -> `validate` -> delete the queue
+- The generate step is `SKILL_ITERATION.md` **One generation pass**, the
+  same pass as a named programmer skill. Mark done only after `validate`
+  passes. Clearing context is isolation.
 - Any language
 - After selection, look for declarations under that card's script roots;
   call sites are still searched across product scripts

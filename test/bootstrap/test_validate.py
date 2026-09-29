@@ -15,6 +15,8 @@ sys.path.insert(0, _CASTFLOW_DIR)
 
 from installer.validate import (
     validate_skill_dir,
+    validate_all,
+    check_programmer_skill,
     _count_size_units,
     extract_yaml_description,
     description_shape_errors,
@@ -374,6 +376,366 @@ class TestValidate(unittest.TestCase):
         errors, _, skipped = validate_skill_dir(skill_dir)
         self.assertFalse(skipped)
         self.assertTrue(any("extra key" in e.lower() for e in errors))
+
+
+_PROGRAMMER_DESC = (
+    "Change mail in this repo. Use when the user names mail. NOT battle."
+)
+
+_LIVE_SERVICE = (
+    "public class MailService\n"
+    "{\n"
+    "    public int Send(int id)\n"
+    "    {\n"
+    "        return id;\n"
+    "    }\n"
+    "}\n"
+)
+
+_LIVE_FLOW = (
+    "public class MailFlow\n"
+    "{\n"
+    "    public void Run(MailService mail, int id)\n"
+    "    {\n"
+    "        var n = mail.Send(id);\n"
+    "    }\n"
+    "}\n"
+)
+
+_GAP_SERVICE = (
+    "public class MailService\n"
+    "{\n"
+    "    public void Send(int id)\n"
+    "    {\n"
+    "        if (session == null) return;\n"
+    "        session.Transmit(id);\n"
+    "    }\n"
+    "}\n"
+)
+
+_GAP_FLOW = (
+    "public class MailFlow\n"
+    "{\n"
+    "    public void Run(MailService mail, int id)\n"
+    "    {\n"
+    "        mail.Send(id);\n"
+    "    }\n"
+    "}\n"
+)
+
+_EMPTY_WIDGET = (
+    "public class Widget\n"
+    "{\n"
+    "    public void Open()\n"
+    "    {\n"
+    "    }\n"
+    "}\n"
+)
+
+_PUBLISH_BUS = (
+    "public class Bus\n"
+    "{\n"
+    "    public void Run()\n"
+    "    {\n"
+    "        Ready.Publish();\n"
+    "    }\n"
+    "}\n"
+)
+
+
+def _line_of(text, snippet):
+    for number, line in enumerate(text.splitlines(), 1):
+        if snippet in line:
+            return number
+    raise AssertionError(snippet)
+
+
+def _locator(feature, path):
+    return (
+        "## Example 1: send\n\n"
+        "Feature\n"
+        "{feature}\n\n"
+        "Script\n"
+        "{path}\n"
+    ).format(feature=feature, path=path)
+
+
+def _memory_locator(name, feature, path):
+    return (
+        "### Rule 1: {name}\n\n"
+        "Feature\n"
+        "{feature}\n\n"
+        "Script\n"
+        "{path}\n"
+    ).format(name=name, feature=feature, path=path)
+
+
+class TestProgrammerSkillGate(unittest.TestCase):
+    """Drive check_programmer_skill, the function validate_all calls."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="castflow-gate-")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _write(self, rel, text):
+        path = os.path.join(self.root, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        return path
+
+    def _skill(self, examples, memory=None):
+        skill = os.path.join(
+            self.root, "castflow-skills", "programmer-mail-skill",
+        )
+        os.makedirs(skill, exist_ok=True)
+        skill_md = (
+            "---\nname: programmer-mail-skill\n"
+            "description: {}\n---\n\n# Mail\n\nYield to battle.\n"
+        ).format(_PROGRAMMER_DESC)
+        self._write(
+            "castflow-skills/programmer-mail-skill/SKILL.md",
+            skill_md,
+        )
+        if examples.strip():
+            self._write(
+                "castflow-skills/programmer-mail-skill/EXAMPLES.md",
+                examples,
+            )
+        if memory is not None:
+            self._write(
+                "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
+                memory,
+            )
+        self._write(
+            "castflow-skills/programmer-mail-skill/ITERATION_GUIDE.md",
+            "",
+        )
+        return skill
+
+    def _check(self, skill):
+        first = check_programmer_skill(skill, self.root)
+        second = check_programmer_skill(skill, self.root)
+        self.assertEqual(first, second)
+        return first
+
+    def _report_locator_outcomes(self):
+        """One pass of the file-locator outcomes. Printed twice by the test."""
+        script = "Assets/Mail/MailService.cs"
+        self._write(script, _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", script))
+        lines = []
+        errors = self._check(skill)
+        lines.append("existing script file passes: {}".format(errors == []))
+        self._write(
+            script,
+            _LIVE_SERVICE.replace(
+                "return id;",
+                "session.Transmit(id);\n        return id + 1;",
+            ).replace("public int Send(int id)", "public int Send(int id, int n)"),
+        )
+        errors = self._check(skill)
+        lines.append("editing call and body still passes: {}".format(errors == []))
+        os.remove(os.path.join(self.root, "Assets", "Mail", "MailService.cs"))
+        errors = self._check(skill)
+        lines.append(
+            "missing script fails: {}".format(
+                "locator script is missing" in errors
+            )
+        )
+        self._write("Assets/UI/Button.prefab", "prefab")
+        skill = self._skill(_locator("A button", "Assets/UI/Button.prefab"))
+        errors = self._check(skill)
+        lines.append(
+            "non-script prefab fails: {}".format(
+                "locator is not a script" in errors
+            )
+        )
+        self._write("Assets/Mail/Notes.md", "# notes\n")
+        skill = self._skill(_locator("Notes", "Assets/Mail/Notes.md"))
+        errors = self._check(skill)
+        lines.append(
+            "non-script markdown fails: {}".format(
+                "locator is not a script" in errors
+            )
+        )
+        skill = self._skill("mail.Send(id);")
+        errors = self._check(skill)
+        lines.append(
+            "call without script path fails: {}".format(
+                "locator has no script file" in errors
+            )
+        )
+        return lines
+
+    def test_file_locator_outcomes_are_stable(self):
+        first = self._report_locator_outcomes()
+        second = self._report_locator_outcomes()
+        self.assertEqual(first, second)
+        for line in first:
+            self.assertTrue(line.endswith("True"), line)
+            print(line)
+        print("--- run 2 ---")
+        for line in second:
+            print(line)
+
+    def test_existing_script_passes_validate(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        self.assertEqual(self._check(skill), [])
+        self.assertTrue(validate_all(self.root))
+
+    def test_memory_locator_passes_and_ignores_body(self):
+        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
+        skill = self._skill(
+            "",
+            _memory_locator("send", "Send mail", "Assets/Mail/MailService.cs"),
+        )
+        self.assertEqual(self._check(skill), [])
+        self._write(
+            "Assets/Mail/MailService.cs",
+            _GAP_SERVICE.replace("session.Transmit(id);", "return;"),
+        )
+        self.assertEqual(self._check(skill), [])
+
+    def test_chinese_script_label_passes(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(
+            "## 示例1：发信\n\n功能\n发信在这个脚本里。\n\n脚本\nAssets/Mail/MailService.cs\n"
+        )
+        self.assertEqual(self._check(skill), [])
+
+    def test_memory_locator_missing_script_fails(self):
+        skill = self._skill(
+            "",
+            _memory_locator("send", "Send mail", "Assets/Mail/Missing.cs"),
+        )
+        self.assertIn("locator script is missing", self._check(skill))
+
+    def test_programmer_omits_examples_when_no_locator(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill("")
+        self.assertFalse(os.path.exists(os.path.join(skill, "EXAMPLES.md")))
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+        self.assertEqual(self._check(skill), [])
+
+    def test_programmer_empty_examples_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill("")
+        self._write(
+            "castflow-skills/programmer-mail-skill/EXAMPLES.md",
+            "",
+        )
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertTrue(any(
+            "EXAMPLES.md" in e and "empty role file" in e for e in errors
+        ))
+
+    def test_programmer_omits_skill_memory_when_no_rule(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        self.assertFalse(os.path.exists(os.path.join(skill, "SKILL_MEMORY.md")))
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+        self.assertEqual(self._check(skill), [])
+
+    def test_programmer_empty_skill_memory_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        self._write(
+            "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
+            "",
+        )
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertTrue(any(
+            "SKILL_MEMORY.md" in e and "empty role file" in e for e in errors
+        ))
+
+    def test_convention_rule_without_script_passes(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(
+            _locator("Send mail", "Assets/Mail/MailService.cs"),
+            "### Rule 1: send on the session thread\n\n"
+            "Send mail only on the session thread. "
+            "A caller on another thread queues the request.\n",
+        )
+        self.assertEqual(self._check(skill), [])
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+
+    def test_programmer_skill_missing_role_file_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        os.remove(os.path.join(skill, "ITERATION_GUIDE.md"))
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertIn("programmer skill missing ITERATION_GUIDE.md", errors)
+
+    def test_programmer_heading_only_role_file_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        self._write(
+            "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
+            "# Rules\n",
+        )
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertTrue(any("heading-only" in e.lower() for e in errors))
+
+    def test_flow_defers_writing_rules_to_one_pass(self):
+        skills = os.path.join(_CASTFLOW_DIR, "core", "skills")
+        with open(os.path.join(skills, "SKILL_ITERATION.md"), encoding="utf-8") as handle:
+            contract = handle.read()
+        with open(os.path.join(skills, "MODULE_MARK_SYSTEM_PROMPT.md"), encoding="utf-8") as handle:
+            flow = handle.read()
+        locator = (
+            "A locator is one feature plus the path of the one script file "
+            "that holds it."
+        )
+        not_required = (
+            "A call site, a copied call shape, a line number, or a "
+            "signature-gap body constraint is not required."
+        )
+        iteration = (
+            "Update a locator when its script file is added, removed, "
+            "renamed, or the feature moves to another file."
+        )
+        not_inside = (
+            "Do not update a locator because the implementation inside "
+            "an existing script changed."
+        )
+        self.assertEqual(contract.count(locator), 1)
+        self.assertIn(not_required, contract)
+        self.assertIn(iteration, contract)
+        self.assertIn(not_inside, contract)
+        self.assertNotIn(locator, flow)
+        self.assertNotIn(not_required, flow)
+        self.assertIn("locator", flow)
+        self.assertIn("yield", flow)
+        self.assertNotIn("**call site**", contract)
+        self.assertNotIn("**signature gap**", contract)
+        self.assertNotIn("Hot-path evidence", flow)
+        self.assertNotIn("three gates", flow)
+        self.assertNotIn("1-9", flow)
+        self.assertIn("Use when the user names <id>", contract)
+        self.assertIn("only when validate passed", flow)
+        self.assertIn("do not delete the queue", flow)
+        self.assertIn("does not write a skill body", contract)
+        self.assertIn("does not write a body", flow)
+        self.assertIn("does not require", flow)
+        self.assertIn("Checker, Collector, or Maker", flow)
+        self.assertIn("run_loop.py", flow)
+        self.assertIn("eval-viewer", flow)
 
 
 if __name__ == "__main__":

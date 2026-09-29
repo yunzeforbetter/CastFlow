@@ -8,7 +8,7 @@ description: >
 
 # Origin Evolve
 
-Turn pending memory snapshots in `.castflow-runtime/traces/trace.md` into approved skill updates under `.castflow-runtime/skills/`. Never write adapter mirrors. After writes: `python .castflow/manager.py sync`.
+Turn pending memory snapshots in `.castflow-runtime/traces/trace.md` into approved skill updates. A project skill is written under `castflow-skills/<name>/`, including a later update of that skill. Never write a project skill under `.castflow-runtime/skills/` (cold start replaces that tree). Never write a factory-owned skill. Never write adapter mirrors. After writes: `python .castflow/manager.py sync`.
 
 Trigger: `origin evolve` (or the same intent). Never run unprompted.
 
@@ -59,10 +59,10 @@ Cluster MEMORY subblocks with one `manager.py homology` call. Priority among **e
 
 **Step 2.** Read each eligible `<!-- MEMORY -->`. Verify named APIs still exist. Dedup against the target SKILL_MEMORY.
 
-**Step 3.** Each proposal: Append / Merge / Retire, target skill+file, full text with Anchors and Related, evidence timestamps + slugs, risk. Proposal sentences use `.castflow-runtime/config.json` `language` (missing or `en` is English, `zh` is Chinese). Keep the `Anchors:` and `Related:` labels. Capacity 2000 words (SKILL_MEMORY / cross-cutting). Retire needs grep proving anchors are gone. Attribution: (1) whitelisted `skill:` field (2) anchors hit exactly one project skill (3) 1 and 2 disagree -> user pick (4) anchors hit >=2 project skills -> `.castflow-runtime/rules/cross-cutting.md` (5) none -> do not write, leave waiting. Never write `.claude/rules/` business rules. Never write GLOBAL, CLAUDE.md, hooks, or this skill.
+**Step 3.** Each proposal: Append / Merge / Retire, target skill+file, full text, evidence timestamps + slugs, risk. Proposal sentences use `.castflow-runtime/config.json` `language` (missing or `en` is English, `zh` is Chinese). A non-programmer entry keeps the `Anchors:` and `Related:` labels. A `programmer-*-skill` entry is a rule **One generation pass** would keep: an implicit rule, a convention, or a file locator the examples do not already state. Do not write a call shape, a line number, or a signature-gap body into that skill. Update a locator only when its script file is added, removed, renamed, or the feature moves to another file, not because the implementation inside an existing script changed. If `SKILL_MEMORY.md` is absent, the first real entry creates it. Do not create it empty, and do not invent a rule so the file exists. Capacity 2000 words (SKILL_MEMORY / cross-cutting). Retire a non-programmer entry, or a programmer rule, when grep shows its anchors are gone. Retire a programmer locator when its script file is gone. Attribution: (1) whitelisted `skill:` field (2) anchors hit exactly one project skill (3) 1 and 2 disagree -> user pick (4) anchors hit >=2 project skills -> `.castflow-runtime/rules/cross-cutting.md` (5) none -> do not write, leave waiting. Never write `.claude/rules/` business rules. Never write GLOBAL, CLAUDE.md, hooks, or this skill.
 
 **Step 4.** One proposal at a time. Rejection writes `EVOLVE_REJECTION`.
 
-**Step 5.** Atomic write. Replace analyzed entries with `<!-- PROCESSED ts:... entries:N proposals:M -->`. Drop `.trace_lock` in finally.
+**Step 5.** Atomic write of a project skill only, under `castflow-skills/<name>/` (create the directory if this is the first file). Do not write `.castflow-runtime/skills/<name>/`, and do not write a factory-owned name there or in `castflow-skills/`. A same-named `castflow-skills/` directory does not replace a factory skill. Replace analyzed entries with `<!-- PROCESSED ts:... entries:N proposals:M -->`. Drop `.trace_lock` in finally. Then `python .castflow/manager.py sync`.
 
 No score calibration. If snapshots look noisy, tell the user it is a hook/config issue.
