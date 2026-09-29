@@ -197,6 +197,17 @@ _OPTIONAL_ROLES = (
     "ITERATION_GUIDE.md",
 )
 
+# EXAMPLES.md and SKILL_MEMORY.md are not in this list. Create each only
+# when this pass has something real to put in it.
+_PROGRAMMER_REQUIRED_MD = (
+    "SKILL.md",
+    "ITERATION_GUIDE.md",
+)
+_OMIT_WHEN_EMPTY = (
+    "EXAMPLES.md",
+    "SKILL_MEMORY.md",
+)
+
 
 def _rel_posix(dirpath, skill_path, fname):
     rel = os.path.relpath(dirpath, skill_path)
@@ -284,8 +295,10 @@ def validate_skill_dir(skill_path):
     Catalog shape is SKILL.md plus any subset of the other three role files.
     Missing optional role files are not errors. Freeform directories are skipped.
     Extra markdown, a heading-only role file, or an unpointed attachment fails.
-    A programmer skill must have all four role files. An empty role file is
-    valid there. Any other catalog skill still deletes an empty role file.
+    A programmer skill must have SKILL.md and ITERATION_GUIDE.md.
+    EXAMPLES.md and SKILL_MEMORY.md are optional. An empty or heading-only
+    copy of either is an error. Any other catalog skill still deletes an
+    empty role file.
     """
     errors = []
     warnings = []
@@ -307,7 +320,7 @@ def validate_skill_dir(skill_path):
 
     programmer = _is_programmer_skill_name(os.path.basename(os.path.normpath(skill_path)))
     if programmer:
-        for fname in EXPECTED_MD:
+        for fname in _PROGRAMMER_REQUIRED_MD:
             if fname not in md_paths:
                 errors.append("programmer skill missing {}".format(fname))
 
@@ -318,16 +331,24 @@ def validate_skill_dir(skill_path):
             continue
         content = _read_file(path)
         if fname != "SKILL.md" and _is_blank_body(content):
-            if not programmer:
+            # No locator means EXAMPLES.md is absent, not blank. No rule
+            # means the same for SKILL_MEMORY.md.
+            if fname in _OMIT_WHEN_EMPTY or not programmer:
                 errors.append(
                     "{} is an empty role file; delete it "
                     "instead of leaving a stub".format(fname)
                 )
         elif fname != "SKILL.md" and _is_heading_only(content):
-            errors.append(
-                "{} is a heading-only role file; leave it empty or delete it "
-                "instead of leaving a stub".format(fname)
-            )
+            if fname in _OMIT_WHEN_EMPTY:
+                errors.append(
+                    "{} is a heading-only role file; delete it "
+                    "instead of leaving a stub".format(fname)
+                )
+            else:
+                errors.append(
+                    "{} is a heading-only role file; leave it empty or delete it "
+                    "instead of leaving a stub".format(fname)
+                )
         file_contents[fname] = content
 
     skill_content = file_contents.get("SKILL.md", "")
@@ -847,109 +868,99 @@ def _signature_names(sources, call_line):
     return names
 
 
+_LOCATOR_PATH_RE = re.compile(r"^[A-Za-z0-9_./\\-]+\.[A-Za-z0-9]+$")
+
+
+def _is_script_locator_entry(block):
+    """True when the entry names a script. A prose rule does not.
+
+    Implicit rules and conventions have no Script line. Those are not locators,
+    so a missing path is not an error. A locator that names a script still is.
+    """
+    for line in (block or "").splitlines():
+        stripped = line.strip().strip("`")
+        if re.match(r"(?i)^(?:script|脚本)(?:\s*:\s*\S+)?\s*$", stripped):
+            return True
+    return False
+
+
+def _locator_paths(block):
+    """Script paths a locator block names. A call with no Script line yields none."""
+    paths = []
+    lines = (block or "").splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index].strip().strip("`")
+        labeled = re.match(r"(?i)^(?:script|脚本):\s*(\S+)\s*$", line)
+        if labeled:
+            paths.append(labeled.group(1).strip("`"))
+            index += 1
+            continue
+        if line.lower() in ("script", "脚本") and index + 1 < len(lines):
+            nxt = lines[index + 1].strip().strip("`")
+            if _LOCATOR_PATH_RE.match(nxt):
+                paths.append(nxt)
+                index += 2
+                continue
+        index += 1
+    return paths
+
+
+def _locator_error(project_root, rel_path):
+    """Missing path, or a path that is not a source script. None means ok.
+
+    The file body is not read. A later edit to a call or a function body
+    cannot change this result.
+    """
+    rel = (rel_path or "").replace("\\", "/").strip()
+    suffix = os.path.splitext(rel)[1].lower()
+    if _resolve_inside(project_root, rel) is None:
+        return "locator script is missing"
+    if suffix not in _SOURCE_SUFFIXES:
+        return "locator is not a script"
+    return None
+
+
+def _locator_block_errors(project_root, block):
+    paths = _locator_paths(block)
+    if not paths:
+        return ["locator has no script file"]
+    errors = []
+    for path in paths:
+        error = _locator_error(project_root, path)
+        if error:
+            errors.append(error)
+    return errors
+
+
 def check_programmer_skill(skill_dir, project_root):
     """Accept or reject a programmer skill against a source tree.
 
     Pure: skill text plus the tree. No model call. Empty means accept.
-    An empty memory file is accepted when every cited usage is a call site
-    and none of those calls has a signature gap. A line number is not an
-    identity: the call is the shape in the named file and method.
+    Each example is a feature located in one script file. A memory entry is
+    checked the same way only when it names a script. A rule or a convention
+    with no script line is not a locator. Calls and function bodies inside
+    a cited file are not read. A missing EXAMPLES.md or SKILL_MEMORY.md
+    is accept.
     """
     skill_dir = os.path.abspath(skill_dir)
     name = os.path.basename(os.path.normpath(skill_dir))
     if not _is_programmer_skill_name(name):
         return []
-    sources = _iter_source_files(project_root)
     examples_path = os.path.join(skill_dir, "EXAMPLES.md")
     memory_path = os.path.join(skill_dir, "SKILL_MEMORY.md")
-    skill_path = os.path.join(skill_dir, "SKILL.md")
     examples = _read_file(examples_path) if os.path.isfile(examples_path) else ""
     memory = _read_file(memory_path) if os.path.isfile(memory_path) else ""
-    skill_md = _read_file(skill_path) if os.path.isfile(skill_path) else ""
-    prose = "\n".join((skill_md, examples, memory))
-    prose_outside_fences = re.sub(r"```.*?```", "", prose, flags=re.S)
-    mentions_registry = bool(re.search(r"\bregistry\b", prose_outside_fences, re.I))
 
     errors = []
-    call_lines = []
     blocks = _example_blocks(examples)
     if not blocks and examples.strip():
-        blocks = [{"text": examples, "code": "", "ref": examples}]
+        blocks = [{"text": examples}]
     for block in blocks:
-        resolved = resolve_call_site(
-            project_root, sources, block.get("ref", ""), block.get("code", ""),
-        )
-        if resolved["status"] == "drifted":
-            errors.append("call site shape drifted")
-            continue
-        if resolved["status"] != "ok":
-            errors.append("call site does not resolve")
-            continue
-        _rel, _line_no, line_text = (
-            resolved["rel"], resolved["line_no"], resolved["line_text"],
-        )
-        file_text = ""
-        for src_rel, src_text in sources:
-            if src_rel == _rel:
-                file_text = src_text
-                break
-        if not file_text:
-            full = _resolve_inside(project_root, _rel)
-            if full:
-                file_text = _read_file(full)
-        kind = _line_kind(line_text)
-        if kind == "publish":
-            blob = "\n".join(text for _src, text in sources)
-            if not _SUBSCRIBE_RE.search(blob):
-                errors.append("call site is a publish with no subscriber")
-            else:
-                call_lines.append(line_text)
-            continue
-        if kind == "declaration":
-            body = None
-            if file_text and _line_is_method_sig(line_text):
-                body = _body_from_signature(file_text, _line_no - 1)
-            if body is not None and not _IDENT.findall(_strip_comments(body)):
-                errors.append("call site is an empty body")
-            else:
-                errors.append("call site is a declaration")
-            continue
-        if kind != "call":
-            errors.append("call site is a declaration")
-            continue
-        call_lines.append(line_text)
-        if mentions_registry:
-            errors.append("call site is written up as a registry")
-
-    gaps = []
-    seen_gaps = set()
-    signature_names = set()
-    for line_text in call_lines:
-        signature_names.update(_signature_names(sources, line_text))
-        for token in _gap_tokens(sources, line_text):
-            if token not in seen_gaps:
-                seen_gaps.add(token)
-                gaps.append(token)
-
-    entries = _memory_entries(memory)
-    if gaps:
-        covers = False
-        repeats = False
-        for entry in entries:
-            idents = set(_entry_identifiers(entry))
-            if any(token in idents for token in gaps):
-                covers = True
-            elif idents & signature_names:
-                repeats = True
-        if not covers and repeats:
-            errors.append("signature gap repeats the signature")
-        elif not covers:
-            errors.append("signature gap missing from memory")
-
-    for entry in entries:
-        symbols = _anchor_symbols(entry)
-        if not symbols or any(not _symbol_greps(sources, symbol) for symbol in symbols):
-            errors.append("memory anchor does not grep")
+        errors.extend(_locator_block_errors(project_root, block.get("text", "")))
+    for entry in _memory_entries(memory):
+        if _is_script_locator_entry(entry):
+            errors.extend(_locator_block_errors(project_root, entry))
 
     # Stable order, no duplicates, so a second run prints the same lines.
     unique = []

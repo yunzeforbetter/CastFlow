@@ -10,7 +10,7 @@ Host auto-injects this file and the matched skill `SKILL.md`.
 
 | Moment | When | Read |
 |--------|------|------|
-| T1-PREPARE | Before writing code | whole `GLOBAL_SKILL_MEMORY.md` + target `SKILL_MEMORY.md` + EXAMPLES as needed |
+| T1-PREPARE | Before writing code | whole `GLOBAL_SKILL_MEMORY.md` + target `SKILL_MEMORY.md` when that file exists + EXAMPLES as needed |
 | T2-EXECUTE | While writing | no extra file; apply protocol 3 from the T1 load |
 | T3-FEEDBACK | User accepts/rejects | `protocols/validated-protocol.md` |
 | T4-MAINTAIN | Creating/editing a skill | `SKILL_ITERATION.md` + that skill's `ITERATION_GUIDE.md` |
@@ -43,7 +43,7 @@ The CastFlow evolution plugin is disabled. Do not write `.castflow-runtime/memor
 
 ## API hallucination (P0)
 
-Do not invent project APIs. Evidence is EXAMPLES, an opened definition, or a user pointer. Unverified calls get TODO; do not guess signatures. Details: `GLOBAL_SKILL_MEMORY.md` protocol 1.
+Do not invent project APIs. A skill file locator or an EXAMPLES snippet is not proof. Evidence is an opened definition or a user pointer. Leave an unverified call unimplemented; do not guess a signature. Details: `GLOBAL_SKILL_MEMORY.md` protocol 1.
 
 <!-- ========== project section (team-owned) ========== -->
 

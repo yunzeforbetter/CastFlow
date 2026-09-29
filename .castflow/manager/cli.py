@@ -34,10 +34,13 @@ CastFlow manager
   python .castflow/manager.py sync      # project non-retired runtime skills to adapter trees
   python .castflow/manager.py evolve on|off
   python .castflow/manager.py queue     # enqueue accepted modules for AI
+  python .castflow/manager.py queue-complete NAME # validate and mark one item done
+  python .castflow/manager.py queue-fail NAME ERROR # retain a failed item for review
+  python .castflow/manager.py queue-retry NAME # retry a failed item
   python .castflow/manager.py handoff   # print the next skill-creator prompt
   python .castflow/manager.py flush     # run trace-flush (Codex / no Stop hook)
   python .castflow/manager.py homology  # batch connected-component homology (stdin JSON)
-  python .castflow/manager.py validate  # four-file check; programmer skills must pass the call site check
+  python .castflow/manager.py validate  # validate required files and script locators
   python .castflow/manager.py coldstart --root PATH [--target N]
       # ephemeral package-atom tree; writes nothing. N is a cut of one tree.
   python .castflow/manager.py coldstart --root PATH --select ID --queue
@@ -153,6 +156,35 @@ def cmd_queue(project_root, args):
     return 0
 
 
+def cmd_queue_complete(project_root, args):
+    result = queue.complete_item(project_root, args.name)
+    if not result.get("ok"):
+        print("queue-complete failed: {}".format(result.get("error") or "unknown error"))
+        for error in result.get("errors") or []:
+            print("  - {}".format(error))
+        return 1
+    print("Queue item completed: {}".format(args.name))
+    return 0
+
+
+def cmd_queue_fail(project_root, args):
+    result = queue.fail_item(project_root, args.name, args.error)
+    if not result.get("ok"):
+        print("queue-fail failed: {}".format(result.get("error") or "unknown error"))
+        return 1
+    print("Queue item failed: {}".format(args.name))
+    return 0
+
+
+def cmd_queue_retry(project_root, args):
+    result = queue.retry_item(project_root, args.name)
+    if not result.get("ok"):
+        print("queue-retry failed: {}".format(result.get("error") or "unknown error"))
+        return 1
+    print("Queue item requeued: {}".format(args.name))
+    return 0
+
+
 def cmd_handoff(project_root, args):
     print(queue.build_handoff(project_root))
     return 0
@@ -190,8 +222,10 @@ def cmd_coldstart(project_root, args):
         return 2
     sources, asmdefs = coldstart.read_product_tree(root)
     rules = coldstart.load_role_rules(root)
+    marks = coldstart.load_module_marks(root)
     cards, atoms, edges = coldstart.analyze_graph(
         sources, target=args.target, asmdef_dirs=asmdefs, role_rules=rules,
+        module_marks=marks,
     )
     marks, notice = jevmark.mark_atoms(
         atoms, edges, environ=os.environ, project_root=root,
@@ -352,13 +386,20 @@ def build_parser():
     p_evo = sub.add_parser("evolve", help="Enable/disable the evolution plugin")
     p_evo.add_argument("state", nargs="?", default=None)
     sub.add_parser("queue", help="Enqueue accepted modules for sequential AI generation")
+    p_qdone = sub.add_parser("queue-complete", help="Validate and complete one generated queue item")
+    p_qdone.add_argument("name")
+    p_qfail = sub.add_parser("queue-fail", help="Mark one queue item failed and retain its error")
+    p_qfail.add_argument("name")
+    p_qfail.add_argument("error")
+    p_qretry = sub.add_parser("queue-retry", help="Requeue one failed or completed queue item")
+    p_qretry.add_argument("name")
     sub.add_parser("handoff", help="Print the next skill-creator prompt")
     sub.add_parser("flush", help="Run trace-flush once")
     sub.add_parser("homology", help="Batch MEMORY homology (stdin JSON items)")
     sub.add_parser("status", help="Dump config/catalog/queue as JSON")
     sub.add_parser(
         "validate",
-        help="Validate four-file skills; programmer skills must pass the call site check",
+        help="Validate skill files and programmer script locators",
     )
     p_cold = sub.add_parser(
         "coldstart",
@@ -428,6 +469,9 @@ def main(argv=None):
         "update": cmd_update,
         "evolve": cmd_evolve,
         "queue": cmd_queue,
+        "queue-complete": cmd_queue_complete,
+        "queue-fail": cmd_queue_fail,
+        "queue-retry": cmd_queue_retry,
         "handoff": cmd_handoff,
         "flush": cmd_flush,
         "homology": cmd_homology,

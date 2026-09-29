@@ -72,7 +72,7 @@ AI 助手进入大型项目常见的四种失控：
 | 问题 | 症状 | CastFlow 的治法 |
 |------|------|----------------|
 | 架构遗忘 | 风格不一致、越过分层 | `architect-skill` 从真实代码提取规则；T1 强制加载运行时协议 |
-| API 幻觉 | 调用不存在的方法、签名乱编 | 协议 1：EXAMPLES / 打开过的定义 / 用户指针，三者任一即可；未验证处标 TODO，不猜签名 |
+| API 幻觉 | 调用不存在的方法、签名乱编 | 协议 1：打开过的定义，或用户指出的位置。技能里的文件定位和 EXAMPLES 片段都不是证据。未验证的调用留着不写，不猜签名 |
 | 知识碎片化 | 规则散落口头约定与 PR 评论 | 四件套 Skill（SKILL / EXAMPLES / SKILL_MEMORY / ITERATION_GUIDE），文件即知识 |
 | 经验不积累 | 上次犯过的错下次照犯 | 跨工具共用 `.castflow-runtime/memory` + `traces/`；`origin evolve` 蒸馏为规则，**人审批后**写入真源再 sync |
 
@@ -124,7 +124,7 @@ python .castflow/manager.py coldstart --root PATH --select ID --skill
 - 这不是已删除的 `scan.py`。不写 `STATE.yaml`、`INVENTORY.md`、`GRAPH.md`，也不写知识图谱。
 - 可选覆盖写在 `.castflow-runtime/module-roles.txt`，一行一个：`atom-id-or-path-prefix role`。
 
-`--queue` 只把选中的短卡写到 `.castflow-runtime/_skill-gen-queue/`。`--skill` 不写技能正文。一行调用抄不出会被签名掩盖的约束。这张卡和点名生成走同一条 `SKILL_ITERATION`。队列留着。
+`--queue` 只把选中的短卡写到 `.castflow-runtime/_skill-gen-queue/`。`--skill` 不写技能正文。生成记录的是哪个功能在哪个脚本文件里，不抄调用，也不写签名差。这张卡和点名生成走同一条 `SKILL_ITERATION`。队列留着。
 
 ### Jev 分类
 
@@ -190,7 +190,7 @@ CastFlow/
 │       │   ├── SKILL_ITERATION.md         # 四角色文件标准；validate 管形状
 │       │   ├── MODULE_MARK_SYSTEM_PROMPT.md
 │       │   ├── origin-evolve-skill/       # 读 trace → Append/Merge/Retire 提议
-│       │   ├── skill-creator/             # catalog 四件套（评测环非冷启动）
+│       │   ├── skill-creator/             # catalog 技能；有规则才写 SKILL_MEMORY
 │       │   └── goal-loop-creator/         # 【核心】长任务转换系统：需求 → loop-engine 长任务包
 │       ├── protocols/validated-protocol.md
 │       ├── rules/
@@ -365,7 +365,7 @@ python .castflow-runtime/manager.py update-framework
 | `SKILL_ITERATION.md` | 四角色 + Anchors/Related + 附件指针；机器检查走 `manager.py validate` |
 | `MODULE_MARK_SYSTEM_PROMPT.md` | 勾选后 `/goal` 执行的扫描→多选→一次一个生成 |
 | `origin-evolve-skill/` | 蒸馏 memory 快照；永不自动跑 |
-| `skill-creator/` | catalog 四件套；冷启动禁止评测环 |
+| `skill-creator/` | catalog 技能。有规则才写 `SKILL_MEMORY.md`。冷启动禁止评测环 |
 | `goal-loop-creator/` | **核心 skill / 长任务转换系统**。冷启动自动装入。把需求编译成 AI 可跑的 Goal Loop Package（loop-engine：一次过完命名系统）。不执行 `/goal` |
 | `hooks/trace-collector.py` | 主路径 `.castflow-runtime/memory/*.md`；可选 inbound Claude auto-memory |
 | `hooks/trace-flush.py` | 有快照才写 trace；`--selftest` |
@@ -385,12 +385,12 @@ python .castflow-runtime/manager.py update-framework
 
 | 时点 | 触发 | AI 主动读什么 |
 |------|------|--------------|
-| **T1-PREPARE** | 写代码前 | `GLOBAL_SKILL_MEMORY.md` 全文 + 目标 `SKILL_MEMORY.md` + 按需 EXAMPLES |
+| **T1-PREPARE** | 写代码前 | `GLOBAL_SKILL_MEMORY.md` 全文 + 目标 `SKILL_MEMORY.md`（文件存在时）+ 按需 EXAMPLES |
 | **T2-EXECUTE** | 正在写 | 不重读；按已加载的协议 3 决定是否先收集信息 |
 | **T3-FEEDBACK** | 用户反馈 | `protocols/validated-protocol.md` |
 | **T4-MAINTAIN** | 创建/改 skill 结构 | `SKILL_ITERATION.md` + 目标 `ITERATION_GUIDE.md` |
 
-四角色职责隔离是硬约束：代码示例只放 EXAMPLES、硬性规则只放 SKILL_MEMORY、导航放 SKILL、演进规则放 ITERATION_GUIDE。脚本/数据附件可以有，但不能拿来拆 EXAMPLES。
+四角色职责隔离是硬约束：代码示例只放 EXAMPLES、硬性规则只放 SKILL_MEMORY、导航放 SKILL、演进规则放 ITERATION_GUIDE。这次生成没有可定位的功能时，不要写出 `EXAMPLES.md`。没有要记的规则（含隐性规则、约定事项）时，不要写出 `SKILL_MEMORY.md`。空文件不是占位。脚本/数据附件可以有，但不能拿来拆 EXAMPLES。
 
 `description` 是 always-on 召回句（约 200 字符）：做什么 + 何时用 + **一句** NOT。漏召回好过误召回。禁止同义词清单和「即使没点名也要用」。
 

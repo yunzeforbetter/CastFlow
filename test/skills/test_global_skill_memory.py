@@ -51,8 +51,11 @@ class GlobalSkillMemoryShippedText(unittest.TestCase):
     def test_three_jobs_still_present(self):
         g = self.global_text
         self.assertIn("EXAMPLES.md", g)
+        self.assertIn("are not proof of a project API", g)
         self.assertIn("opened source definition", g)
         self.assertIn("A location the user pointed at", g)
+        self.assertIn("leave that call unimplemented", g)
+        self.assertNotIn("mark that call TODO", g)
         self.assertIn("Copied code yields to constraints", g)
         self.assertIn("collect first; do not write code", g)
         self.assertIn("Irreversible", g)
@@ -66,11 +69,14 @@ class GlobalSkillMemoryShippedText(unittest.TestCase):
         r = self.root_text
         self.assertIn("whole `GLOBAL_SKILL_MEMORY.md`", r)
         self.assertIn("no extra file; apply protocol 3 from the T1 load", r)
+        self.assertIn("is not proof", r)
+        self.assertIn("Evidence is an opened definition or a user pointer.", r)
         self.assertIn(
-            "Evidence is EXAMPLES, an opened definition, or a user pointer.",
+            "Leave an unverified call unimplemented; do not guess a signature.",
             r,
         )
-        self.assertIn("Unverified calls get TODO; do not guess signatures.", r)
+        self.assertNotIn("Evidence is EXAMPLES", r)
+        self.assertNotIn("Unverified calls get TODO", r)
 
 
 if __name__ == "__main__":

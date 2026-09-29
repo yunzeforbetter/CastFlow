@@ -27,7 +27,7 @@ All of these are true:
 3. The user submitted a selection.
 4. A short card for each selected module is in `_skill-gen-queue/` (one file per module). A card keeps only the module sentence and folded script roots, as search starts for generation. Unselected modules are not on disk.
 5. Before generation, unselected modules and scan debris are gone from context.
-6. Each selected module has the four role files at `castflow-skills/programmer-<id>-skill/`, written by **One generation pass** in `SKILL_ITERATION.md`. A file with nothing real to say is empty. `validate` has passed, including its programmer-skill check. That check, not a self-report, is what makes the skill done. Nothing was written to an adapter mirror.
+6. Each selected module has its role files at `castflow-skills/programmer-<id>-skill/`, written by **One generation pass** in `SKILL_ITERATION.md`. `SKILL.md` and `ITERATION_GUIDE.md` are always written. `EXAMPLES.md` is written only when a feature is located in a script file. No such feature means the file is not created. `SKILL_MEMORY.md` is written only when a rule needs recording, including an implicit rule or a convention. No such rule means the file is not created. `validate` has passed, including its programmer-skill check. That check, not a self-report, is what makes the skill done. Nothing was written to an adapter mirror.
 7. Only after that check passed, the `_skill-gen-queue/` directory has been deleted.
 
 A scan list, a draft, an unselected module, or a queue left on disk is not done.
@@ -151,7 +151,7 @@ One YAML per selected module, numbered in selection order:
 .castflow-runtime/_skill-gen-queue/02-<id>.yaml
 ```
 
-A short card is a search hint for generation, not a scan archive. Symbols, call sites, and concrete files are looked up in S4. Prefer to let coldstart write the card: `python .castflow-runtime/manager.py coldstart --root <project root> --select <id> ... --queue`. Do not add `--skill`. Do not hand-copy atom lines.
+A short card is a search hint for generation, not a scan archive. Which feature sits in which script is looked up in S4. Prefer to let coldstart write the card: `python .castflow-runtime/manager.py coldstart --root <project root> --select <id> ... --queue`. Do not add `--skill`. Do not hand-copy atom lines.
 
 Each card has only these fields:
 
@@ -202,20 +202,20 @@ Each round:
 3. Only now read the generation spec:
    - `.castflow-runtime/skills/SKILL_ITERATION.md`, section **One generation pass**. This card uses that pass. Do not apply a thinner stop because the card came from the queue.
    - The entry skill is skill-creator's **CastFlow catalog** path (role slots, no eval loop). Write the description from the catalog section only. Do not use the later freeform pushy expansion or Description Optimization. Do not read a domain template.
-4. Generate one `programmer-<id>-skill` for this card only. Find declarations inside this card's `script_dirs`. Search product scripts for each call site (the hard-rule exclusion trees stay excluded). `script_dirs` are where declarations live, not the boundary of callers. Query with a qualified name (`Type.Method`, a declared identifier, or a pattern that carries the type). Do not scan the whole product for a short method name (`Init`, `Show`, `Send`). Open only the files that hit. A hit inside an unselected module is not a rescan and not a new cut. No symbol-free walk of the tree. Do not read the S1 coarse scan back into context. What counts as a call site, a signature gap, or a yield is **One generation pass**, not a second list in this file.
+4. Generate one `programmer-<id>-skill` for this card only. Find which feature sits in which script under this card's `script_dirs` (the hard-rule exclusion trees stay excluded). `script_dirs` are search starts, not a closed file list. Open the script that holds the feature. Do not copy a call out of it. A file inside an unselected module is not a rescan and not a new cut. No symbol-free walk of the tree. Do not read the S1 coarse scan back into context. What counts as a locator or a yield is **One generation pass**, not a second list in this file.
 5. Write:
 
 ```text
 castflow-skills/programmer-<id>-skill/
   SKILL.md
-  EXAMPLES.md
-  SKILL_MEMORY.md
   ITERATION_GUIDE.md
+  EXAMPLES.md        # only when a feature is located
+  SKILL_MEMORY.md    # only when a rule needs recording
 ```
 
-Write all four files, in the card's `language`, in the shape `SKILL_ITERATION.md` specifies. Leave a file empty when this pass has nothing real to put in it. Do not invent a call, a rule, or an edit trigger to fill it. Do not omit a file. Missing or `en` means English prose. `zh` means Chinese prose, including the description and the scene, rule, and pitfall text. Any other code means that language. Do not copy this prompt's English into the skill. Do not write `.claude/skills`, `.agents/skills`, `.grok/skills`, or `.cursor/skills`.
+Write `SKILL.md` and `ITERATION_GUIDE.md`, in the card's `language`, in the shape `SKILL_ITERATION.md` specifies. Write `EXAMPLES.md` only when this pass located a feature in a script file. No such feature means do not create the file. Do not write it empty. Write `SKILL_MEMORY.md` only when this pass found a rule to record. Implicit rules and conventions count. No such rule means do not create the file. Do not write it empty. Do not invent a feature, a script path, a rule, or an edit trigger to fill a file. Do not omit `SKILL.md` or `ITERATION_GUIDE.md`. Missing or `en` means English prose. `zh` means Chinese prose, including the description and the scene, rule, and pitfall text. Any other code means that language. Do not copy this prompt's English into the skill. Do not write `.claude/skills`, `.agents/skills`, `.grok/skills`, or `.cursor/skills`.
 
-6. As soon as this skill is written, run `python .castflow-runtime/manager.py validate`. Do not `sync` this one card. If validate fails, leave `status: pending`, do not delete the queue, stop and tell the user. `validate` includes the programmer-skill check. That check is the acceptance. Do not grade the skill yourself. The four role files are required to exist. `EXAMPLES.md` and `SKILL_MEMORY.md` may be empty. `ITERATION_GUIDE.md` may not: it is how this skill is updated later, not how the module is edited. A heading with no entry is not empty. An acceptance bar does not require a quality metric in `ITERATION_GUIDE.md`.
+6. As soon as this skill is written, run `python .castflow-runtime/manager.py validate`. Do not `sync` this one card. If validate fails, leave `status: pending`, do not delete the queue, stop and tell the user. `validate` includes the programmer-skill check. That check is the acceptance. Do not grade the skill yourself. `SKILL.md` and `ITERATION_GUIDE.md` are required to exist. `EXAMPLES.md` is absent when no feature was located, and an empty copy fails. `SKILL_MEMORY.md` is absent when no rule was found, and an empty copy fails. `ITERATION_GUIDE.md` may not be empty: it is how this skill is updated later, not how the module is edited. A heading with no entry is not empty. An acceptance bar does not require a quality metric in `ITERATION_GUIDE.md`.
 7. Set `status: pending` to `status: done` only when validate passed. Do not change other fields. Do not rewrite the whole card. If validate failed, leave `pending` and fix the skill. Do not mark done. Adapter sync waits until the whole batch is finished.
 8. Clear context: drop the role-file bodies just written, that module's source fragments, and the body of `SKILL_ITERATION.md`. Keep the queue path. Return to step 1.
 
@@ -223,7 +223,7 @@ Optional: open **one** new subagent for the current card only. The handoff must 
 
 At most one status line in chat, for example `writing programmer-<id>-skill (2/5)`. Do not paste the card or source into the main reply.
 
-How to write is `SKILL_ITERATION.md` **One generation pass** only. Use its terms: call site, signature gap, yield. Do not restate that pass here. The description is that pass's programmer sentence: the user names this module, plus one yield. Do not run Description Optimization or the eval loop.
+How to write is `SKILL_ITERATION.md` **One generation pass** only. Use its terms: locator, yield. Do not restate that pass here. The description is that pass's programmer sentence: the user names this module, plus one yield. Do not run Description Optimization or the eval loop.
 
 Do not generate a module the user did not check.
 
@@ -238,7 +238,7 @@ Then stop. This flow writes only `programmer-*-skill`. Do not open a subagent in
 - Writing role-file prose in a language other than the card `language` (missing means English)
 - Treating `coldstart --skill` as a finished skill (that flag does not write a body)
 - Marking a card done, or deleting the queue, when `validate` has not passed
-- Grading a call site, a signature gap, or a yield yourself instead of running `validate`
+- Grading a locator or a yield yourself instead of running `validate`
 - Writing a skill or landing a queue before the multi-select was shown and the user selected
 - Replacing the coldstart list with the deleted `scan.py` / `manager.py scan` / `/api/scan` or a GUI preview; deleting module lines; or putting each atom into the multi-select as its own module or skill
 - Putting symbols, atom lines, or a directory tree into the multi-select arguments or the main reply. The multi-select carries one sentence of what the module is
@@ -252,4 +252,4 @@ Then stop. This flow writes only `programmer-*-skill`. Do not open a subagent in
 - Writing a scan ledger (`STATE.yaml`, `INVENTORY.md`, `GRAPH.md`, and the rest) into the repo
 - Stuffing an engine state file or a queue card into the delivered skill
 - Scanning or listing CastFlow, `.castflow`, `.castflow-runtime`, an adapter tree, or a framework skill as a module option
-- A tree-wide Grep with no symbol constraint, or using a search for a call site to rescan an unselected module
+- A tree-wide Grep with no symbol constraint, or using a search for a call to rescan an unselected module

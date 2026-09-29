@@ -50,6 +50,7 @@ LOW_PRIORITY_SEGMENTS = frozenset((
 # Default checkbox layer. Coarser and finer targets are cuts of one merge list.
 DEFAULT_TARGET = 16
 ROLES = frozenset(("tool", "engine", "feature", "adapter", "bootstrap"))
+MARK_ACTIONS = frozenset(("attach", "split", "keep", "review"))
 _ROLE_ORDER = {"feature": 0, "engine": 1, "tool": 2, "adapter": 3, "bootstrap": 4}
 
 # Leading directories that are not a package boundary.
@@ -79,7 +80,42 @@ _PY_DECL = re.compile(
     r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)",
     re.M,
 )
-_IDENT = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\b")
+_PY_FUNC_DECL = re.compile(
+    r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.M,
+)
+_JS_FUNC_DECL = re.compile(
+    r"^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+"
+    r"([A-Za-z_$][A-Za-z0-9_$]*)",
+    re.M,
+)
+_JS_ARROW_DECL = re.compile(
+    r"^\s*(?:export\s+)?(?:const|let|var)\s+"
+    r"([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?(?:\([^\n]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>",
+    re.M,
+)
+_GO_FUNC_DECL = re.compile(
+    r"^\s*func\s+(?:\([^\n]*\)\s+)?([A-Za-z_][A-Za-z0-9_]*)",
+    re.M,
+)
+_RUST_FUNC_DECL = re.compile(
+    r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)",
+    re.M,
+)
+_GENERIC_FUNC_DECL = re.compile(
+    r"^\s*(?:async\s+)?(?:function|func|fn|def)\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)",
+    re.M,
+)
+_IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
+_LANGUAGE_WORDS = frozenset((
+    "async", "await", "break", "case", "catch", "class", "const", "continue",
+    "def", "default", "do", "else", "enum", "export", "extends", "finally",
+    "for", "from", "func", "function", "if", "impl", "import", "in", "interface",
+    "let", "match", "new", "pub", "record", "return", "static", "struct", "switch",
+    "throw", "try", "type", "var", "while", "with", "yield",
+))
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 _LINE_COMMENT = re.compile(r"//.*?$", re.M)
 _PY_COMMENT = re.compile(r"#.*?$", re.M)
@@ -163,8 +199,27 @@ def _clean_line(line, ext, in_block):
 
 def _decl_names(text, ext):
     if ext in (".py", ".pyw", ".pyi"):
-        return _PY_DECL.findall(text)
-    return _CS_DECL.findall(text)
+        patterns = (_PY_DECL, _PY_FUNC_DECL)
+    elif ext in (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"):
+        patterns = (_CS_DECL, _JS_FUNC_DECL, _JS_ARROW_DECL)
+    elif ext in (".go",):
+        patterns = (_CS_DECL, _GO_FUNC_DECL)
+    elif ext in (".rs",):
+        patterns = (_CS_DECL, _RUST_FUNC_DECL)
+    elif ext in (".rb", ".rake", ".lua", ".php", ".ex", ".exs", ".hs", ".ml", ".zig", ".nim", ".pl", ".r", ".jl"):
+        patterns = (_CS_DECL, _GENERIC_FUNC_DECL)
+    else:
+        patterns = (_CS_DECL,)
+    names = []
+    seen = set()
+    for pattern in patterns:
+        for name in pattern.findall(text or ""):
+            if isinstance(name, tuple):
+                name = next((part for part in name if part), "")
+            if name and name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
 
 
 def empty_enum_names(text, ext):
@@ -198,7 +253,10 @@ def parse_script(text, ext):
         if _USING_LINE.match(cleaned):
             line_refs.append([])
             continue
-        idents = _IDENT.findall(cleaned)
+        idents = [
+            ident for ident in _IDENT.findall(cleaned)
+            if ident.lower() not in _LANGUAGE_WORDS
+        ]
         declared_here = set(_decl_names(cleaned, ext))
         if declared_here:
             idents = [ident for ident in idents if ident not in declared_here]
@@ -525,6 +583,9 @@ def _apply_roles(atoms, edges, role_rules):
         if forced:
             atom["role"] = forced
             continue
+        if atom.get("mark_role") in ROLES:
+            atom["role"] = atom["mark_role"]
+            continue
         paths = atom["paths"]
         if atom["kind"] == "adapter-path" or any(_vendorish(path) for path in paths):
             atom["role"] = "adapter"
@@ -615,7 +676,11 @@ def _recompute_group(node, edges):
 
 
 def _pinned(node):
-    return node["file_count"] >= _PIN_FILES and node["role"] in ("adapter", "engine", "tool")
+    return (
+        node.get("mark_keep")
+        or node["file_count"] >= _PIN_FILES
+        and node["role"] in ("adapter", "engine", "tool")
+    )
 
 
 def _solid(node):
@@ -653,6 +718,11 @@ def _absorb(survivor, other):
     for name, path in (other.get("owners") or {}).items():
         survivor["owners"].setdefault(name, path)
     survivor["empty_enums"] = set(survivor.get("empty_enums") or ()) | set(other.get("empty_enums") or ())
+    if not survivor.get("mark_role") and other.get("mark_role"):
+        survivor["mark_role"] = other["mark_role"]
+    survivor["mark_keep"] = bool(
+        survivor.get("mark_keep") or other.get("mark_keep")
+    )
 
 
 def _feature_dir(node):
@@ -671,6 +741,11 @@ def _best_pair(nodes, edges, allow_zero_solid, allow_pinned, allow_features):
             if first["role"] == "bootstrap":
                 continue
             if first.get("kind") == "mechanism" or second.get("kind") == "mechanism":
+                continue
+            # Explicit keep/split/review marks are hard boundaries. Fallback
+            # passes may merge built-in pinned nodes, but must not override a
+            # user's accepted mark.
+            if first.get("mark_keep") or second.get("mark_keep"):
                 continue
             feature_pair = _feature_dir(first) or _feature_dir(second)
             both_features = _feature_dir(first) and _feature_dir(second)
@@ -700,12 +775,36 @@ def _best_pair(nodes, edges, allow_zero_solid, allow_pinned, allow_features):
     return best[1], best[2], best[3]
 
 
-def build_merges(atoms, edges):
+def build_merges(atoms, edges, forced_pairs=None):
     """One merge list. Earlier merges are safer. Later cuts only replay a prefix."""
     nodes = {}
     for atom in atoms:
         nodes[atom["id"]] = copy.deepcopy(atom)
     merges = []
+    aliases = {node_id: node_id for node_id in nodes}
+
+    def resolve(node_id):
+        current = node_id
+        trail = []
+        while current in aliases and aliases[current] != current:
+            trail.append(current)
+            current = aliases[current]
+        for item in trail:
+            aliases[item] = current
+        return current
+
+    for target, source in forced_pairs or ():
+        target = resolve(target)
+        source = resolve(source)
+        if target not in nodes or source not in nodes or target == source:
+            continue
+        survivor = nodes[target]
+        other = nodes[source]
+        _absorb(survivor, other)
+        _recompute_group(survivor, edges)
+        merges.append((target, source, False, True))
+        del nodes[source]
+        aliases[source] = target
     guard = 0
     limit = max(len(nodes) + 2, 2)
     while len(nodes) > 1 and guard < limit:
@@ -745,6 +844,8 @@ def _clone_node(atom):
         "file_count": atom["file_count"],
         "symbol_fanin": dict(atom.get("symbol_fanin") or {}),
         "frequency": atom.get("frequency") or 0,
+        "mark_role": atom.get("mark_role") or "",
+        "mark_keep": bool(atom.get("mark_keep")),
     }
 
 
@@ -759,8 +860,10 @@ def cut_tree(atoms, merges, edges, target, protect_features=False):
     for atom in atoms:
         nodes[atom["id"]] = _clone_node(atom)
     goal = target if target and target > 0 else 1
-    for keep_id, drop_id, feature_pair in merges:
-        if len(nodes) <= goal:
+    for item in merges:
+        keep_id, drop_id, feature_pair = item[:3]
+        forced = len(item) > 3 and bool(item[3])
+        if len(nodes) <= goal and not forced:
             break
         if protect_features and feature_pair:
             break
@@ -1000,7 +1103,86 @@ def _sort_cards(cards):
     return cards
 
 
-def analyze_graph(sources, target=None, asmdef_dirs=None, role_rules=None):
+def _parse_mark_line(line):
+    """Parse one accepted module mark without retaining model scores or prose.
+
+    Supported forms are intentionally small:
+      attach SOURCE TARGET [ROLE]
+      split SOURCE [ROLE]
+      keep SOURCE [ROLE]
+      review SOURCE
+    A tabular ``mark ID ACTION ... ROLE`` line emitted by Jev is accepted too.
+    """
+    parts = [part for part in (line or "").replace("\t", " ").split() if part]
+    if not parts or parts[0].startswith("#"):
+        return None
+    if parts[0].lower() == "mark" and len(parts) >= 3:
+        source, action = parts[1], parts[2].lower()
+        role = parts[4].lower() if len(parts) > 4 else ""
+        target = parts[3] if action == "attach" and len(parts) > 3 else source
+    else:
+        action = parts[0].lower()
+        if len(parts) < 2 or action not in MARK_ACTIONS:
+            return None
+        source = parts[1]
+        target = parts[2] if action == "attach" and len(parts) > 2 else source
+        role_index = 3 if action == "attach" else 2
+        role = parts[role_index].lower() if len(parts) > role_index else ""
+    if action not in MARK_ACTIONS or not source:
+        return None
+    return {
+        "id": source,
+        "action": action,
+        "target_id": target or source,
+        "role": role if role in ROLES else "",
+    }
+
+
+def load_module_marks(root):
+    """Read accepted attach/split/keep marks from the project runtime.
+
+    The file is user-reviewed state, not a scan ledger. Unknown or malformed
+    lines are ignored so a partially edited file cannot break coldstart.
+    """
+    path = os.path.join(root, ".castflow-runtime", "module-marks.txt")
+    if not os.path.isfile(path):
+        return []
+    marks = []
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+        for raw in handle:
+            mark = _parse_mark_line(raw.strip())
+            if mark:
+                marks.append(mark)
+    return marks
+
+
+def _apply_module_marks(atoms, marks):
+    """Apply accepted marks before role inference and graph merging."""
+    by_id = {atom["id"]: atom for atom in atoms}
+    forced_pairs = []
+    for mark in marks or ():
+        source_id = str(mark.get("id") or mark.get("source_id") or "").strip()
+        action = str(mark.get("action") or "").strip().lower()
+        if source_id not in by_id or action not in MARK_ACTIONS:
+            continue
+        source = by_id[source_id]
+        role = str(mark.get("role") or "").strip().lower()
+        if role in ROLES:
+            source["mark_role"] = role
+        if action in ("keep", "split", "review"):
+            source["mark_keep"] = True
+        if action == "attach":
+            target_id = str(mark.get("target_id") or source_id).strip()
+            if target_id in by_id and target_id != source_id:
+                forced_pairs.append((target_id, source_id))
+                if not source.get("mark_role"):
+                    target_role = by_id[target_id].get("mark_role")
+                    if target_role in ROLES:
+                        source["mark_role"] = target_role
+    return forced_pairs
+
+
+def analyze_graph(sources, target=None, asmdef_dirs=None, role_rules=None, module_marks=None):
     """Return `(cards, atoms, edges)`. Atoms are the evidence-card input.
 
     `target` is a layer of one merge tree, not a new clustering.
@@ -1012,8 +1194,9 @@ def analyze_graph(sources, target=None, asmdef_dirs=None, role_rules=None):
     if not files:
         return [], [], {}
     atoms, edges = _build_atoms(files, asmdef_dirs)
+    forced_pairs = _apply_module_marks(atoms, module_marks or [])
     _apply_roles(atoms, edges, role_rules or [])
-    merges = build_merges(atoms, edges)
+    merges = build_merges(atoms, edges, forced_pairs=forced_pairs)
     # Targets above 8 keep Modules/<Feature> nodes. Target 8 may fold them,
     # and that fold is a later prefix of the same merge list.
     grouped = cut_tree(atoms, merges, edges, goal, protect_features=goal > 8)
@@ -1023,10 +1206,11 @@ def analyze_graph(sources, target=None, asmdef_dirs=None, role_rules=None):
     return _sort_cards(cards), atoms, edges
 
 
-def analyze_sources(sources, target=None, asmdef_dirs=None, role_rules=None):
+def analyze_sources(sources, target=None, asmdef_dirs=None, role_rules=None, module_marks=None):
     """Build the selectable cut. `target` is a layer of one merge tree, not a new clustering."""
     cards, _atoms, _edges = analyze_graph(
         sources, target=target, asmdef_dirs=asmdef_dirs, role_rules=role_rules,
+        module_marks=module_marks,
     )
     return cards
 
@@ -1377,8 +1561,10 @@ def load_sources(root, target=None):
     """Read product scripts once and return (cards, sources). Writes nothing."""
     sources, asmdefs = read_product_tree(root)
     rules = load_role_rules(root)
+    marks = load_module_marks(root)
     cards = analyze_sources(
         sources, target=target, asmdef_dirs=asmdefs, role_rules=rules,
+        module_marks=marks,
     )
     return cards, sources
 
@@ -1423,15 +1609,15 @@ def _skill_markdown(card, desc, symbols, language):
         )
         if symbols:
             duties = (
-                "- 只改产品脚本里已有的 {} 调用点。\n"
-                "- 定义命中不是入口。\n"
+                "- 打开本轮定位到的脚本，从脚本里读 API。功能：{}。\n"
+                "- 不把调用抄进 skill。\n"
             ).format(symbol_list)
             nav = (
-                "- EXAMPLES.md — 从产品脚本复制的热调用点\n"
+                "- EXAMPLES.md — 功能在哪个脚本文件里\n"
                 "- ITERATION_GUIDE.md — 这份 skill 自己何时改哪个文件\n"
             )
         else:
-            duties = "- 这次没有活调用点。不要编一个入口。\n"
+            duties = "- 这次没有定位到脚本。不要编一个路径。\n"
             nav = "- ITERATION_GUIDE.md — 这份 skill 自己何时改哪个文件\n"
         body = (
             "改本仓库的 {mid}。\n\n"
@@ -1451,15 +1637,15 @@ def _skill_markdown(card, desc, symbols, language):
         )
         if symbols:
             duties = (
-                "- Edit existing product-script call sites of {}.\n"
-                "- A definition hit is not an entry.\n"
+                "- Open the script for each feature this pass located, and read the API there. Features: {}.\n"
+                "- Do not copy a call into the skill.\n"
             ).format(symbol_list)
             nav = (
-                "- EXAMPLES.md — hot call sites copied from product scripts\n"
+                "- EXAMPLES.md — which feature is in which script file\n"
                 "- ITERATION_GUIDE.md — when to edit this skill, not the module\n"
             )
         else:
-            duties = "- This pass found no live call site. Do not invent an entry.\n"
+            duties = "- This pass found no script file. Do not invent a path.\n"
             nav = "- ITERATION_GUIDE.md — when to edit this skill, not the module\n"
         body = (
             "Change {mid} in this repo.\n\n"
@@ -1479,29 +1665,27 @@ def _skill_markdown(card, desc, symbols, language):
     ).format(skill=skill_name, desc=desc, body=body)
 
 
-def _iteration_guide(symbols, language):
+def _iteration_guide(symbols, paths, language):
     """How to update this skill. Not how to edit the module.
 
-    Triggers are facts this pass already has: the cited symbols, or the
-    absence of a call site. No product feature is invented as a trigger.
+    Triggers are file add, remove, rename, or a feature moving to another
+    file. Implementation inside an existing script is not a trigger.
     """
-    cited = ", ".join(symbols)
+    cited = ", ".join(paths) if paths else ", ".join(symbols)
     if language == "zh":
         if symbols:
             return (
                 "# 迭代\n\n"
                 "在 T4-MAINTAIN 与 SKILL_ITERATION.md 一起读。"
                 "本文件只说明何时修改这份 skill，不说明如何修改模块。\n\n"
-                "### 规则 1：引用的调用形状变了\n\n"
-                "触发：本 skill 引用的调用已经对不上它的 shape。符号：{cited}。\n"
-                "文件：EXAMPLES.md。用当前调用换掉该 shape。不要写行号。\n"
-                "检查：validate 不再报告 call site shape drifted。"
-                "只有签名缺口变了才改 SKILL_MEMORY.md。\n\n"
-                "### 规则 2：引用的符号没了\n\n"
-                "触发：产品脚本里已经 grep 不到上述某个符号。\n"
-                "文件：EXAMPLES.md 删掉该示例。"
-                "SKILL_MEMORY.md 里锚点就是该符号的条目标 [RETIRED]，不删正文。\n"
-                "检查：Retire 之前 grep 结果为空。\n\n"
+                "### 规则 1：脚本文件增删或改名\n\n"
+                "触发：本 skill 点名的脚本文件被新增、删除或改名。文件：{cited}。\n"
+                "文件：EXAMPLES.md。把定位改到现在持有该功能的脚本。\n"
+                "检查：validate 接受该路径。脚本内部的实现变了不要改。\n\n"
+                "### 规则 2：功能挪到另一个文件\n\n"
+                "触发：功能不再位于被点名的脚本，而在另一个脚本文件里。\n"
+                "文件：EXAMPLES.md，必要时 SKILL_MEMORY.md。\n"
+                "检查：新路径是一个存在的脚本文件。\n\n"
                 "### 规则 3：让位对象变了\n\n"
                 "触发：描述里那一个 NOT 不再是实际冲突的邻居。\n"
                 "文件：只改 SKILL.md 的 description。仍然只有一个 NOT。\n"
@@ -1511,10 +1695,10 @@ def _iteration_guide(symbols, language):
             "# 迭代\n\n"
             "在 T4-MAINTAIN 与 SKILL_ITERATION.md 一起读。"
             "本文件只说明何时修改这份 skill，不说明如何修改模块。\n\n"
-            "### 规则 1：出现活调用点\n\n"
-            "触发：以后某次在本模块里找到声明以外的调用。\n"
-            "文件：EXAMPLES.md。写成路径、包围方法、symbol 和 shape。\n"
-            "检查：validate 接受该引用。不要为了填文件编一个调用。\n"
+            "### 规则 1：功能有了脚本文件\n\n"
+            "触发：以后某次找到这个功能所在的脚本文件。\n"
+            "文件：EXAMPLES.md。写下功能和那个脚本路径。\n"
+            "检查：validate 接受该路径。不要编一个路径，也不要抄调用。\n"
         )
     if symbols:
         return (
@@ -1522,19 +1706,17 @@ def _iteration_guide(symbols, language):
             "Loaded at T4-MAINTAIN with SKILL_ITERATION.md. "
             "This file says when to edit this skill. "
             "It does not say how to edit the module.\n\n"
-            "### Rule 1: a cited shape drifted\n\n"
-            "Trigger: a call this skill cites no longer matches its shape. "
-            "Symbols: {cited}.\n"
-            "File: EXAMPLES.md. Replace that shape with the live call. "
-            "Do not write a line number.\n"
-            "Check: validate no longer reports call site shape drifted. "
-            "Edit SKILL_MEMORY.md only when the signature gap changed.\n\n"
-            "### Rule 2: a cited symbol is gone\n\n"
-            "Trigger: grep no longer finds one of those symbols in product scripts.\n"
-            "File: EXAMPLES.md drops that example. "
-            "Mark a SKILL_MEMORY.md entry [RETIRED] only when its anchors are that symbol. "
-            "Do not delete the entry body.\n"
-            "Check: grep is empty before Retire.\n\n"
+            "### Rule 1: a cited script file is added, removed, or renamed\n\n"
+            "Trigger: a script file this skill cites is added, removed, or renamed. "
+            "Files: {cited}.\n"
+            "File: EXAMPLES.md. Point the locator at the script that now holds the feature.\n"
+            "Check: validate accepts the path. "
+            "Do not update because the implementation inside an existing script changed.\n\n"
+            "### Rule 2: a feature moves to another file\n\n"
+            "Trigger: the feature no longer lives in the cited script "
+            "and now lives in another script file.\n"
+            "File: EXAMPLES.md, and SKILL_MEMORY.md when that locator is there.\n"
+            "Check: the new path is an existing script file.\n\n"
             "### Rule 3: the yield neighbor changed\n\n"
             "Trigger: the one NOT in the description is no longer the neighbor it collides with.\n"
             "File: the SKILL.md description only. Still one NOT.\n"
@@ -1545,73 +1727,58 @@ def _iteration_guide(symbols, language):
         "Loaded at T4-MAINTAIN with SKILL_ITERATION.md. "
         "This file says when to edit this skill. "
         "It does not say how to edit the module.\n\n"
-        "### Rule 1: a live call site appears\n\n"
-        "Trigger: a later pass finds a call of this module that is not a declaration.\n"
-        "File: EXAMPLES.md. Cite the path, the enclosing method, the symbol, and the shape.\n"
-        "Check: validate accepts the cite. Do not invent a call to fill the file.\n"
+        "### Rule 1: a feature gets a script file\n\n"
+        "Trigger: a later pass finds which script file holds a feature of this module.\n"
+        "File: EXAMPLES.md. Record the feature and that script path.\n"
+        "Check: validate accepts the path. Do not invent a script path. Do not copy a call.\n"
     )
 
 
-def _example_reference(hit):
-    """File, enclosing method, symbol, and call shape. Not a line number."""
-    lines = [hit["path"]]
-    enclosing = hit.get("enclosing") or ""
-    if enclosing:
-        lines.append("enclosing: {}".format(enclosing))
-    lines.append("symbol: {}".format(hit["symbol"]))
-    lines.append("shape: {}".format(hit["text"] or hit["symbol"]))
-    return "\n".join(lines)
+def _locator_hits(call_sites):
+    """One locator per feature in a script file. Drop repeated call lines."""
+    chosen = []
+    seen = set()
+    for hit in call_sites:
+        key = (hit.get("symbol") or "", hit.get("path") or "")
+        if not key[1] or key in seen:
+            continue
+        seen.add(key)
+        chosen.append(hit)
+    return chosen
 
 
 def _example_blocks(call_sites, language):
     blocks = []
-    for index, hit in enumerate(call_sites, 1):
-        text = hit["text"] or hit["symbol"]
-        ref = _example_reference(hit)
-        where = hit.get("enclosing") or hit["path"]
+    for index, hit in enumerate(_locator_hits(call_sites), 1):
         if language == "zh":
             blocks.append(
-                "## 示例{n}：{symbol} 调用点\n\n"
-                "场景\n"
-                "{where} 调用 {symbol}。\n\n"
-                "代码\n"
-                "```\n"
-                "{text}\n"
-                "```\n\n"
-                "项目参考\n"
-                "{ref}\n"
-                .format(
-                    n=index, symbol=hit["symbol"], text=text,
-                    where=where, ref=ref,
-                )
+                "## 示例{n}：{symbol}\n\n"
+                "功能\n"
+                "{symbol} 在这个脚本里。\n\n"
+                "脚本\n"
+                "{path}\n"
+                .format(n=index, symbol=hit["symbol"], path=hit["path"])
             )
         else:
             blocks.append(
-                "## Example {n}: {symbol} call site\n\n"
-                "Scene\n"
-                "{where} calls {symbol}.\n\n"
-                "Code\n"
-                "```\n"
-                "{text}\n"
-                "```\n\n"
-                "Project reference\n"
-                "{ref}\n"
-                .format(
-                    n=index, symbol=hit["symbol"], text=text,
-                    where=where, ref=ref,
-                )
+                "## Example {n}: {symbol}\n\n"
+                "Feature\n"
+                "{symbol} lives in this script.\n\n"
+                "Script\n"
+                "{path}\n"
+                .format(n=index, symbol=hit["symbol"], path=hit["path"])
             )
     return "\n".join(blocks)
 
 
 def write_programmer_skill(project_root, card, sources, call_sites=None):
-    """Write the four role files from live calls. Not a license to invent.
+    """Write the role files a line copier can fill.
 
     A queue card and a named skill both follow SKILL_ITERATION.md. This
-    copier does not open a definition body, so it cannot name a signature
-    gap. SKILL_MEMORY.md stays empty. ITERATION_GUIDE.md is how to update
-    this skill, from the cites this pass made. It does not invent a product
-    feature as a trigger. The CLI does not call it.
+    copier records which feature sits in which script file. It does not copy
+    a call or a function body. No feature means it does not write
+    EXAMPLES.md. It does not discover implicit rules or conventions, so it
+    does not write SKILL_MEMORY.md. The CLI does not call it.
     """
     if call_sites is None:
         call_sites = collect_call_sites(sources, card, limit=8)
@@ -1629,9 +1796,12 @@ def write_programmer_skill(project_root, card, sources, call_sites=None):
     language = normalize_language(load_config(project_root).get("language"))
     desc = _description(card, language=language)
     symbols = []
-    for hit in call_sites:
+    paths = []
+    for hit in _locator_hits(call_sites):
         if hit["symbol"] not in symbols:
             symbols.append(hit["symbol"])
+        if hit["path"] not in paths:
+            paths.append(hit["path"])
     skill = _skill_markdown(card, desc, symbols, language)
     examples = _example_blocks(call_sites, language) if call_sites else ""
     if call_sites:
@@ -1640,10 +1810,10 @@ def write_programmer_skill(project_root, card, sources, call_sites=None):
             raise RuntimeError("heat-path: {}".format("; ".join(problems)))
     payloads = {
         "SKILL.md": skill,
-        "EXAMPLES.md": examples,
-        "SKILL_MEMORY.md": "",
-        "ITERATION_GUIDE.md": _iteration_guide(symbols, language),
+        "ITERATION_GUIDE.md": _iteration_guide(symbols, paths, language),
     }
+    if examples.strip():
+        payloads["EXAMPLES.md"] = examples
     for fname, content in payloads.items():
         with open(os.path.join(folder, fname), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(content)

@@ -300,26 +300,32 @@ class ColdStartTests(unittest.TestCase):
         self.assertTrue(folder.endswith("programmer-battle-skill"))
         self.assertEqual(
             set(os.listdir(folder)),
-            {"SKILL.md", "EXAMPLES.md", "SKILL_MEMORY.md", "ITERATION_GUIDE.md"},
+            {"SKILL.md", "EXAMPLES.md", "ITERATION_GUIDE.md"},
         )
+        self.assertFalse(os.path.exists(os.path.join(folder, "SKILL_MEMORY.md")))
         examples = open(os.path.join(folder, "EXAMPLES.md"), "r", encoding="utf-8").read()
-        memory = open(os.path.join(folder, "SKILL_MEMORY.md"), "r", encoding="utf-8").read()
         guide = open(os.path.join(folder, "ITERATION_GUIDE.md"), "r", encoding="utf-8").read()
-        self.assertEqual(memory, "")
         self.assertIn("when to edit this skill", guide)
         self.assertIn("does not say how to edit the module", guide)
-        self.assertIn("shape drifted", guide)
-        self.assertIn(used[0]["symbol"], guide)
+        self.assertIn("added, removed, or renamed", guide)
+        self.assertIn("feature moves to another file", guide)
+        self.assertIn(
+            "implementation inside an existing script changed", guide,
+        )
+        self.assertIn(used[0]["path"], guide)
         self.assertNotIn("when a new building type ships", guide)
-        self.assertIn("enclosing:", examples)
-        self.assertIn("symbol:", examples)
-        self.assertIn("shape:", examples)
+        self.assertNotIn("shape:", examples)
+        self.assertNotIn("enclosing:", examples)
         self.assertNotRegex(examples, r":\d+")
         skill = open(os.path.join(folder, "SKILL.md"), "r", encoding="utf-8").read()
-        self.assertGreaterEqual(examples.count("## Example "), 3)
-        self.assertLessEqual(examples.count("## Example "), 8)
+        unique = {(hit["symbol"], hit["path"]) for hit in used}
+        self.assertGreaterEqual(len(unique), 1)
+        self.assertLessEqual(len(unique), 8)
+        self.assertEqual(examples.count("## Example "), len(unique))
+        self.assertLess(len(unique), len(used))
         for hit in used:
-            self.assertIn(hit["text"], examples)
+            self.assertIn(hit["path"], examples)
+            self.assertNotIn(hit["text"], examples)
         self.assertNotIn("## 示例", examples)
         self.assertIn("Change battle in this repo.", skill)
         self.assertNotIn("Change battle (battle)", skill)
@@ -332,8 +338,8 @@ class ColdStartTests(unittest.TestCase):
         self.assertNotIn("Hud.cs", examples)
         problems = coldstart.heat_path_violations(battle, used, examples + skill)
         self.assertEqual(problems, [])
-        print("cold-start call-site text kept: {}".format(
-            all(hit["text"] in examples for hit in used)))
+        print("cold-start script paths kept: {}".format(
+            all(hit["path"] in examples for hit in used)))
         print("cold-start single module-id NOT: {}".format(
             "NOT" in skill and "battle" in skill and "(battle)" not in skill))
 
@@ -350,20 +356,19 @@ class ColdStartTests(unittest.TestCase):
         self.assertEqual(used, [])
         self.assertEqual(
             set(os.listdir(folder)),
-            {"SKILL.md", "EXAMPLES.md", "SKILL_MEMORY.md", "ITERATION_GUIDE.md"},
+            {"SKILL.md", "ITERATION_GUIDE.md"},
         )
-        for name in ("EXAMPLES.md", "SKILL_MEMORY.md"):
-            text = open(os.path.join(folder, name), "r", encoding="utf-8").read()
-            self.assertEqual(text, "")
+        self.assertFalse(os.path.exists(os.path.join(folder, "EXAMPLES.md")))
+        self.assertFalse(os.path.exists(os.path.join(folder, "SKILL_MEMORY.md")))
         guide = open(os.path.join(folder, "ITERATION_GUIDE.md"), "r", encoding="utf-8").read()
-        self.assertIn("a live call site appears", guide)
-        self.assertIn("Do not invent a call", guide)
+        self.assertIn("a feature gets a script file", guide)
+        self.assertIn("Do not invent a script path", guide)
         skill = open(os.path.join(folder, "SKILL.md"), "r", encoding="utf-8").read()
         description = skill.split("description: ", 1)[1].split("\n", 1)[0]
         self.assertIn("quiet", description)
         self.assertEqual(description.count("NOT"), 1)
         self.assertNotIn("Change quiet (quiet)", skill)
-        self.assertIn("Do not invent an entry.", skill)
+        self.assertIn("Do not invent a path.", skill)
         self.assertNotIn("## Example", skill)
 
     def test_cli_entry_on_temp_tree(self):

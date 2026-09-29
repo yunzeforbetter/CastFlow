@@ -72,7 +72,7 @@ Four ways an AI assistant loses control on a large project:
 | Problem | Symptom | What CastFlow does |
 |---------|---------|--------------------|
 | Architecture amnesia | Inconsistent style, broken layering | `architect-skill` extracts rules from real code; T1 force-loads the runtime protocol |
-| API hallucination | Calls that do not exist, invented signatures | Protocol 1: EXAMPLES, a definition you opened, or a pointer from the user — any one is enough. Mark unverified call sites TODO. Do not guess a signature |
+| API hallucination | Calls that do not exist, invented signatures | Protocol 1: an opened definition or a user pointer. A skill file locator or an EXAMPLES snippet is not proof. Leave an unverified call unimplemented. Do not guess a signature |
 | Fragmented knowledge | Rules live in chat and PR comments | Four role files (SKILL / EXAMPLES / SKILL_MEMORY / ITERATION_GUIDE). The files are the knowledge |
 | Experience that does not accumulate | The same mistake next time | Shared `.castflow-runtime/memory` + `traces/` across tools; `origin evolve` distills them into rules and writes the source **after a human approves**, then syncs |
 
@@ -124,7 +124,7 @@ On an installed project the command is `python .castflow-runtime/manager.py cold
 - This is not the deleted `scan.py`. It does not write `STATE.yaml`, `INVENTORY.md`, `GRAPH.md`, or a knowledge graph.
 - Optional overrides live in `.castflow-runtime/module-roles.txt`, one line of `atom-id-or-path-prefix role`.
 
-`--queue` writes only the selected cards to `.castflow-runtime/_skill-gen-queue/`. `--skill` does not write a skill body. A line grep cannot see a constraint the signature hides. Generate that card with the same `SKILL_ITERATION` pass as a named programmer skill. The queue stays.
+`--queue` writes only the selected cards to `.castflow-runtime/_skill-gen-queue/`. `--skill` does not write a skill body. Generation records which feature sits in which script file. It does not copy a call or a signature-gap body. Generate that card with the same `SKILL_ITERATION` pass as a named programmer skill. The queue stays.
 
 ### Jev classification
 
@@ -190,7 +190,7 @@ CastFlow/
 │       │   ├── SKILL_ITERATION.md         # Four role-file standard; validate checks shape
 │       │   ├── MODULE_MARK_SYSTEM_PROMPT.md
 │       │   ├── origin-evolve-skill/       # Read traces → Append/Merge/Retire proposals
-│       │   ├── skill-creator/             # Catalog four-file set (eval loop is not part of cold start)
+│       │   ├── skill-creator/             # Catalog skills; SKILL_MEMORY only when a rule exists
 │       │   └── goal-loop-creator/         # Core: long-task compiler. Requirement → loop-engine package
 │       ├── protocols/validated-protocol.md
 │       ├── rules/
@@ -365,7 +365,7 @@ Only `validate.py` remains. `manager.py validate` calls it. 1.x `bootstrap.py` /
 | `SKILL_ITERATION.md` | Four roles + Anchors/Related + attachment pointers; machine checks go through `manager.py validate` |
 | `MODULE_MARK_SYSTEM_PROMPT.md` | The `/goal` run after the scan is checked: scan → multi-select → generate one at a time |
 | `origin-evolve-skill/` | Distill memory snapshots; never runs by itself |
-| `skill-creator/` | Catalog four-file set; the eval loop is forbidden during cold start |
+| `skill-creator/` | Catalog skills. `SKILL_MEMORY.md` only when a rule exists. The eval loop is forbidden during cold start |
 | `goal-loop-creator/` | **Core skill / long-task compiler.** Installed automatically at cold start. Compiles a requirement into a Goal Loop Package the AI can run (loop-engine: name the system once and finish it). Does not execute `/goal` |
 | `hooks/trace-collector.py` | Primary path `.castflow-runtime/memory/*.md`; optional inbound Claude auto-memory |
 | `hooks/trace-flush.py` | Write a trace only when a snapshot exists; `--selftest` |
@@ -385,12 +385,12 @@ Named `T<index>-<verb>`. The authority is the project-root `CLAUDE.md`.
 
 | Moment | Trigger | What the AI reads on its own |
 |--------|---------|------------------------------|
-| **T1-PREPARE** | Before writing code | Full `GLOBAL_SKILL_MEMORY.md` + the target `SKILL_MEMORY.md` + EXAMPLES as needed |
+| **T1-PREPARE** | Before writing code | Full `GLOBAL_SKILL_MEMORY.md` + the target `SKILL_MEMORY.md` when that file exists + EXAMPLES as needed |
 | **T2-EXECUTE** | While writing | Do not reread; use the already loaded protocol 3 to decide whether to gather information first |
 | **T3-FEEDBACK** | User feedback | `protocols/validated-protocol.md` |
 | **T4-MAINTAIN** | Create or change skill structure | `SKILL_ITERATION.md` + the target `ITERATION_GUIDE.md` |
 
-Separating the four roles is a hard constraint: code samples live only in EXAMPLES, hard rules only in SKILL_MEMORY, navigation in SKILL, evolution rules in ITERATION_GUIDE. Script or data attachments are allowed, but they must not be used to split EXAMPLES apart.
+Separating the four roles is a hard constraint: code samples live only in EXAMPLES, hard rules only in SKILL_MEMORY, navigation in SKILL, evolution rules in ITERATION_GUIDE. Omit `EXAMPLES.md` when the pass found no feature to locate. Omit `SKILL_MEMORY.md` when the pass found no rule to record. Implicit rules and conventions count. An empty file is not a stand-in. Script or data attachments are allowed, but they must not be used to split EXAMPLES apart.
 
 `description` is the always-on recall sentence (about 200 characters): what it does + when to use it + **one** NOT. A miss is better than a false recall. No synonym lists, and no "use this even if it was not named".
 

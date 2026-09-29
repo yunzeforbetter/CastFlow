@@ -450,27 +450,24 @@ def _line_of(text, snippet):
     raise AssertionError(snippet)
 
 
-def _call_ref(path, symbol, shape, enclosing=""):
-    lines = [path]
-    if enclosing:
-        lines.append("enclosing: {}".format(enclosing))
-    lines.append("symbol: {}".format(symbol))
-    lines.append("shape: {}".format(shape))
-    return "\n".join(lines)
-
-
-def _examples(scene, code, ref):
+def _locator(feature, path):
     return (
         "## Example 1: send\n\n"
-        "Scene\n"
-        "{scene}\n\n"
-        "Code\n"
-        "```\n"
-        "{code}\n"
-        "```\n\n"
-        "Project reference\n"
-        "{ref}\n"
-    ).format(scene=scene, code=code, ref=ref)
+        "Feature\n"
+        "{feature}\n\n"
+        "Script\n"
+        "{path}\n"
+    ).format(feature=feature, path=path)
+
+
+def _memory_locator(name, feature, path):
+    return (
+        "### Rule 1: {name}\n\n"
+        "Feature\n"
+        "{feature}\n\n"
+        "Script\n"
+        "{path}\n"
+    ).format(name=name, feature=feature, path=path)
 
 
 class TestProgrammerSkillGate(unittest.TestCase):
@@ -502,14 +499,16 @@ class TestProgrammerSkillGate(unittest.TestCase):
             "castflow-skills/programmer-mail-skill/SKILL.md",
             skill_md,
         )
-        self._write(
-            "castflow-skills/programmer-mail-skill/EXAMPLES.md",
-            examples,
-        )
-        self._write(
-            "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
-            "" if memory is None else memory,
-        )
+        if examples.strip():
+            self._write(
+                "castflow-skills/programmer-mail-skill/EXAMPLES.md",
+                examples,
+            )
+        if memory is not None:
+            self._write(
+                "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
+                memory,
+            )
         self._write(
             "castflow-skills/programmer-mail-skill/ITERATION_GUIDE.md",
             "",
@@ -522,184 +521,160 @@ class TestProgrammerSkillGate(unittest.TestCase):
         self.assertEqual(first, second)
         return first
 
-    def test_live_call_without_memory_passes(self):
-        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
-        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        skill = self._skill(_examples(
-            "Send the id.",
-            "var n = mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "var n = mail.Send(id);", "MailFlow.Run",
-            ),
-        ))
+    def _report_locator_outcomes(self):
+        """One pass of the file-locator outcomes. Printed twice by the test."""
+        script = "Assets/Mail/MailService.cs"
+        self._write(script, _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", script))
+        lines = []
         errors = self._check(skill)
-        self.assertEqual(errors, [])
+        lines.append("existing script file passes: {}".format(errors == []))
+        self._write(
+            script,
+            _LIVE_SERVICE.replace(
+                "return id;",
+                "session.Transmit(id);\n        return id + 1;",
+            ).replace("public int Send(int id)", "public int Send(int id, int n)"),
+        )
+        errors = self._check(skill)
+        lines.append("editing call and body still passes: {}".format(errors == []))
+        os.remove(os.path.join(self.root, "Assets", "Mail", "MailService.cs"))
+        errors = self._check(skill)
+        lines.append(
+            "missing script fails: {}".format(
+                "locator script is missing" in errors
+            )
+        )
+        self._write("Assets/UI/Button.prefab", "prefab")
+        skill = self._skill(_locator("A button", "Assets/UI/Button.prefab"))
+        errors = self._check(skill)
+        lines.append(
+            "non-script prefab fails: {}".format(
+                "locator is not a script" in errors
+            )
+        )
+        self._write("Assets/Mail/Notes.md", "# notes\n")
+        skill = self._skill(_locator("Notes", "Assets/Mail/Notes.md"))
+        errors = self._check(skill)
+        lines.append(
+            "non-script markdown fails: {}".format(
+                "locator is not a script" in errors
+            )
+        )
+        skill = self._skill("mail.Send(id);")
+        errors = self._check(skill)
+        lines.append(
+            "call without script path fails: {}".format(
+                "locator has no script file" in errors
+            )
+        )
+        return lines
+
+    def test_file_locator_outcomes_are_stable(self):
+        first = self._report_locator_outcomes()
+        second = self._report_locator_outcomes()
+        self.assertEqual(first, second)
+        for line in first:
+            self.assertTrue(line.endswith("True"), line)
+            print(line)
+        print("--- run 2 ---")
+        for line in second:
+            print(line)
+
+    def test_existing_script_passes_validate(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        self.assertEqual(self._check(skill), [])
         self.assertTrue(validate_all(self.root))
 
-    def test_signature_gap_without_memory_fails(self):
+    def test_memory_locator_passes_and_ignores_body(self):
         self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
-        self._write("Assets/Flow/MailFlow.cs", _GAP_FLOW)
-        skill = self._skill(_examples(
-            "Send the id.",
-            "mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "mail.Send(id);", "MailFlow.Run",
-            ),
-        ))
-        errors = self._check(skill)
-        self.assertIn("signature gap missing from memory", errors)
-        self.assertFalse(validate_all(self.root))
-
-    def test_signature_gap_that_only_repeats_the_signature_fails(self):
-        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
-        self._write("Assets/Flow/MailFlow.cs", _GAP_FLOW)
-        line_no = _line_of(_GAP_FLOW, "mail.Send(id)")
-        memory = (
-            "### Rule 1: send\n\n"
-            "Anchors: [method:Mail/MailService:Send]\n\n"
-            "Definition\n"
-            "Send takes id.\n"
+        skill = self._skill(
+            "",
+            _memory_locator("send", "Send mail", "Assets/Mail/MailService.cs"),
         )
-        skill = self._skill(_examples(
-            "Send the id.",
-            "mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "mail.Send(id);", "MailFlow.Run",
-            ),
-        ), memory)
-        errors = self._check(skill)
-        self.assertIn("signature gap repeats the signature", errors)
-
-    def test_signature_gap_with_body_requirement_passes(self):
-        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
-        self._write("Assets/Flow/MailFlow.cs", _GAP_FLOW)
-        line_no = _line_of(_GAP_FLOW, "mail.Send(id)")
-        memory = (
-            "### Rule 1: session first\n\n"
-            "Anchors: [method:Mail/MailService:Send]\n\n"
-            "Definition\n"
-            "Call Send only after session exists.\n"
-        )
-        skill = self._skill(_examples(
-            "Send the id.",
-            "mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "mail.Send(id);", "MailFlow.Run",
-            ),
-        ), memory)
         self.assertEqual(self._check(skill), [])
-
-    def test_declaration_cite_fails(self):
-        self._write("Assets/Mail/MailService.cs", _GAP_SERVICE)
-        skill = self._skill(_examples(
-            "Send the id.",
-            "public void Send(int id)",
-            _call_ref(
-                "Assets/Mail/MailService.cs", "Send",
-                "public void Send(int id)",
-            ),
-        ))
-        self.assertIn("call site is a declaration", self._check(skill))
-
-    def test_empty_body_cite_fails(self):
-        self._write("Assets/Widget/Widget.cs", _EMPTY_WIDGET)
-        skill = self._skill(_examples(
-            "Open it.",
-            "public void Open()",
-            _call_ref("Assets/Widget/Widget.cs", "Open", "public void Open()"),
-        ))
-        self.assertIn("call site is an empty body", self._check(skill))
-
-    def test_publish_without_subscriber_fails(self):
-        self._write("Assets/Bus/Bus.cs", _PUBLISH_BUS)
-        skill = self._skill(_examples(
-            "Publish ready.",
-            "Ready.Publish();",
-            _call_ref(
-                "Assets/Bus/Bus.cs", "Publish",
-                "Ready.Publish();", "Bus.Run",
-            ),
-        ))
-        self.assertIn(
-            "call site is a publish with no subscriber", self._check(skill),
-        )
-
-    def test_anchor_that_does_not_grep_fails(self):
-        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
-        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        line_no = _line_of(_LIVE_FLOW, "mail.Send(id)")
-        memory = (
-            "### Rule 1: note\n\n"
-            "Anchors: [method:Nope/MissingSymbol]\n\n"
-            "Definition\n"
-            "Leave the return value as the caller wrote it.\n"
-        )
-        skill = self._skill(_examples(
-            "Send the id.",
-            "var n = mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "var n = mail.Send(id);", "MailFlow.Run",
-            ),
-        ), memory)
-        self.assertIn("memory anchor does not grep", self._check(skill))
-
-    def test_live_call_written_up_as_a_registry_fails(self):
-        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
-        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        skill = self._skill(_examples(
-            "Write this call site up as a registry.",
-            "var n = mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "var n = mail.Send(id);", "MailFlow.Run",
-            ),
-        ))
-        self.assertIn(
-            "call site is written up as a registry", self._check(skill),
-        )
-
-    def test_line_number_does_not_select_the_call(self):
-        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
-        self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        skill = self._skill(_examples(
-            "Send the id.",
-            "var n = mail.Send(id);",
-            "Assets/Flow/MailFlow.cs:1",
-        ))
-        self.assertEqual(self._check(skill), [])
-
-    def test_changed_call_shape_fails(self):
-        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
         self._write(
-            "Assets/Flow/MailFlow.cs",
-            _LIVE_FLOW.replace("mail.Send(id)", "mail.Send(id, 1)"),
+            "Assets/Mail/MailService.cs",
+            _GAP_SERVICE.replace("session.Transmit(id);", "return;"),
         )
-        skill = self._skill(_examples(
-            "Send the id.",
-            "var n = mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "var n = mail.Send(id);", "MailFlow.Run",
-            ),
+        self.assertEqual(self._check(skill), [])
+
+    def test_chinese_script_label_passes(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(
+            "## 示例1：发信\n\n功能\n发信在这个脚本里。\n\n脚本\nAssets/Mail/MailService.cs\n"
+        )
+        self.assertEqual(self._check(skill), [])
+
+    def test_memory_locator_missing_script_fails(self):
+        skill = self._skill(
+            "",
+            _memory_locator("send", "Send mail", "Assets/Mail/Missing.cs"),
+        )
+        self.assertIn("locator script is missing", self._check(skill))
+
+    def test_programmer_omits_examples_when_no_locator(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill("")
+        self.assertFalse(os.path.exists(os.path.join(skill, "EXAMPLES.md")))
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+        self.assertEqual(self._check(skill), [])
+
+    def test_programmer_empty_examples_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill("")
+        self._write(
+            "castflow-skills/programmer-mail-skill/EXAMPLES.md",
+            "",
+        )
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertTrue(any(
+            "EXAMPLES.md" in e and "empty role file" in e for e in errors
         ))
-        self.assertIn("call site shape drifted", self._check(skill))
+
+    def test_programmer_omits_skill_memory_when_no_rule(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        self.assertFalse(os.path.exists(os.path.join(skill, "SKILL_MEMORY.md")))
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
+        self.assertEqual(self._check(skill), [])
+
+    def test_programmer_empty_skill_memory_fails(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
+        self._write(
+            "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
+            "",
+        )
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertTrue(any(
+            "SKILL_MEMORY.md" in e and "empty role file" in e for e in errors
+        ))
+
+    def test_convention_rule_without_script_passes(self):
+        self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
+        skill = self._skill(
+            _locator("Send mail", "Assets/Mail/MailService.cs"),
+            "### Rule 1: send on the session thread\n\n"
+            "Send mail only on the session thread. "
+            "A caller on another thread queues the request.\n",
+        )
+        self.assertEqual(self._check(skill), [])
+        errors, _, skipped = validate_skill_dir(skill)
+        self.assertFalse(skipped)
+        self.assertEqual(errors, [])
 
     def test_programmer_skill_missing_role_file_fails(self):
         self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
         self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        skill = self._skill(_examples(
-            "Send the id.",
-            "var n = mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "var n = mail.Send(id);", "MailFlow.Run",
-            ),
-        ))
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
         os.remove(os.path.join(skill, "ITERATION_GUIDE.md"))
         errors, _, skipped = validate_skill_dir(skill)
         self.assertFalse(skipped)
@@ -708,14 +683,7 @@ class TestProgrammerSkillGate(unittest.TestCase):
     def test_programmer_heading_only_role_file_fails(self):
         self._write("Assets/Mail/MailService.cs", _LIVE_SERVICE)
         self._write("Assets/Flow/MailFlow.cs", _LIVE_FLOW)
-        skill = self._skill(_examples(
-            "Send the id.",
-            "var n = mail.Send(id);",
-            _call_ref(
-                "Assets/Flow/MailFlow.cs", "Send",
-                "var n = mail.Send(id);", "MailFlow.Run",
-            ),
-        ))
+        skill = self._skill(_locator("Send mail", "Assets/Mail/MailService.cs"))
         self._write(
             "castflow-skills/programmer-mail-skill/SKILL_MEMORY.md",
             "# Rules\n",
@@ -730,20 +698,35 @@ class TestProgrammerSkillGate(unittest.TestCase):
             contract = handle.read()
         with open(os.path.join(skills, "MODULE_MARK_SYSTEM_PROMPT.md"), encoding="utf-8") as handle:
             flow = handle.read()
-        keep = (
-            "Keep a line only when omitting it would make the next generated "
-            "call use the wrong symbol or the wrong argument."
+        locator = (
+            "A locator is one feature plus the path of the one script file "
+            "that holds it."
         )
-        fact = "A fact the signature already states stays an example, not a rule."
-        self.assertEqual(contract.count(keep), 1)
-        self.assertEqual(contract.count(fact), 1)
-        self.assertNotIn(keep, flow)
+        not_required = (
+            "A call site, a copied call shape, a line number, or a "
+            "signature-gap body constraint is not required."
+        )
+        iteration = (
+            "Update a locator when its script file is added, removed, "
+            "renamed, or the feature moves to another file."
+        )
+        not_inside = (
+            "Do not update a locator because the implementation inside "
+            "an existing script changed."
+        )
+        self.assertEqual(contract.count(locator), 1)
+        self.assertIn(not_required, contract)
+        self.assertIn(iteration, contract)
+        self.assertIn(not_inside, contract)
+        self.assertNotIn(locator, flow)
+        self.assertNotIn(not_required, flow)
+        self.assertIn("locator", flow)
+        self.assertIn("yield", flow)
+        self.assertNotIn("**call site**", contract)
+        self.assertNotIn("**signature gap**", contract)
         self.assertNotIn("Hot-path evidence", flow)
         self.assertNotIn("three gates", flow)
         self.assertNotIn("1-9", flow)
-        for term in ("call site", "signature gap", "yield"):
-            self.assertIn(term, contract)
-            self.assertIn(term, flow)
         self.assertIn("Use when the user names <id>", contract)
         self.assertIn("only when validate passed", flow)
         self.assertIn("do not delete the queue", flow)
