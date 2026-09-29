@@ -66,6 +66,12 @@ class TestSeedSync(TmpProject):
             runtime_dir(self.root), "skills", "skill-creator")))
         self.assertTrue(os.path.isdir(os.path.join(
             runtime_dir(self.root), "skills", "goal-loop-creator")))
+        self.assertTrue(os.path.isdir(os.path.join(
+            runtime_dir(self.root), "skills", "skill-doctor")))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".claude", "skills", "skill-doctor", "SKILL.md")))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.root, ".agents", "skills", "skill-doctor", "SKILL.md")))
         self.assertTrue(os.path.isfile(os.path.join(
             self.root, ".claude", "skills", "goal-loop-creator", "SKILL.md")))
         self.assertFalse(os.path.isdir(os.path.join(
@@ -325,6 +331,9 @@ class TestSkillRecallDescriptions(unittest.TestCase):
         self._assert_recall(
             "goal-loop-creator",
             ".castflow", "core", "skills", "goal-loop-creator", "SKILL.md")
+        self._assert_recall(
+            "skill-doctor",
+            ".castflow", "core", "skills", "skill-doctor", "SKILL.md")
         self._assert_recall(
             "skill-iteration",
             ".castflow", "core", "skills", "SKILL_ITERATION.md")
