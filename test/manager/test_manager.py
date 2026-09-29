@@ -86,12 +86,16 @@ class TestSeedSync(TmpProject):
             runtime_dir(self.root), "rules", "cross-cutting.md")))
         with open(os.path.join(self.root, "CLAUDE.md"), encoding="utf-8") as f:
             claude = f.read()
-        self.assertNotIn("<!-- if:evolution -->", claude)
-        self.assertNotIn("<!-- if:no-evolution -->", claude)
-        self.assertIn(".castflow-runtime/memory/", claude)
-        self.assertIn("must not Read `.castflow-runtime/traces/trace.md`", claude)
-        self.assertIn("ROOT_RULES.template.md", claude)
-        self.assertNotIn("CLAUDE.template.md", claude)
+        self.assertEqual(claude, "@AGENTS.md\n")
+        with open(os.path.join(self.root, "AGENTS.md"), encoding="utf-8") as f:
+            agents = f.read()
+        self.assertNotIn("<!-- if:evolution -->", agents)
+        self.assertNotIn("<!-- if:no-evolution -->", agents)
+        self.assertIn(".castflow-runtime/memory/", agents)
+        self.assertIn("must not Read `.castflow-runtime/traces/trace.md`", agents)
+        self.assertIn("ROOT_RULES.template.md", agents)
+        self.assertNotIn("CLAUDE.template.md", agents)
+        self.assertNotIn("ROOT_RULES.template.md", claude)
         mdc = os.path.join(self.root, ".cursor", "rules", "evolve-reminder.mdc")
         self.assertTrue(os.path.isfile(mdc))
         with open(mdc, encoding="utf-8") as f:
@@ -127,6 +131,10 @@ class TestSeedSync(TmpProject):
             text = f.read()
         self.assertIn("evolution plugin OFF", text)
         self.assertNotIn("evolution plugin ON", text)
+        with open(os.path.join(self.root, "CLAUDE.md"), encoding="utf-8") as f:
+            claude = f.read()
+        self.assertEqual(claude, "@AGENTS.md\n")
+        self.assertNotIn("evolution plugin", claude)
         self.assertFalse(os.path.isdir(os.path.join(
             self.root, ".claude", "skills", "origin-evolve-skill")))
 
@@ -151,6 +159,98 @@ class TestSeedSync(TmpProject):
             os.path.normcase(os.path.abspath(collector)),
             os.path.normcase(os.path.abspath(harness_script)),
         )
+
+
+class TestRootRulesFiles(TmpProject):
+    def _write(self, name, text):
+        path = os.path.join(self.root, name)
+        if not text.endswith("\n"):
+            text += "\n"
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        return path
+
+    def test_project_section_in_agents_survives_sync(self):
+        adapters.seed(self.root)
+        path = os.path.join(self.root, "AGENTS.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        text = text.replace(
+            "Add team conventions below.",
+            "Add team conventions below.\n\nUse tabs.",
+            1,
+        )
+        self._write("AGENTS.md", text)
+        adapters.sync(self.root)
+        with open(path, encoding="utf-8") as f:
+            agents = f.read()
+        with open(os.path.join(self.root, "CLAUDE.md"), encoding="utf-8") as f:
+            claude = f.read()
+        self.assertIn("Use tabs.", agents)
+        self.assertIn(".castflow-runtime/memory/", agents)
+        self.assertEqual(claude, "@AGENTS.md\n")
+        self.assertNotIn("Use tabs.", claude)
+
+    def test_legacy_claude_project_section_moves_into_agents(self):
+        adapters.seed(self.root)
+        body = adapters._render_root_rules(True, project_root=self.root)
+        custom = body.replace(
+            "Add team conventions below.",
+            "Add team conventions below.\n\nTeam uses spaces.",
+            1,
+        )
+        self._write("AGENTS.md", body)
+        self._write("CLAUDE.md", custom)
+        adapters.sync(self.root)
+        with open(os.path.join(self.root, "AGENTS.md"), encoding="utf-8") as f:
+            agents = f.read()
+        with open(os.path.join(self.root, "CLAUDE.md"), encoding="utf-8") as f:
+            claude = f.read()
+        self.assertIn("Team uses spaces.", agents)
+        self.assertEqual(claude, "@AGENTS.md\n")
+        self.assertNotIn("Team uses spaces.", claude)
+
+    def test_agents_project_section_wins_when_both_differ(self):
+        adapters.seed(self.root)
+        body = adapters._render_root_rules(True, project_root=self.root)
+        agents = body.replace(
+            "Add team conventions below.",
+            "Add team conventions below.\n\nAgents note.",
+            1,
+        )
+        claude = body.replace(
+            "Add team conventions below.",
+            "Add team conventions below.\n\nClaude note.",
+            1,
+        )
+        self._write("AGENTS.md", agents)
+        self._write("CLAUDE.md", claude)
+        adapters.sync(self.root)
+        with open(os.path.join(self.root, "AGENTS.md"), encoding="utf-8") as f:
+            merged = f.read()
+        self.assertIn("Agents note.", merged)
+        self.assertNotIn("Claude note.", merged)
+
+    def test_lines_under_import_are_kept(self):
+        adapters.seed(self.root)
+        self._write("CLAUDE.md", "@AGENTS.md\n\nUse plan mode for billing.\n")
+        adapters.sync(self.root)
+        with open(os.path.join(self.root, "CLAUDE.md"), encoding="utf-8") as f:
+            claude = f.read()
+        self.assertTrue(claude.startswith("@AGENTS.md\n"))
+        self.assertIn("Use plan mode for billing.", claude)
+        self.assertNotIn("ROOT_RULES.template.md", claude)
+
+    def test_handwritten_agents_mentioning_castflow_is_kept(self):
+        adapters.seed(self.root)
+        self._write("AGENTS.md", "See CastFlow docs.\n")
+        self._write("CLAUDE.md", "CastFlow stays in this Claude file.\n")
+        written = adapters.sync(self.root)["root_rules"]
+        self.assertEqual(written, [])
+        with open(os.path.join(self.root, "AGENTS.md"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "See CastFlow docs.\n")
+        with open(os.path.join(self.root, "CLAUDE.md"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "CastFlow stays in this Claude file.\n")
 
 
 class TestProjectionGitignore(TmpProject):

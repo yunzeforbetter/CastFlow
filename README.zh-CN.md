@@ -142,7 +142,7 @@ python .castflow/manager.py coldstart --root PATH --select ID --skill
 
 ### 2. 渐进式信息披露：时点驱动加载
 
-Skill 不会每次全量入上下文。按 **T1-PREPARE / T2-EXECUTE / T3-FEEDBACK / T4-MAINTAIN** 分层：写代码前读运行时协议全文，写的时候不再重读。权威源是项目根 `CLAUDE.md` / `AGENTS.md`（由 `ROOT_RULES.template.md` 生成）。
+Skill 不会每次全量入上下文。按 **T1-PREPARE / T2-EXECUTE / T3-FEEDBACK / T4-MAINTAIN** 分层：写代码前读运行时协议全文，写的时候不再重读。权威源是项目根 `AGENTS.md`（由 `ROOT_RULES.template.md` 渲染）。`CLAUDE.md` 只有一行 `@AGENTS.md`，同时读两个文件的宿主不会把规则注入两遍。
 
 ### 3. 按模块 skill 工作
 
@@ -217,7 +217,8 @@ CastFlow/
 
 ```
 项目根目录/
-├── CLAUDE.md / AGENTS.md                  # 框架段（ROOT_RULES）+ 项目段
+├── AGENTS.md                              # 框架段（ROOT_RULES）+ 项目段
+├── CLAUDE.md                              # 只有 `@AGENTS.md`（Claude Code 的 import）
 ├── castflow.bat / castflow.sh / .command  # 打开 runtime 管理器（seed 写入，不是框架仓那份）
 ├── .castflow-runtime/                     # 项目里唯一的 CastFlow 目录
 │   ├── manager.py / manager/ / installer/ # 控制台、sync、validate（bundle 从框架拷入）
@@ -326,7 +327,7 @@ cd CastFlow && git pull
 python .castflow-runtime/manager.py update-framework
 ```
 
-只刷新框架 skill 与核心文件，**不覆盖项目 skill**。`CLAUDE.md` 项目段完全保留。
+只刷新框架 skill 与核心文件，**不覆盖项目 skill**。`AGENTS.md` 项目段完全保留。
 
 ---
 
@@ -370,7 +371,7 @@ python .castflow-runtime/manager.py update-framework
 | `hooks/trace-collector.py` | 主路径 `.castflow-runtime/memory/*.md`；可选 inbound Claude auto-memory |
 | `hooks/trace-flush.py` | 有快照才写 trace；`--selftest` |
 | `hooks/_homology.py` | slug / skill / Anchors Jaccard≥0.5 → 连通分量 |
-| `templates/root/ROOT_RULES.template.md` | 注入 `CLAUDE.md` / `AGENTS.md`；seed 拷到 runtime `templates/` |
+| `templates/root/ROOT_RULES.template.md` | 渲染进 `AGENTS.md`；`CLAUDE.md` 用 `@AGENTS.md` 引用。seed 把模板拷到 runtime `templates/` |
 | `traces/` | schema:4 契约、`limits.json`、`hooks.config.json` |
 | `rules/module-catalog.md` | 可选 `/goal` 路径的模块约定；seed 拷到 `.castflow-runtime/rules/` |
 | `hooks/` | seed 拷到 `.castflow-runtime/hooks/`，hook JSON 指向这里 |
@@ -381,7 +382,7 @@ python .castflow-runtime/manager.py update-framework
 
 ## 渐进式信息披露（T1–T4）
 
-命名 `T<序号>-<动词>`，权威源为项目根 `CLAUDE.md`。
+命名 `T<序号>-<动词>`，权威源为项目根 `AGENTS.md`。
 
 | 时点 | 触发 | AI 主动读什么 |
 |------|------|--------------|
@@ -518,15 +519,16 @@ python .castflow/core/hooks/trace-flush.py --selftest
 | 分类 | 管理方 | 更新方式 |
 |------|--------|---------|
 | `CastFlow/` | 本仓库 | `git pull` / submodule update |
-| `CLAUDE.md` 框架段 | seed / ROOT_RULES | 装架合并 |
-| `CLAUDE.md` 项目段 | 项目团队 | 直接编辑 |
+| `AGENTS.md` 框架段 | seed / ROOT_RULES | 装架合并 |
+| `AGENTS.md` 项目段 | 项目团队 | 直接编辑 |
+| `CLAUDE.md` | seed | 只有 `@AGENTS.md`。不要把规则再贴一份 |
 | `.castflow-runtime/skills/` 核心 | 框架 | `update-framework` / `update NAME` |
 | `.castflow-runtime/skills/` 项目 | 团队 + evolve | loop-engine / skill-creator / 审批写入 |
 | 适配器 `*/skills/` | sync | 不要手改 |
 | `.castflow-runtime/traces/` | Hook + evolve | 不要手改 |
 | `.castflow-runtime/memory/` | 你在纠正时写 | 不要写 `type: user` |
 
-不要手改 `CastFlow/.castflow/`（会被 `git pull` 覆盖）。定制写在 runtime 与 `CLAUDE.md` 项目段。
+不要手改 `CastFlow/.castflow/`（会被 `git pull` 覆盖）。定制写在 runtime 与 `AGENTS.md` 项目段。
 
 ---
 
@@ -537,7 +539,7 @@ cd CastFlow && git pull
 python .castflow-runtime/manager.py update-framework
 ```
 
-只刷新框架 skill 与核心文件（hooks、根规则模板、`SKILL_ITERATION` 等），**不覆盖** `programmer-*-skill` 等项目 skill。`CLAUDE.md` 项目段完全保留。
+只刷新框架 skill 与核心文件（hooks、根规则模板、`SKILL_ITERATION` 等），**不覆盖** `programmer-*-skill` 等项目 skill。`AGENTS.md` 项目段完全保留。
 
 `update-framework` **不会**写入 `.claude/.backups/`（1.x 安装器已删除）。
 

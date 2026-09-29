@@ -8,7 +8,7 @@ description: >
 
 # SKILL_ITERATION.md
 
-Shape of a skill file. Load only at **T4-MAINTAIN** (create a skill, or change its structure). Calling a skill to write code is `GLOBAL_SKILL_MEMORY.md` and the project `CLAUDE.md`, not here.
+Shape of a skill file. Load only at **T4-MAINTAIN** (create a skill, or change its structure). Calling a skill to write code is `GLOBAL_SKILL_MEMORY.md` and the project `AGENTS.md`, not here.
 
 Write a new project skill, and a later evolve update of that skill, under `castflow-skills/<name>/`. Do not write that body under `.castflow-runtime/skills/` — a full cold start deletes that tree and recopies factory skills. Do not write a factory-owned name (`skill-creator`, `goal-loop-creator`, `origin-evolve-skill`) into `castflow-skills/`; that directory is ignored for those names. Do not write adapter mirrors. `python .castflow-runtime/manager.py sync` projects each skill once onto `.claude/skills` and `.agents/skills`. Do not create `.grok/skills` or `.cursor/skills` (compatibility residue; sync deletes them so they are not scanned twice).
 

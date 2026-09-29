@@ -271,23 +271,28 @@ def _revert_root_rules_file(path):
             text = f.read()
     except OSError:
         return False
+    extra = adapters._claude_import_extra(text)
+    if extra is not None:
+        if not extra.strip():
+            try:
+                os.remove(path)
+            except OSError:
+                return False
+            return True
+        try:
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(extra.strip())
+                f.write("\n")
+        except OSError:
+            return False
+        return True
     if "CastFlow" not in text:
         return False
     boundary = "<!-- =========="
     if boundary in text:
         tail = text[text.find(boundary):]
-        lines = []
-        for line in tail.splitlines():
-            if line.startswith("<!--"):
-                continue
-            lines.append(line)
-        rest = "\n".join(lines).strip()
-        stub = (
-            rest.startswith("## Code naming")
-            and "Add team conventions below" in rest
-            and len(rest) < 400
-        )
-        if not rest or stub:
+        rest = adapters._project_rest(tail)
+        if adapters._is_stub_project_rest(rest):
             try:
                 os.remove(path)
             except OSError:
@@ -339,9 +344,14 @@ def unseed(project_root):
     Does not delete project source or `castflow-skills/` (project skill
     bodies). Drops leftover vendored `.castflow/` and project launchers
     (`castflow.bat` / `castflow.sh` / `castflow.command`; manager lives in
-    runtime). Root CLAUDE.md / AGENTS.md keep a non-stub project section.
+    runtime). AGENTS.md keeps a non-stub project section. A CLAUDE.md that
+    is only `@AGENTS.md` is removed; lines under that import are kept.
     """
     from .paths import reject_factory_runtime
+    # Import before the runtime tree is deleted. Project castflow.bat runs
+    # this module from `.castflow-runtime/`; deleting that tree first makes
+    # `manager.bundle` unimportable and skips launcher removal.
+    from .bundle import remove_project_launchers, remove_stale_project_harness
 
     reject_factory_runtime(project_root)
     removed = []
@@ -383,13 +393,12 @@ def unseed(project_root):
     _revert_root_rules_file(os.path.join(project_root, "CLAUDE.md"))
     _revert_root_rules_file(os.path.join(project_root, "AGENTS.md"))
 
-    rdir = runtime_dir(project_root)
-    if _remove_path(rdir):
-        removed.append(rdir.replace("\\", "/"))
-    from .bundle import remove_project_launchers, remove_stale_project_harness
     if remove_stale_project_harness(project_root):
         removed.append(os.path.join(project_root, ".castflow").replace("\\", "/"))
     removed.extend(remove_project_launchers(project_root))
+    rdir = runtime_dir(project_root)
+    if _remove_path(rdir):
+        removed.append(rdir.replace("\\", "/"))
     return {
         "ok": True,
         "seeded": is_seeded(project_root),
@@ -401,7 +410,11 @@ def update_framework(project_root):
     """Refresh CastFlow-owned skills and core files, then sync.
 
     Leaves project skills (programmer-*, generated architect, etc.) untouched.
+    Also recopies the runtime manager. The project launcher runs that copy,
+    so a manager bugfix never reaches it if seed is the only install path.
     """
+    from .bundle import install_project_manager
+
     updated = []
     for item in skills.inventory(project_root):
         if item.get("family") != "framework":
@@ -409,9 +422,11 @@ def update_framework(project_root):
         result = skills.update_skill(project_root, item["name"])
         if result.get("ok"):
             updated.append(item["name"])
+    bundled = install_project_manager(project_root)
     report = adapters.sync(project_root)
     return {
         "ok": True,
         "updated": updated,
+        "manager": bundled,
         "sync": {"evolution": report.get("evolution")},
     }

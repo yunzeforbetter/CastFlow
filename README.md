@@ -142,7 +142,7 @@ A mark's action is `keep`, `attach`, `split`, or `review`.
 
 ### 2. Progressive disclosure: load by moment
 
-Skills are not dumped into context every turn. They load by **T1-PREPARE / T2-EXECUTE / T3-FEEDBACK / T4-MAINTAIN**: read the full runtime protocol before writing code, and do not reread it while writing. The authority is the project-root `CLAUDE.md` / `AGENTS.md`, generated from `ROOT_RULES.template.md`.
+Skills are not dumped into context every turn. They load by **T1-PREPARE / T2-EXECUTE / T3-FEEDBACK / T4-MAINTAIN**: read the full runtime protocol before writing code, and do not reread it while writing. The authority is the project-root `AGENTS.md`, rendered from `ROOT_RULES.template.md`. `CLAUDE.md` is only `@AGENTS.md`, so a host that reads both files does not load the rules twice.
 
 ### 3. Work through module skills
 
@@ -217,7 +217,8 @@ CastFlow/
 
 ```
 project-root/
-├── CLAUDE.md / AGENTS.md                  # Framework section (ROOT_RULES) + project section
+├── AGENTS.md                              # Framework section (ROOT_RULES) + project section
+├── CLAUDE.md                              # `@AGENTS.md` only (Claude Code import)
 ├── castflow.bat / castflow.sh / .command  # Open the runtime manager (written by seed, not the factory copies)
 ├── .castflow-runtime/                     # The only CastFlow directory inside the project
 │   ├── manager.py / manager/ / installer/ # Console, sync, validate (bundled from the framework)
@@ -326,7 +327,7 @@ cd CastFlow && git pull
 python .castflow-runtime/manager.py update-framework
 ```
 
-This refreshes framework skills and core files only. It does **not** overwrite project skills. The project section of `CLAUDE.md` is left intact.
+This refreshes framework skills and core files only. It does **not** overwrite project skills. The project section of `AGENTS.md` is left intact.
 
 ---
 
@@ -370,7 +371,7 @@ Only `validate.py` remains. `manager.py validate` calls it. 1.x `bootstrap.py` /
 | `hooks/trace-collector.py` | Primary path `.castflow-runtime/memory/*.md`; optional inbound Claude auto-memory |
 | `hooks/trace-flush.py` | Write a trace only when a snapshot exists; `--selftest` |
 | `hooks/_homology.py` | slug / skill / Anchors Jaccard≥0.5 → connected components |
-| `templates/root/ROOT_RULES.template.md` | Injected into `CLAUDE.md` / `AGENTS.md`; seed copies it to runtime `templates/` |
+| `templates/root/ROOT_RULES.template.md` | Rendered into `AGENTS.md`; `CLAUDE.md` imports it with `@AGENTS.md`. Seed copies the template to runtime `templates/` |
 | `traces/` | schema:4 contract, `limits.json`, `hooks.config.json` |
 | `rules/module-catalog.md` | Module convention for the optional `/goal` path; seed copies it to `.castflow-runtime/rules/` |
 | `hooks/` | seed copies them to `.castflow-runtime/hooks/`; hook JSON points there |
@@ -381,7 +382,7 @@ There is no domain-skill template. When generating architect/debug/profiler, the
 
 ## Progressive disclosure (T1–T4)
 
-Named `T<index>-<verb>`. The authority is the project-root `CLAUDE.md`.
+Named `T<index>-<verb>`. The authority is the project-root `AGENTS.md`.
 
 | Moment | Trigger | What the AI reads on its own |
 |--------|---------|------------------------------|
@@ -518,15 +519,16 @@ If `python` does nothing: on Windows check PATH or use `py -3`; on macOS use `py
 | Class | Owner | How it updates |
 |-------|-------|----------------|
 | `CastFlow/` | This repo | `git pull` / submodule update |
-| `CLAUDE.md` framework section | seed / ROOT_RULES | Merged at install |
-| `CLAUDE.md` project section | The project team | Edit directly |
+| `AGENTS.md` framework section | seed / ROOT_RULES | Merged at install |
+| `AGENTS.md` project section | The project team | Edit directly |
+| `CLAUDE.md` | seed | `@AGENTS.md` only. Do not paste the rules here |
 | `.castflow-runtime/skills/` core | The framework | `update-framework` / `update NAME` |
 | `.castflow-runtime/skills/` project | The team + evolve | loop-engine / skill-creator / approved writes |
 | Adapter `*/skills/` | sync | Do not edit by hand |
 | `.castflow-runtime/traces/` | Hooks + evolve | Do not edit by hand |
 | `.castflow-runtime/memory/` | You, when correcting | Do not write `type: user` |
 
-Do not edit `CastFlow/.castflow/` by hand (`git pull` overwrites it). Customization belongs in the runtime and in the project section of `CLAUDE.md`.
+Do not edit `CastFlow/.castflow/` by hand (`git pull` overwrites it). Customization belongs in the runtime and in the project section of `AGENTS.md`.
 
 ---
 
@@ -537,7 +539,7 @@ cd CastFlow && git pull
 python .castflow-runtime/manager.py update-framework
 ```
 
-This refreshes framework skills and core files only (hooks, the root-rules template, `SKILL_ITERATION`, and so on). It does **not** overwrite project skills such as `programmer-*-skill`. The project section of `CLAUDE.md` is left intact.
+This refreshes framework skills and core files only (hooks, the root-rules template, `SKILL_ITERATION`, and so on). It does **not** overwrite project skills such as `programmer-*-skill`. The project section of `AGENTS.md` is left intact.
 
 `update-framework` does **not** write `.claude/.backups/` (the 1.x installer is gone).
 

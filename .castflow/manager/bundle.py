@@ -10,6 +10,7 @@ from .paths import (
     factory_root,
     find_harness_dir,
     is_factory_root,
+    resolve_factory_harness,
     runtime_dir,
     _rmtree_nofollow,
 )
@@ -189,7 +190,9 @@ def install_project_manager(project_root, dry_run=False):
     """Vendor manager + validate into `<project>/.castflow-runtime/` and write launchers."""
     if is_factory_root(project_root):
         return {"ok": False, "skipped": "factory"}
-    harness = find_harness_dir()
+    # Prefer the factory checkout. A project castflow.bat is running the
+    # runtime copy; copying that copy onto itself never picks up a bugfix.
+    harness = resolve_factory_harness(project_root) or find_harness_dir()
     dest_root = runtime_dir(project_root)
     try:
         same = os.path.normcase(os.path.abspath(dest_root)) == os.path.normcase(
