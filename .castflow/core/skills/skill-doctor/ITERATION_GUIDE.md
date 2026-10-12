@@ -1,33 +1,33 @@
-本文件只说明何时改 skill-doctor，不说明怎么改业务模块。
+This file says when to change skill-doctor. It does not say how to edit a business module.
 
-## 什么叫升变了
+## What counts as an improvement changed
 
-触发：用户改了升的条件，或改了哪些方向可以改变结论。
+Trigger: the user changed the three baselines, the improvement bar, or an eval dimension that may change the verdict.
 
-改：`SKILL_MEMORY.md` 的 Rule 5。`SKILL.md` 里如果写了同一条结论，一起改，不让两处打架。
+Edit: Rule 4 and Rule 5 in `SKILL_MEMORY.md`, and the flow in `SKILL.md`. If both files state the same verdict, change them together. Do not let them disagree.
 
-检查：升仍然要求结果有优势、旧约束没破、越界没变差。成本和单次运行的稳定仍然只记录。
+Check: an improvement still requires the candidate to beat the old skill on results, with regression and boundaries no worse. If the old skill is harmful, restoring the current model's no-skill baseline and removing the harm also counts.
 
-## 允许写入的范围变了
+## Allowed write scope changed
 
-触发：用户允许或禁止改业务脚本，或证据目录要换地方。
+Trigger: the user allows or forbids edits to business scripts, or the evidence directory must move.
 
-改：`SKILL.md` 的职责，以及 `SKILL_MEMORY.md` 的 Rule 1。
+Edit: the duties in `SKILL.md`, and Rule 1 in `SKILL_MEMORY.md`.
 
-检查：在用户原话改口之前，业务脚本仍是只读。候选仍先落在运行目录。
+Check: business scripts stay read-only. The candidate and the evidence still land first in `.castflow-runtime/tmp/skill-doctor/<target-skill-name>/`. Do not write a maintenance queue, a hash, or Git-tracked state.
 
-## 同时运行的 subagent 上限变了
+## Stale-locator classification changed
 
-触发：用户改了同时运行的数量。
+Trigger: the user changed how a missing file, a moved feature, an unproven call chain, or runtime evidence is judged.
 
-改：`SKILL.md` 的职责第 7 步，`SKILL_MEMORY.md` 的 Rule 6 和 Pitfall 5。
+Edit: duties 3 and 7 in `SKILL.md`, Rule 3 and Pitfall 3 in `SKILL_MEMORY.md`, and scenarios 2 and 3 in `EXAMPLES.md`.
 
-检查：正文里的上限只有一个数，并且和用户确认的相同。
+Check: update a locator only after opening the new file and confirming the feature moved. A definition that was not opened is still unverified.
 
-## 连通查到哪一层变了
+## Current-model baseline changed
 
-触发：用户改了「调用链」要打开到哪一层，或未跑游戏时能否写生效。
+Trigger: the executing model changed, or the user changed how no skill, the old skill, and the candidate skill are compared.
 
-改：`SKILL_MEMORY.md` 的 Rule 4，以及 `EXAMPLES.md` 的场景 2。
+Edit: duties 6 and 8 in `SKILL.md`, Rule 4, Rule 5, and Rule 6 in `SKILL_MEMORY.md`, and scenarios 4 and 5 in `EXAMPLES.md`.
 
-检查：没打开的定义仍然不能写成已连通。没跑游戏仍然不能写成运行时生效。
+Check: the three eval groups use the same current model. After a model change, do not reuse old results. With no gain over the current model's no-skill baseline, a generic skill shrinks or retires.

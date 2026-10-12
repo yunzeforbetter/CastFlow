@@ -1,35 +1,40 @@
 ---
 name: skill-doctor
-description: 检查并优化本仓库已有的 skill。当用户要按长任务核对某个 skill 的调用链和规则，并只在质量提升时改它。NOT 新建 skill (skill-creator)。
+description: >
+  Evaluate and iterate an existing skill: fix stale locators and broken
+  links, and shrink or raise rules against the current model. Use when
+  the user asks to maintain an existing skill. NOT creating a new skill
+  (skill-creator).
 ---
 
 # skill-doctor
 
-把「优化一个已有 skill」跑成一条长任务。先读它的迭代指南，再只读它点名的脚本和调用链，最后只有质量判定为升时才改这个 skill。
+Finish "maintain an existing skill" in one pass. The goal is a skill with a provable gain on this project and the current model. The result may be a fix, a shrink, a retirement, a deletion, or no change.
 
-## 让位
+## Yield
 
-新建 skill、或按生成队列写 programmer skill，让给 skill-creator。把一份需求编译成包然后停手，让给 goal-loop-creator。本技能自己把优化跑完。
+Creating a skill, or writing a programmer skill from the generation queue, yields to skill-creator. Compiling a requirement into a package and then stopping yields to goal-loop-creator. This skill runs the optimization itself.
 
-## 职责
+## Duties
 
-用户没点名目标 skill 时先问，不扫全仓。一次只优化一个 skill。缺 `ITERATION_GUIDE.md` 就停，不编焦点。
+If the user did not name a target skill, ask. Do not scan the whole repo. Optimize one skill at a time. If `ITERATION_GUIDE.md` is missing, stop. Do not invent a focus.
 
-1. 读目标 skill 的 `ITERATION_GUIDE.md`，写下这次的焦点。
-2. 只读该 skill，以及它点名的脚本，再沿这些脚本里实际写出的调用，打开本轮要核对的定义。业务脚本、预制和资源不改。
-3. 已记录的功能：文件还在不在，功能是否仍由该脚本持有，打开过的调用是否还连着。没打开的调用标未证实。没跑游戏就不写运行时生效。
-4. 新功能只来自本轮打开的脚本，并且目标 skill 里还没有。不编功能，不扩大到无关模块。
-5. 写目标偏差。没有偏差就不改 skill，也不写候选。
-6. 偏差写完后先冻住评测题，再把候选写进运行目录。此时不覆盖目标 skill。
-7. 旧快照和候选各跑一题一次。同时运行的 subagent 不超过 3，多的排队。没有 subagent 就串行，不假装跑过。
-8. 判定为升，才把候选写入目标 skill 的角色文件。降、混合、持平、无差异都保持原文件。
+1. Read the target skill's `SKILL.md` and `ITERATION_GUIDE.md`. Turn the guide's triggers into this pass's scope. If the scope is unclear, stop.
+2. Read only the scripts the target skill names, and the definitions this pass actually opened on the call chain. Do not edit business scripts, prefabs, assets, or adapter mirrors.
+3. Classify health first: locator ok, file missing, feature moved, call chain broken, rule stale, generic content with no gain, or skill harmful. A definition that was not opened is unverified. If the project was not run, do not claim a runtime effect.
+4. Record the gap, or confirm there is none. A new feature may come only from a script opened this pass, and only if the target skill does not already record it. Do not invent a feature. Do not widen the module scope.
+5. Freeze the eval prompts before any candidate body exists. Prompts state the finished result, the constraints, and the boundaries. They do not quote the candidate's wording. Put the temporary snapshot, prompts, candidate, and results in `.castflow-runtime/tmp/skill-doctor/<target-skill-name>/`. Do not write a maintenance queue, a hash, or Git-tracked state.
+6. Run three groups with the same current model and the same context: no skill, old skill, and candidate skill. Cover at least one target task and one adjacent or out-of-scope task. If a call chain is broken, add a moved or missing scenario. Without an actual run, do not claim the eval passed.
+7. The candidate writes only a fix that has evidence. Update a stale locator only after the new file is opened and confirmed. An uncertain chain stays unverified. A generic skill that does not beat the current model shrinks or retires.
+8. Write back to the target skill only when the candidate has a citable advantage over the old skill on the target result, and regression, boundaries, and out-of-scope behavior are not worse. If the old skill is harmful, restoring the no-skill baseline and removing the harm also counts as an improvement. No change, a downgrade, a mixed result, or no difference: do not overwrite.
+9. Run `py .castflow-runtime/manager.py validate` before and after the overwrite. After it passes, run `py .castflow-runtime/manager.py sync`. On failure, leave the original skill unchanged. Delete the temporary directory when the task ends, unless the user asks to keep the report.
 
-评测看结果、回归、召回、越界。稳定和成本只记录。单次运行不算稳定提升。题目写结果和约束，不写候选句子，也不把调用步骤当成分数。
+Eval looks at results, regression, recall, out-of-scope behavior, and the no-skill baseline. Record stability and cost only. One run, or reading a few more files, is not an improvement. If the model changes during the task, discard the comparison and rerun with the current model.
 
-证据目录是 `loop-engine/runs/skill-doctor/<目标技能名>/`。快照、冻住的题目、候选和判定都放这里，不放进目标 skill 目录。
+The evidence directory is `.castflow-runtime/tmp/skill-doctor/<target-skill-name>/`. It is a temporary directory for one task. It is not project collaboration state, and it is not written into a maintenance queue.
 
-## 接着读
+## Read next
 
-- 一次跑完和一次不改：`EXAMPLES.md`
-- 判定和写入边界：`SKILL_MEMORY.md`
-- 本技能何时改写：`ITERATION_GUIDE.md`
+- Stale locators, moves, no gain, and improvement: `EXAMPLES.md`
+- Evidence, the three baselines, and write bounds: `SKILL_MEMORY.md`
+- When to rewrite this skill: `ITERATION_GUIDE.md`

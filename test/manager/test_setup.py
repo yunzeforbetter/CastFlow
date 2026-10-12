@@ -6,6 +6,7 @@ from __future__ import print_function
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -155,13 +156,42 @@ class TestColdStart(TmpProject):
         })
         self.assertEqual(report3.get("handoff"), custom)
 
+    def test_unseed_keeps_agents_project_section_and_import_notes(self):
+        setup.cold_start(self.root, {"language": "en"})
+        agents_path = os.path.join(self.root, "AGENTS.md")
+        claude_path = os.path.join(self.root, "CLAUDE.md")
+        with open(agents_path, encoding="utf-8") as f:
+            agents = f.read()
+        agents = agents.replace(
+            "Add team conventions below.",
+            "Add team conventions below.\n\nKeep this note.",
+            1,
+        )
+        _write(agents_path, agents)
+        _write(claude_path, "@AGENTS.md\n\nPlan mode for billing.\n")
+        report = setup.unseed(self.root)
+        self.assertTrue(report.get("ok"))
+        with open(agents_path, encoding="utf-8") as f:
+            kept = f.read()
+        self.assertIn("Keep this note.", kept)
+        self.assertNotIn("ROOT_RULES.template.md", kept)
+        self.assertNotIn("This file is generated from CastFlow", kept)
+        with open(claude_path, encoding="utf-8") as f:
+            claude = f.read()
+        self.assertNotIn("@AGENTS.md", claude)
+        self.assertIn("Plan mode for billing.", claude)
+
     def test_unseed_allows_cold_start_again(self):
         setup.cold_start(self.root, {"language": "zh"})
         self.assertTrue(setup.is_seeded(self.root))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "CLAUDE.md")))
         self.assertTrue(os.path.isdir(os.path.join(
             self.root, ".claude", "skills", "skill-creator")))
+        with open(os.path.join(self.root, "CLAUDE.md"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "@AGENTS.md\n")
         report = setup.unseed(self.root)
+        self.assertFalse(os.path.isfile(os.path.join(self.root, "CLAUDE.md")))
+        self.assertFalse(os.path.isfile(os.path.join(self.root, "AGENTS.md")))
         self.assertTrue(report.get("ok"))
         self.assertFalse(setup.is_seeded(self.root))
         self.assertFalse(os.path.isdir(runtime_dir(self.root)))
@@ -169,6 +199,24 @@ class TestColdStart(TmpProject):
             self.assertFalse(os.path.isfile(os.path.join(self.root, name)))
         self.assertFalse(os.path.isdir(os.path.join(
             self.root, ".claude", "skills", "skill-creator")))
+
+    def test_unseed_via_runtime_manager_removes_launchers(self):
+        """Project castflow.bat runs the copy under .castflow-runtime."""
+        setup.cold_start(self.root, {"language": "en"})
+        runtime_py = os.path.join(runtime_dir(self.root), "manager.py")
+        self.assertTrue(os.path.isfile(runtime_py))
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "castflow.bat")))
+        proc = subprocess.run(
+            [sys.executable, runtime_py, "--project-root", self.root, "unseed"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("manager.bundle", proc.stderr)
+        self.assertFalse(os.path.isdir(runtime_dir(self.root)))
+        for name in ("castflow.bat", "castflow.sh", "castflow.command"):
+            self.assertFalse(
+                os.path.isfile(os.path.join(self.root, name)), name)
         again = setup.cold_start(self.root, {
             "language": "en",
             "generate_skills": True,
@@ -330,6 +378,13 @@ class TestColdStart(TmpProject):
         self.assertNotIn("mutated-by-test", text)
         self.assertTrue(os.path.isfile(os.path.join(
             self.root, ".claude", "skills", "skill-creator", "SKILL.md")))
+        runtime_setup = os.path.join(
+            runtime_dir(self.root), "manager", "setup.py")
+        with open(runtime_setup, "a", encoding="utf-8", newline="\n") as f:
+            f.write("\n# mutated-manager\n")
+        setup.update_framework(self.root)
+        self.assertNotIn("mutated-manager", _read(runtime_setup))
+        self.assertIn("remove_project_launchers", _read(runtime_setup))
 
     def test_cli_setup_seeds_without_scan(self):
         rc = manager_main(["--project-root", self.root, "setup", "--language", "ja"])

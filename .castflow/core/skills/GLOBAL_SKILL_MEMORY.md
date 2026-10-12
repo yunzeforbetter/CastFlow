@@ -36,7 +36,7 @@ Unverified project API: leave that call unimplemented. Do not invent a signature
 
 A finished implementation is easy to copy together with its local anti-patterns.
 
-Copied code yields to constraints. Sources, in the order you consult them: the current skill's `SKILL_MEMORY.md` when that file exists, injected root rules (`CLAUDE.md` / `AGENTS.md`), and this file. If this file conflicts with the injected root rules, the root rules win.
+Copied code yields to constraints. Sources, in the order you consult them: the current skill's `SKILL_MEMORY.md` when that file exists, injected root rules (`AGENTS.md`; `CLAUDE.md` only imports it), and this file. If this file conflicts with the injected root rules, the root rules win.
 
 ---
 

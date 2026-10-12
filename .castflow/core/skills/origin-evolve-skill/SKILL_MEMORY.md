@@ -31,7 +31,7 @@ Never write `.claude/rules/` business rules. Never write GLOBAL_SKILL_MEMORY.md,
 | Behavioral constraint | SKILL_MEMORY.md |
 | Code pattern reference | EXAMPLES.md |
 | Trigger keyword expansion | SKILL.md description |
-| Project-wide convention | suggest CLAUDE.md (do not write directly) |
+| Project-wide convention | suggest the project section of AGENTS.md (do not write directly) |
 
 ---
 
@@ -55,7 +55,7 @@ No proposal may be written without explicit user approval. This includes Append,
 
 Trace entries (schema:4) are entirely hook-generated and read-only: `timestamp`, `type`, `validated`, `quality`, `gate_hint`, `memory_snapshots`, plus MEMORY `skill` / `anchors` / `quality`. There are no AI-supplemented fields. Distill rules from snapshot content; never fabricate or modify trace fields. Legacy fields (`pipeline_run_id`, `score`, `modules`, `correction`) may still appear; ignore them.
 
-CLAUDE.md changes are always proposed as suggestions to the user; never write directly.
+AGENTS.md project-section changes are always proposed as suggestions to the user; never write directly. Do not paste those rules into CLAUDE.md.
 
 ---
 

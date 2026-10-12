@@ -1,23 +1,31 @@
-## 场景 1: 没有偏差
+## Scenario 1: A healthy skill stays unchanged
 
-用户点名一个已有 skill，要按长任务检查它。
+The user names an existing skill and asks for a long-task check.
 
-迭代指南里的焦点这次没有被打破。打开的脚本仍持有已记录的功能。调用要么连到了本轮打开的定义，要么标成未证实。没有新的、已打开且尚未记录的功能。
+The iteration guide's focus is not broken. Opened scripts still hold the recorded features. Calls that were not opened are marked unverified. There is no newly confirmed feature.
 
-不写候选，不改目标 skill。
+Do not write a candidate. Do not edit the target skill. A health check is not a reason to change it.
 
-## 场景 2: 有偏差但没有提升
+## Scenario 2: The locator file was deleted
 
-某个定位脚本还在，指南关心的功能已经不在这个文件里。另一处调用没有打开定义。
+The script named by `EXAMPLES.md` no longer exists. Find a candidate file from a Git rename record or a symbol search, open it, and confirm it holds the original feature.
 
-偏差写「定位过期」和「调用未证实」。题目在候选正文之前冻住。旧快照和候选各跑一次。结果没有可引用的优势。
+After that confirmation, update the locator. If there is no trustworthy owner, delete the stale locator or propose a retirement candidate. Do not invent a path.
 
-目标 skill 与快照保持一致。未证实不写成失效，也没写成运行时生效。
+## Scenario 3: The call chain cannot be verified
 
-## 场景 3: 判定为升才覆盖
+The locator script is still there, but the called definition was not opened this pass, or the project was not run.
 
-冻住的题目上，候选的结果优于旧快照，事先写明的旧约束没有被破坏，越界没有变差。
+Record unverified. Do not write that the chain is broken, and do not write that it takes effect at runtime. If there is no verifiable gap, leave the target skill unchanged.
 
-把运行目录里的候选覆盖到目标 skill 的角色文件。证据留在 `loop-engine/runs/skill-doctor/<目标技能名>/`。
+## Scenario 4: A generic skill has no extra gain
 
-业务脚本没有改动。
+The current model can finish the target task without loading the skill. The old skill adds generic advice, does not improve the target result, and increases false recall.
+
+The candidate deletes the redundant rules or retires the skill. A longer candidate is not an improvement.
+
+## Scenario 5: Three baselines support an overwrite
+
+Under the same current model, the same context, and frozen prompts, no skill, the old skill, and the candidate skill all actually run. The candidate improves the target result. Regression and boundaries are not worse. Harmful behavior in the old skill is removed.
+
+Run `validate` first. After it passes, overwrite the target skill, then run `validate` and `sync`. Business scripts are unchanged. Temporary evidence goes in `.castflow-runtime/tmp/skill-doctor/<target-skill-name>/` and is deleted when the task ends.

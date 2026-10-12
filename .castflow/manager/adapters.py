@@ -286,51 +286,180 @@ def _keep_if_block(text, tag):
     return text
 
 
-def _write_root_rules(project_root, evolution_on, adapters, dry_run):
-    body = _render_root_rules(evolution_on, project_root=project_root)
-    targets = []
-    if adapters.get("claude") or adapters.get("grok"):
-        targets.append(os.path.join(project_root, "CLAUDE.md"))
-    if adapters.get("codex") or adapters.get("grok"):
-        targets.append(os.path.join(project_root, "AGENTS.md"))
-    # Always write both when any adapter is on — they are the same harness text.
-    if not targets:
-        targets = [
-            os.path.join(project_root, "CLAUDE.md"),
-            os.path.join(project_root, "AGENTS.md"),
-        ]
-    written = []
-    for path in targets:
-        if dry_run:
-            written.append(path)
+ROOT_RULES_BOUNDARY = "<!-- =========="
+# Claude Code expands this before the model sees the prompt. Other hosts
+# do not. They load AGENTS.md itself, so the rules body must live there.
+CLAUDE_AGENTS_IMPORT = "@AGENTS.md"
+
+
+def _read_utf8(path):
+    if not path or not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8-sig") as f:
+        return f.read()
+
+
+def _write_utf8(path, text):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
+def _looks_like_generated_root_rules(text):
+    """True when this file is a rendered ROOT_RULES body, not a passing mention."""
+    if not text:
+        return False
+    if "This file is generated from CastFlow" in text:
+        return True
+    if ROOT_RULES_BOUNDARY in text and "CastFlow" in text:
+        return True
+    return False
+
+
+def _boundary_tail(text):
+    if not text or ROOT_RULES_BOUNDARY not in text:
+        return None
+    return text[text.find(ROOT_RULES_BOUNDARY):]
+
+
+def _project_rest(tail):
+    if not tail:
+        return ""
+    lines = []
+    for line in tail.splitlines():
+        if line.startswith("<!--"):
             continue
-        # Seed-friendly: if file exists and has no CastFlow boundary, append
-        # a pointer instead of clobbering.
-        if os.path.isfile(path):
-            with open(path, "r", encoding="utf-8-sig") as f:
-                existing = f.read()
-            if "CastFlow" in existing and "<!-- ==========" in existing:
-                # Replace harness portion using the same boundary as installer.
-                idx = existing.find("<!-- ==========")
-                project_tail = existing[idx:]
-                harness = body
-                if "<!-- ==========" in harness:
-                    harness = harness[: harness.find("<!-- ==========")]
-                with open(path, "w", encoding="utf-8", newline="\n") as f:
-                    f.write(harness.rstrip() + "\n\n" + project_tail.lstrip())
-                written.append(path)
-                continue
-            if "CastFlow" in existing:
-                written.append(path)
-                continue
-        parent = os.path.dirname(path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(body)
-            if not body.endswith("\n"):
-                f.write("\n")
-        written.append(path)
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+# Untouched template tail. A short note under this heading is a real section.
+_DEFAULT_PROJECT_REST = (
+    "## Code naming\n\n"
+    "Follow existing code in this repository. Add team conventions below."
+)
+
+
+def _normalize_project_rest(rest):
+    return "\n".join(
+        line.rstrip() for line in (rest or "").strip().splitlines()
+    ).strip()
+
+
+def _is_stub_project_rest(rest):
+    normalized = _normalize_project_rest(rest)
+    if not normalized:
+        return True
+    return normalized == _normalize_project_rest(_DEFAULT_PROJECT_REST)
+
+
+def _owned_project_tail(text):
+    """Project section of a generated rules file, or None if this file is not one."""
+    if not _looks_like_generated_root_rules(text):
+        return None
+    return _boundary_tail(text)
+
+
+def _prefer_project_tail(agents_text, claude_text, template_tail):
+    """Keep a real project section. AGENTS wins when both sides were edited."""
+    agents_tail = _owned_project_tail(agents_text)
+    claude_tail = _owned_project_tail(claude_text)
+    for tail in (agents_tail, claude_tail):
+        if tail is None:
+            continue
+        if not _is_stub_project_rest(_project_rest(tail)):
+            return tail
+    if agents_tail is not None:
+        return agents_tail
+    if claude_tail is not None:
+        return claude_tail
+    return template_tail
+
+
+def _claude_import_extra(text):
+    """Text after a leading `@AGENTS.md` line, or None when this is not that file.
+
+    Empty string means the file is only the import. Claude-specific lines
+    under the import are preserved. The import is not expanded by Grok,
+    Cursor, or Codex; those hosts read AGENTS.md directly.
+    """
+    if text is None:
+        return None
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    if index >= len(lines) or lines[index].strip() != CLAUDE_AGENTS_IMPORT:
+        return None
+    return "\n".join(lines[index + 1:]).strip()
+
+
+def _claude_import_file_text(extra):
+    extra = (extra or "").strip()
+    if extra:
+        return CLAUDE_AGENTS_IMPORT + "\n\n" + extra + "\n"
+    return CLAUDE_AGENTS_IMPORT + "\n"
+
+
+def _leave_agents_alone(text):
+    """Hand-written AGENTS.md that mentions CastFlow but is not our render."""
+    return bool(text) and "CastFlow" in text and not _looks_like_generated_root_rules(text)
+
+
+def _leave_claude_alone(text):
+    """Hand-written CLAUDE.md. An import file and a generated copy are ours."""
+    if not text or _claude_import_extra(text) is not None:
+        return False
+    if _looks_like_generated_root_rules(text):
+        return False
+    return "CastFlow" in text
+
+
+def _write_root_rules(project_root, evolution_on, adapters, dry_run):
+    """Write the rules body to AGENTS.md and a Claude import to CLAUDE.md.
+
+    Adapter flags do not split the body across the two files. A host that
+    reads both (Grok, Cursor, Copilot, Claude with both-files mode) would
+    inject the rules twice. Claude Code expands `@AGENTS.md`; everyone else
+    needs the body in AGENTS.md itself. `adapters` is unused on purpose.
+    """
+    del adapters  # both files, every host; see docstring
+    body = _render_root_rules(evolution_on, project_root=project_root)
+    harness = body
+    template_tail = ""
+    if ROOT_RULES_BOUNDARY in body:
+        harness = body[: body.find(ROOT_RULES_BOUNDARY)]
+        template_tail = body[body.find(ROOT_RULES_BOUNDARY):]
+    agents_path = os.path.join(project_root, "AGENTS.md")
+    claude_path = os.path.join(project_root, "CLAUDE.md")
+    agents_existing = _read_utf8(agents_path)
+    claude_existing = _read_utf8(claude_path)
+    if _leave_agents_alone(agents_existing):
+        # Pointing CLAUDE.md at this file would hide a generated rules body
+        # that still lives only in CLAUDE.md. Leave both untouched.
+        return []
+    project_tail = _prefer_project_tail(
+        agents_existing, claude_existing, template_tail)
+    agents_body = harness.rstrip() + "\n\n" + (project_tail or "").lstrip()
+    keep_claude = _leave_claude_alone(claude_existing)
+    extra = _claude_import_extra(claude_existing)
+    # A generated full copy is replaced by the import. Lines under an
+    # existing import are Claude-only notes and stay.
+    if extra is None:
+        extra = ""
+    claude_body = _claude_import_file_text(extra)
+    written = [agents_path]
+    if not keep_claude:
+        written.append(claude_path)
+    if dry_run:
+        return written
+    _write_utf8(agents_path, agents_body)
+    if not keep_claude:
+        _write_utf8(claude_path, claude_body)
     return written
 
 

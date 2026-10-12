@@ -45,6 +45,12 @@ The CastFlow evolution plugin is disabled. Do not write `.castflow-runtime/memor
 
 Do not invent project APIs. A skill file locator or an EXAMPLES snippet is not proof. Evidence is an opened definition or a user pointer. Leave an unverified call unimplemented; do not guess a signature. Details: `GLOBAL_SKILL_MEMORY.md` protocol 1.
 
+## Coding philosophy
+
+Build the complete, verifiable core feature first. Prefer direct, clear, and maintainable implementations that fit the repository's existing conventions. Use clear names, straightforward control flow, and focused functions; avoid clever expressions or implicit behavior. Treat readability, correctness, reliability, and resource lifetime management as more important than minimizing lines of code.
+
+Avoid premature abstraction, generalized frameworks, and defensive code without a concrete benefit. Once the feature is stable, improve complexity, reuse, performance, testability, or separation of concerns only when the actual code and expected iteration justify it. Every refactor or optimization should have a clear purpose and measurable maintenance, correctness, observability, or performance value. Keep the design simple while allowing evidence-based evolution.
+
 <!-- ========== project section (team-owned) ========== -->
 
 ## Code naming

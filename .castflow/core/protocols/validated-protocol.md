@@ -1,6 +1,6 @@
 # Validated Protocol - 用户接受/拒绝信号
 
-> **加载时点**：仅 T3-FEEDBACK（用户给出明确反馈时）。完整时点定义见项目根 `CLAUDE.md`「使用Skill的分层加载」段。
+> **加载时点**：仅 T3-FEEDBACK（用户给出明确反馈时）。完整时点定义见项目根 `AGENTS.md`「Using skills (T1-T4)」段。
 > **关联**：进化系统通过 validated 信号识别有效经验和反面教材。
 
 ---

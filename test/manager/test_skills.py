@@ -97,15 +97,18 @@ class TestInventoryAfterSeed(TmpProject):
         self.assertIn("skill-creator", names)
         self.assertIn("origin-evolve-skill", names)
         self.assertIn("goal-loop-creator", names)
+        self.assertIn("skill-doctor", names)
         self.assertNotIn("skill-forge", names)
         by_name = dict((i["name"], i) for i in items)
         self.assertEqual(by_name["skill-creator"]["kind"], "core")
         self.assertEqual(by_name["goal-loop-creator"]["kind"], "core")
+        self.assertEqual(by_name["skill-doctor"]["kind"], "core")
         self.assertIn("long-task converter", by_name["goal-loop-creator"].get("role") or "")
         self.assertTrue(os.path.isdir(os.path.join(
             runtime_skills, "goal-loop-creator")))
         self.assertFalse(by_name["skill-creator"]["retired"])
         self.assertTrue(os.path.isdir(os.path.join(runtime_skills, "skill-creator")))
+        self.assertTrue(os.path.isdir(os.path.join(runtime_skills, "skill-doctor")))
         self.assertTrue(os.path.isfile(os.path.join(
             runtime_skills, "MODULE_MARK_SYSTEM_PROMPT.md")))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "castflow.bat")))
