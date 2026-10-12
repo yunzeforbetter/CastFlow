@@ -94,6 +94,7 @@ class TestSeedSync(TmpProject):
         self.assertIn(".castflow-runtime/memory/", agents)
         self.assertIn("must not Read `.castflow-runtime/traces/trace.md`", agents)
         self.assertIn("ROOT_RULES.template.md", agents)
+        self.assertIn("## Coding philosophy", agents)
         self.assertNotIn("CLAUDE.template.md", agents)
         self.assertNotIn("ROOT_RULES.template.md", claude)
         mdc = os.path.join(self.root, ".cursor", "rules", "evolve-reminder.mdc")
